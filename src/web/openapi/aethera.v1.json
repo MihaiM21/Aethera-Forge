@@ -1,0 +1,185 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Aethera API",
+    "description": "REST API of the Aethera control plane. Conventions: docs/architecture/0003-api-conventions.md.",
+    "version": "v1"
+  },
+  "paths": { },
+  "components": {
+    "schemas": {
+      "FieldError": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "JSON Pointer (RFC 6901) to the offending body member, e.g. /domains/0/host."
+          },
+          "parameter": {
+            "type": "string",
+            "description": "Name of the offending query or path parameter."
+          },
+          "code": {
+            "type": "string",
+            "description": "Short stable validator id: required, too_long, too_short, pattern, range, invalid_enum, not_unique, or a domain-specific code."
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "description": "One field-level problem. Exactly one of pointer (JSON Pointer into the body) or parameter (query/path) is set."
+      },
+      "ProblemDetails": {
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "traceId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Always urn:aethera:problem:<code>."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short fixed phrase per code. Do not parse."
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Occurrence-specific text for humans. Do not parse."
+          },
+          "instance": {
+            "type": "string",
+            "description": "The request path."
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable code, area.reason. Clients branch on this. Resource-specific codes (<resource>.not_found, <resource>.already_exists) are open-ended.",
+            "x-known-codes": [
+              "auth.forbidden",
+              "auth.insufficient_scope",
+              "auth.unauthenticated",
+              "concurrency.conflict",
+              "confirmation.required",
+              "domain.rule_violation",
+              "internal.error",
+              "pagination.invalid_cursor",
+              "precondition.failed",
+              "rate_limited",
+              "request.malformed",
+              "request.method_not_allowed",
+              "request.not_acceptable",
+              "request.too_large",
+              "request.unsupported_media_type",
+              "resource.conflict",
+              "route.not_found",
+              "service.unavailable",
+              "validation.failed",
+              "validation.invalid_parameter"
+            ]
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The X-Request-Id of the failed request."
+          }
+        },
+        "additionalProperties": { },
+        "description": "RFC 9457 problem details."
+      },
+      "ValidationProblem": {
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "traceId",
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Always urn:aethera:problem:<code>."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short fixed phrase per code. Do not parse."
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Occurrence-specific text for humans. Do not parse."
+          },
+          "instance": {
+            "type": "string",
+            "description": "The request path."
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable code, area.reason. Clients branch on this. Resource-specific codes (<resource>.not_found, <resource>.already_exists) are open-ended.",
+            "x-known-codes": [
+              "auth.forbidden",
+              "auth.insufficient_scope",
+              "auth.unauthenticated",
+              "concurrency.conflict",
+              "confirmation.required",
+              "domain.rule_violation",
+              "internal.error",
+              "pagination.invalid_cursor",
+              "precondition.failed",
+              "rate_limited",
+              "request.malformed",
+              "request.method_not_allowed",
+              "request.not_acceptable",
+              "request.too_large",
+              "request.unsupported_media_type",
+              "resource.conflict",
+              "route.not_found",
+              "service.unavailable",
+              "validation.failed",
+              "validation.invalid_parameter"
+            ]
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The X-Request-Id of the failed request."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            }
+          }
+        },
+        "additionalProperties": { },
+        "description": "RFC 9457 problem with field-level errors (422, and 400 for invalid parameters)."
+      }
+    },
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "description": "Browser session. Unsafe methods must also send the X-CSRF-Token header (GET /auth/csrf).",
+        "name": "__Host-aethera_session",
+        "in": "cookie"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "description": "API token: Authorization: Bearer aeth_... Its scopes are listed per operation as x-required-scope.",
+        "scheme": "bearer",
+        "bearerFormat": "aeth_<token>"
+      }
+    }
+  }
+}

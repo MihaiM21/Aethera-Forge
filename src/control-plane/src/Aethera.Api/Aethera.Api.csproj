@@ -1,9 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    Build-time OpenAPI generation (Microsoft.Extensions.ApiDescription.Server): every build of this project loads the app (no database,
+    no Redis, no network: the host is built, never started) and writes the "v1" document to src/web/openapi/aethera.v1.json, which is
+    committed. CI fails when regenerating changes the file. The document name stays "v1" so the served URL is /api/openapi/v1.json.
+    The generator only accepts [A-Za-z0-9_-] in a file name, so it writes aethera-v1.json and the target below renames it to aethera.v1.json.
+  -->
+  <PropertyGroup>
+    <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../../web/openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name aethera-v1</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Aethera.Domain\Aethera.Domain.csproj" />
     <ProjectReference Include="..\Aethera.Infrastructure\Aethera.Infrastructure.csproj" />
     <ProjectReference Include="..\Aethera.Engine\Aethera.Engine.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <Target Name="RenameAetheraOpenApiDocument" AfterTargets="GenerateOpenApiDocuments"
+          Condition="Exists('$(OpenApiDocumentsDirectory)/aethera-v1.json')">
+    <Copy SourceFiles="$(OpenApiDocumentsDirectory)/aethera-v1.json" DestinationFiles="$(OpenApiDocumentsDirectory)/aethera.v1.json" />
+    <Delete Files="$(OpenApiDocumentsDirectory)/aethera-v1.json" />
+  </Target>
 
 </Project>
