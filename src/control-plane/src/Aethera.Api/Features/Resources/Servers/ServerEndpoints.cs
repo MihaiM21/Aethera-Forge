@@ -86,7 +86,7 @@ public sealed record ServerResponse(
 
 public static partial class ServerRules
 {
-    [GeneratedRegex(@"^[a-z_][a-z0-9_-]{0,31}\$?$")]
+    [GeneratedRegex(@"\A[a-z_][a-z0-9_-]{0,31}\$?\z")]
     private static partial Regex SshUserPattern();
 
     public static bool IsValidSshUser(string? user) => user is not null && SshUserPattern().IsMatch(user);

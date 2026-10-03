@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.RegularExpressions;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -52,18 +53,29 @@ public sealed record DnsCheckResponse(
     Guid DomainId, string Hostname, DnsStatus Status, IReadOnlyList<string> ExpectedIps, IReadOnlyList<string> ResolvedIps, DateTimeOffset CheckedAt,
     string Message);
 
-public static class DomainRules
+public static partial class DomainRules
 {
+    public const int MaxPathPrefixLength = 256;
+
+    public const string PathPrefixMessage =
+        "Must start with '/' and contain only letters, digits and . _ ~ / - (at most 256 characters, no '//', '.' or '..' segments).";
+
+    // Only characters that are safe inside a generated router rule (Traefik PathPrefix(`...`), ADR 0006); no query, quote, backtick or space.
+    [GeneratedRegex(@"\A/[A-Za-z0-9._~/-]*\z")]
+    private static partial Regex PathPrefixPattern();
+
+    /// <summary>
+    /// A path prefix: <c>/</c> followed by letters, digits and <c>. _ ~ / -</c>, at most 256 characters, no <c>//</c>, no <c>.</c> or <c>..</c>
+    /// segment. A trailing slash is dropped. <c>null</c> means the default <c>/</c>.
+    /// </summary>
     public static bool TryNormalizePath(string? path, out string normalized)
     {
         normalized = "/";
         if (path is null) return true;
-        var text = path.Trim();
-        if (text.Length == 0 || text[0] != '/' || text.Length > 500 || text.Any(c => char.IsWhiteSpace(c) || c is '?' or '#' or '\\' or '"')) return false;
-        text = System.Text.RegularExpressions.Regex.Replace(text, "/{2,}", "/");
-        if (text.Split('/').Contains("..")) return false;
-        normalized = text.Length > 1 ? text.TrimEnd('/') : text;
-        if (normalized.Length == 0) normalized = "/";
+        if (path.Length == 0 || path.Length > MaxPathPrefixLength || !PathPrefixPattern().IsMatch(path) || path.Contains("//", StringComparison.Ordinal))
+            return false;
+        if (path.Split('/').Any(segment => segment is "." or "..")) return false;
+        normalized = path.Length > 1 ? path.TrimEnd('/') : path;
         return true;
     }
 }
@@ -83,7 +95,7 @@ public sealed class CreateDomainValidator : AbstractValidator<CreateDomainReques
         RuleFor(x => x.Hostname).NotEmpty();
         RuleFor(x => x.Hostname).MustBeHostname().When(x => !string.IsNullOrWhiteSpace(x.Hostname));
         RuleFor(x => x.PathPrefix).Must(p => DomainRules.TryNormalizePath(p, out _)).WithErrorCode("pattern")
-            .WithMessage("Must start with '/' and contain no spaces, '?', '#' or '..' segments.");
+            .WithMessage(DomainRules.PathPrefixMessage);
         RuleFor(x => x.TargetPort).InclusiveBetween(1, 65535).When(x => x.TargetPort is not null);
     }
 }
@@ -94,7 +106,7 @@ public sealed class UpdateDomainValidator : AbstractValidator<UpdateDomainReques
     {
         RuleFor(x => x.Hostname).MustBeHostname().When(x => x.Hostname is not null);
         RuleFor(x => x.PathPrefix).Must(p => DomainRules.TryNormalizePath(p, out _)).WithErrorCode("pattern")
-            .WithMessage("Must start with '/' and contain no spaces, '?', '#' or '..' segments.").When(x => x.PathPrefix is not null);
+            .WithMessage(DomainRules.PathPrefixMessage).When(x => x.PathPrefix is not null);
         RuleFor(x => x.TargetPort).InclusiveBetween(1, 65535).When(x => x.TargetPort is not null);
     }
 }

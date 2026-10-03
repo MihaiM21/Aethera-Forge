@@ -74,7 +74,7 @@ public sealed class CreateServiceValidator : AbstractValidator<CreateServiceRequ
         RuleFor(x => x.TemplateKey).NotEmpty()
             .Must(k => k is null || ServiceTemplates.Find(k) is not null).WithErrorCode("not_found")
             .WithMessage($"Unknown template. Available: {string.Join(", ", ServiceTemplates.All.Select(t => t.Key))}.");
-        RuleFor(x => x.Image).MaximumLength(500).Matches(@"^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$").When(x => x.Image is not null);
+        RuleFor(x => x.Image).MaximumLength(500).Must(i => i is null || ApplicationRules.IsImage(i)).WithErrorCode("pattern").When(x => x.Image is not null);
         RuleFor(x => x.Config).Must(c => c is null || c.ToJsonString().Length <= 64 * 1024).WithErrorCode("too_long")
             .WithMessage("The config must be at most 64 KiB.");
         RuleFor(x => x).Custom((x, context) =>
@@ -94,7 +94,7 @@ public sealed class UpdateServiceValidator : AbstractValidator<UpdateServiceRequ
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200).When(x => x.Name is not null);
         RuleFor(x => x.Description).MaximumLength(2000);
-        RuleFor(x => x.Image).MaximumLength(500).Matches(@"^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$").When(x => x.Image is not null);
+        RuleFor(x => x.Image).MaximumLength(500).Must(i => i is null || ApplicationRules.IsImage(i)).WithErrorCode("pattern").When(x => x.Image is not null);
         RuleFor(x => x.TemplateVersion).MaximumLength(64);
         RuleFor(x => x.Config).Must(c => c is null || c.ToJsonString().Length <= 64 * 1024).WithErrorCode("too_long")
             .WithMessage("The config must be at most 64 KiB.");

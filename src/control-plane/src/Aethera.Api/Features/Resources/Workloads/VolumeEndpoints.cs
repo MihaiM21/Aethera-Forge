@@ -48,7 +48,7 @@ public sealed record VolumeResponse(
 
 public static partial class VolumeRules
 {
-    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")]
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9_.-]{0,254}\z")]
     private static partial Regex NamePattern();
 
     public static bool IsValidName(string? name) => name is not null && NamePattern().IsMatch(name);

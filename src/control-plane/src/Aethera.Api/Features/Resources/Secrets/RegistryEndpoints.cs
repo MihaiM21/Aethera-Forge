@@ -40,7 +40,7 @@ public sealed record RegistryResponse(
 
 public static partial class RegistryRules
 {
-    [GeneratedRegex(@"^(https?://)?[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d{1,5})?(/[^\s]*)?$")]
+    [GeneratedRegex(@"\A(https?://)?[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\d{1,5})?(/[^\s\x00-\x1f\x7f]*)?\z")]
     private static partial Regex UrlPattern();
 
     public static bool IsValidUrl(string? url) => url is not null && UrlPattern().IsMatch(url);

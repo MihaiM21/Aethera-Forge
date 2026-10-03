@@ -59,7 +59,9 @@ public sealed class DotEnvTests
         {
             KeyValuePair.Create("PLAIN", "value"), KeyValuePair.Create("EMPTY", ""), KeyValuePair.Create("SPACES", "  padded  "),
             KeyValuePair.Create("HASH", "a #b"), KeyValuePair.Create("QUOTES", "say \"hi\" and 'bye'"), KeyValuePair.Create("SLASH", "C:\\dir\\n"),
-            KeyValuePair.Create("NEWLINE", "a\nb\r\nc\td"), KeyValuePair.Create("EQUALS", "k=v=w"), KeyValuePair.Create("DOLLAR", "$HOME"),
+            KeyValuePair.Create("NEWLINE", "a\nb\nc\td"), KeyValuePair.Create("EQUALS", "k=v=w"), KeyValuePair.Create("DOLLAR", "$HOME"),
+            KeyValuePair.Create("ONLY_QUOTE", "'"), KeyValuePair.Create("QUOTE_EDGES", "'a'"), KeyValuePair.Create("BACKTICK", "`id` $(id) ${X}"),
+            KeyValuePair.Create("BACKSLASH_QUOTE", "it\\'s"), KeyValuePair.Create("QUOTE_NEWLINE", "a'\nb'"), KeyValuePair.Create("DOUBLE", "\"x\""),
         };
         var (parsed, errors) = DotEnv.Parse(DotEnv.Format(original));
         Assert.Empty(errors);
@@ -146,7 +148,8 @@ public sealed class PathRulesTests
     [InlineData(null, "/")]
     [InlineData("/", "/")]
     [InlineData("/api/", "/api")]
-    [InlineData("//api//v1", "/api/v1")]
+    [InlineData("/v1.0/_a~b-c/", "/v1.0/_a~b-c")]
+    [InlineData("/.well-known/acme", "/.well-known/acme")]
     public void DomainPathPrefixes_AreNormalized(string? input, string expected)
     {
         Assert.True(DomainRules.TryNormalizePath(input, out var normalized));
@@ -159,6 +162,7 @@ public sealed class PathRulesTests
     [InlineData("/a?x=1")]
     [InlineData("/a#frag")]
     [InlineData("/../etc")]
+    [InlineData("//api//v1")] // since WP1.6 a prefix with '//' is refused, not collapsed
     public void DomainPathPrefixes_RejectBadInput(string input) => Assert.False(DomainRules.TryNormalizePath(input, out _));
 }
 

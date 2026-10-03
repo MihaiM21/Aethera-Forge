@@ -63,6 +63,12 @@ public static class DotEnv
                             builder.Append(current[i] switch { 'n' => '\n', 'r' => '\r', 't' => '\t', '"' => '"', '\\' => '\\', var other => other });
                             if (current[i] is not ('n' or 'r' or 't' or '"' or '\\')) builder.Insert(builder.Length - 1, '\\');
                         }
+                        else if (quote == '\'' && c == '\'' && string.CompareOrdinal(current, i + 1, "\\''", 0, 3) == 0)
+                        {
+                            // The shell idiom for a single quote inside single quotes: close, escaped quote, reopen ('it'\''s').
+                            builder.Append('\'');
+                            i += 3;
+                        }
                         else if (c == quote)
                         {
                             closed = true;
@@ -108,30 +114,19 @@ public static class DotEnv
         return (order.Select(k => new KeyValuePair<string, string>(k, values[k])).ToList(), errors);
     }
 
-    /// <summary>Formats <c>KEY=value</c> lines, quoting values that would not survive <see cref="Parse"/> unquoted.</summary>
+    /// <summary>
+    /// Formats <c>KEY='value'</c> lines. Every value is single-quoted and an embedded single quote is written <c>'\''</c>, so the file is safe
+    /// even if someone <c>source</c>s it in a shell (nothing is expanded inside single quotes: <c>$(...)</c>, backticks, <c>$VAR</c> stay text).
+    /// <see cref="Parse"/> reads the output back to the same values (a carriage return is the one exception: parsing turns it into a line feed).
+    /// </summary>
     public static string Format(IEnumerable<KeyValuePair<string, string>> values)
     {
         var builder = new StringBuilder();
         foreach (var (key, value) in values)
         {
-            builder.Append(key).Append('=').Append(NeedsQuotes(value) ? Quote(value) : value).Append('\n');
+            builder.Append(key).Append("='").Append(value.Replace("'", "'\\''")).Append("'\n");
         }
 
         return builder.ToString();
-    }
-
-    private static bool NeedsQuotes(string value) =>
-        value.Length > 0 && (char.IsWhiteSpace(value[0]) || char.IsWhiteSpace(value[^1])
-            || value.AsSpan().IndexOfAny("\"'\\#\n\r\t") >= 0 || value[0] == '$');
-
-    private static string Quote(string value)
-    {
-        var builder = new StringBuilder("\"");
-        foreach (var c in value)
-        {
-            builder.Append(c switch { '\\' => "\\\\", '"' => "\\\"", '\n' => "\\n", '\r' => "\\r", '\t' => "\\t", _ => c.ToString() });
-        }
-
-        return builder.Append('"').ToString();
     }
 }

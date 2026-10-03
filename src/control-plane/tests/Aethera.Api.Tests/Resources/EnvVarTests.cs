@@ -164,15 +164,15 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         var first = await (await tenant.Developer.PostAsync(Url(appId, "/import"), new { content, overwrite = false })).ReadAsync();
         Assert.Equal(["FRESH"], first["created"]!.AsArray().Select(k => k!.GetValue<string>()));
         Assert.Equal(["KEEP", "SECRET_BACKED"], first["skipped"]!.AsArray().Select(k => k!.GetValue<string>()));
-        Assert.Contains("KEEP=old", await ExportAsync(tenant.Viewer, Url(appId, "/export")));
+        Assert.Contains("KEEP='old'", await ExportAsync(tenant.Viewer, Url(appId, "/export")));
 
         var second = await (await tenant.Developer.PostAsync(Url(appId, "/import"), new { content = content.Replace("FRESH=1", "FRESH=2"), overwrite = true })).ReadAsync();
         Assert.Empty(second["created"]!.AsArray());
         Assert.Equal(["KEEP", "FRESH"], second["updated"]!.AsArray().Select(k => k!.GetValue<string>()));
         Assert.Equal(["SECRET_BACKED"], second["skipped"]!.AsArray().Select(k => k!.GetValue<string>()));
         var exported = await ExportAsync(tenant.Viewer, Url(appId, "/export"));
-        Assert.Contains("KEEP=new", exported);
-        Assert.Contains("FRESH=2", exported);
+        Assert.Contains("KEEP='new'", exported);
+        Assert.Contains("FRESH='2'", exported);
         Assert.DoesNotContain("plain-attempt", exported);
         var list = (await tenant.Viewer.GetJsonAsync(Url(appId)))["items"]!.AsArray();
         Assert.True(list.Single(v => v!["key"]!.GetValue<string>() == "SECRET_BACKED")!["isSecret"]!.GetValue<bool>());
@@ -229,8 +229,8 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         Assert.Equal($"{url}/{created.Id()}", response.Headers.Location!.ToString());
         await tenant.Developer.PostAsync(url + "/import", new { content = "IMPORTED=yes\n" });
         var exported = await ExportAsync(tenant.Viewer, url + "/export");
-        Assert.Contains("EXTRA=1", exported);
-        Assert.Contains("IMPORTED=yes", exported);
+        Assert.Contains("EXTRA='1'", exported);
+        Assert.Contains("IMPORTED='yes'", exported);
         Assert.DoesNotContain("REDIS_PASSWORD", exported);
         Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync($"{url}/{created.Id()}")).StatusCode);
 

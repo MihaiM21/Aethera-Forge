@@ -7,7 +7,7 @@ namespace Aethera.Api.Features.Resources;
 /// <summary>Hostname validation and normalization for domains and servers (RFC 1123 labels, IDN to punycode, optional leftmost wildcard).</summary>
 public static partial class HostnameRules
 {
-    [GeneratedRegex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")]
+    [GeneratedRegex(@"\A[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z")]
     private static partial Regex LabelPattern();
 
     private static readonly IdnMapping Idn = new() { AllowUnassigned = false, UseStd3AsciiRules = true };
