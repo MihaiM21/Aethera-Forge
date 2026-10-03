@@ -14,7 +14,7 @@ public sealed partial class RequestIdMiddleware(RequestDelegate next, ILogger<Re
     public const string HeaderName = "X-Request-Id";
     public const string LogScopeKey = "RequestId";
 
-    [GeneratedRegex(@"^[A-Za-z0-9._:\-]{1,100}$")]
+    [GeneratedRegex(@"\A[A-Za-z0-9._:\-]{1,100}\z")]
     private static partial Regex SafeId();
 
     public static bool IsSafe(string? value) => value is not null && SafeId().IsMatch(value);

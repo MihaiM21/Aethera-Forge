@@ -154,6 +154,7 @@ internal static class SecretEndpoints
         CancellationToken ct)
     {
         var org = actor.Org();
+        ManagedSecrets.RequireAdminForOrganizationScope(actor, request.ProjectId is null && request.EnvironmentId is null && request.WorkloadId is null, "created");
         if (request.ProjectId is { } project && !await db.ProjectsOf(org).AnyAsync(p => p.Id == project, ct))
             throw Lookups.BadReference("/projectId", "project");
         if (request.EnvironmentId is { } environment && !await db.EnvironmentsOf(org).AnyAsync(e => e.Id == environment, ct))
@@ -185,6 +186,7 @@ internal static class SecretEndpoints
         var org = actor.Org();
         var secret = await db.GetSecretAsync(org, id, tracking: true, ct);
         await ManagedSecrets.EnsureUserSecretAsync(db, secret, "changed", ct);
+        ManagedSecrets.RequireAdminForOrganizationScope(actor, secret.Scope == SecretScope.Organization, "changed");
         http.CheckIfMatch(secret.RowVersion);
 
         var changed = new List<string>();
@@ -208,6 +210,7 @@ internal static class SecretEndpoints
     {
         var secret = await db.GetSecretAsync(actor.Org(), id, tracking: true, ct);
         await ManagedSecrets.EnsureUserSecretAsync(db, secret, "deleted", ct);
+        ManagedSecrets.RequireAdminForOrganizationScope(actor, secret.Scope == SecretScope.Organization, "deleted");
         http.CheckIfMatch(secret.RowVersion);
         Confirmation.Require(confirm, secret.Name);
 
@@ -227,6 +230,7 @@ internal static class SecretEndpoints
     {
         var secret = await db.GetSecretAsync(actor.Org(), id, tracking: true, ct);
         await ManagedSecrets.EnsureUserSecretAsync(db, secret, "rotated", ct);
+        ManagedSecrets.RequireAdminForOrganizationScope(actor, secret.Scope == SecretScope.Organization, "rotated");
         http.CheckIfMatch(secret.RowVersion);
         vault.AddVersion(secret, request.Value!);
         await audit.RecordAsync("secret.rotated", "secret", id, new { name = secret.Name, version = secret.CurrentVersion }, ct);

@@ -358,7 +358,7 @@ public sealed class SecretBindingTests(ResourcesFixture fixture)
         Assert.Equal(HttpStatusCode.NoContent, (await tenant.Admin.DeleteAsync($"/api/v1/servers/{server.Id()}?confirm=a")).StatusCode);
         var released = await tenant.Owner.GetJsonAsync(urlOf(second));
         Assert.Equal("user", released["purpose"]!.GetValue<string>());
-        Assert.Equal(HttpStatusCode.OK, (await tenant.Developer.PostAsync(urlOf(second) + "/rotate", new { value = "again" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await tenant.Admin.PostAsync(urlOf(second) + "/rotate", new { value = "again" })).StatusCode);
     }
 
     [RequiresDatabaseFact]
@@ -377,5 +377,84 @@ public sealed class SecretBindingTests(ResourcesFixture fixture)
         await admin.CreateAsync(EnvVars(world, "app"), new { key = "USES_IT", secretId = bound.Id() });
         Assert.Contains(("/sshCredentialSecretId", "secret.in_use"), await (await admin.PostAsync("/api/v1/servers", Server(bound.Id()))).ValidationErrorsAsync());
         Assert.False((await world.Tenant.Owner.GetJsonAsync($"/api/v1/secrets/{bound.Id()}"))["managed"]!.GetValue<bool>());
+    }
+}
+
+/// <summary>Follow-up to WP1.6: organization-scoped secrets are written by Administrators only (403 <c>secret.org_scope_requires_admin</c>).</summary>
+[Collection(ResourcesCollection.Name)]
+public sealed class OrganizationSecretWriteTests(ResourcesFixture fixture)
+{
+    private const string Code = "secret.org_scope_requires_admin";
+
+    [RequiresDatabaseFact]
+    public async Task OrganizationScoped_CreatePatchRotateDelete_AreAdminOnly()
+    {
+        var tenant = await fixture.NewTenantAsync();
+
+        // Create
+        await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "ORG_A", value = "v" })).AssertProblemAsync(403, Code);
+        var secret = await tenant.Admin.CreateAsync("/api/v1/secrets", new { name = "ORG_A", value = "v" });
+        var url = $"/api/v1/secrets/{secret.Id()}";
+
+        // Change, rotate, delete: refused for a Developer, and nothing changes.
+        await (await tenant.Developer.PatchAsync(url, new { description = "tampered" })).AssertProblemAsync(403, Code);
+        await (await tenant.Developer.PostAsync(url + "/rotate", new { value = "attacker" })).AssertProblemAsync(403, Code);
+        await (await tenant.Developer.DeleteAsync(url + "?confirm=ORG_A")).AssertProblemAsync(403, Code);
+        var after = await tenant.Viewer.GetJsonAsync(url);
+        Assert.Equal(1, after["currentVersion"]!.GetValue<int>());
+        Assert.Null(after["description"]);
+        Assert.Empty(await tenant.AuditAsync(secret.Id(), "secret.rotated"));
+
+        // Admin and Owner may.
+        Assert.Equal(HttpStatusCode.OK, (await tenant.Admin.PatchAsync(url, new { description = "ok" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await tenant.Owner.PostAsync(url + "/rotate", new { value = "v2" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Admin.DeleteAsync(url + "?confirm=ORG_A")).StatusCode);
+        var other = await tenant.Owner.CreateAsync("/api/v1/secrets", new { name = "ORG_B", value = "v" });
+        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Owner.DeleteAsync($"/api/v1/secrets/{other.Id()}?confirm=ORG_B")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task ProjectEnvironmentAndWorkloadSecrets_StayWithDevelopers()
+    {
+        var tenant = await fixture.NewTenantAsync();
+        var (_, envId, projectId, appId) = await tenant.CreateStackAsync();
+
+        foreach (var (name, scope) in new (string, object)[] { ("P", new { projectId }), ("E", new { environmentId = envId }), ("W", new { workloadId = appId }) })
+        {
+            var secret = await tenant.Developer.CreateAsync("/api/v1/secrets", new JsonObject
+            {
+                ["name"] = name, ["value"] = "v",
+                [scope.GetType().GetProperties()[0].Name] = scope.GetType().GetProperties()[0].GetValue(scope)!.ToString(),
+            });
+            var url = $"/api/v1/secrets/{secret.Id()}";
+            Assert.Equal(HttpStatusCode.OK, (await tenant.Developer.PatchAsync(url, new { description = "mine" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await tenant.Developer.PostAsync(url + "/rotate", new { value = "v2" })).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync($"{url}?confirm={name}")).StatusCode);
+        }
+    }
+
+    [RequiresDatabaseFact]
+    public async Task WithATokenTheOwnersRoleDecides()
+    {
+        var tenant = await fixture.NewTenantAsync();
+        var secret = await tenant.Admin.CreateAsync("/api/v1/secrets", new { name = "ORG_T", value = "v" });
+        var url = $"/api/v1/secrets/{secret.Id()}";
+
+        await (await tenant.Token(OrganizationRole.Developer, "secrets:write").PostAsync("/api/v1/secrets", new { name = "X", value = "v" })).AssertProblemAsync(403, Code);
+        await (await tenant.Token(OrganizationRole.Developer, "*").PostAsync(url + "/rotate", new { value = "x" })).AssertProblemAsync(403, Code);
+        Assert.Equal(HttpStatusCode.OK, (await tenant.Token(OrganizationRole.Admin, "secrets:write").PostAsync(url + "/rotate", new { value = "x" })).StatusCode);
+        // The scope check still comes first: no secrets:write, no business here.
+        await (await tenant.Token(OrganizationRole.Admin, "write").PostAsync(url + "/rotate", new { value = "x" })).AssertProblemAsync(403, "auth.insufficient_scope");
+    }
+
+    [RequiresDatabaseFact]
+    public async Task ManagedOrganizationSecrets_StillAnswerSecretManaged()
+    {
+        var tenant = await fixture.NewTenantAsync();
+        var registry = await tenant.Admin.CreateAsync("/api/v1/registries", new { name = "r", url = "ghcr.io", password = "p" });
+        var items = (await tenant.Owner.GetJsonAsync("/api/v1/secrets"))["items"]!.AsArray();
+        var managed = items.Single(s => s!["managedBy"]?["id"]?.GetValue<string>() == registry.Id())!;
+        await (await tenant.Developer.PostAsync($"/api/v1/secrets/{managed.Id()}/rotate", new { value = "x" })).AssertProblemAsync(409, "secret.managed");
+        await (await tenant.Admin.PostAsync($"/api/v1/secrets/{managed.Id()}/rotate", new { value = "x" })).AssertProblemAsync(409, "secret.managed");
     }
 }

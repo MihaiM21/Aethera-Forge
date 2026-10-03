@@ -17,6 +17,7 @@ public static class ResourceProblemCodes
     public const string SecretInUse = "secret.in_use";
     public const string SecretManaged = "secret.managed";
     public const string SecretBindingForbidden = "secret.binding_forbidden";
+    public const string SecretOrgScopeRequiresAdmin = "secret.org_scope_requires_admin";
     public const string RegistryInUse = "registry.in_use";
     public const string DomainInvalidHost = "domain.invalid_host";
     public const string Mismatch = "mismatch";

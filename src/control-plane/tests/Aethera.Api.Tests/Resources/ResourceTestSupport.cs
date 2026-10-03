@@ -121,7 +121,8 @@ public sealed class Tenant(WebApplicationFactory<Program> factory, SeededIdentit
         var body = new JsonObject { ["name"] = name ?? Unique("secret"), ["value"] = value };
         if (scope is not null)
             foreach (var (key, v) in JsonSerializer.SerializeToNode(scope, Json.Options)!.AsObject()) body[key] = v?.DeepClone();
-        return await Developer.CreateAsync("/api/v1/secrets", body);
+        // Organization-wide secrets are Administrator-only to write (ADR 0006); narrower scopes are the Developer's.
+        return await (scope is null ? Admin : Developer).CreateAsync("/api/v1/secrets", body);
     }
 
     /// <summary>A server, a project with its production environment and a docker-image application: the usual starting point.</summary>

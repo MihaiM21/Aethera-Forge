@@ -17,7 +17,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
     public async Task Create_ReturnsMetadataAndAMask_NeverThePlaintext()
     {
         var tenant = await fixture.NewTenantAsync();
-        var response = await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "DB_PASSWORD", description = "prod db", value = Marker });
+        var response = await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "DB_PASSWORD", description = "prod db", value = Marker });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain(Marker, text);
@@ -52,14 +52,14 @@ public sealed class SecretTests(ResourcesFixture fixture)
         }
 
         await Collect(tenant.Admin.PostAsync($"/api/v1/applications/{appId}/env-vars", new { key = "API_KEY", secretId = id })); // organization-wide: Admin
-        await Collect(tenant.Developer.PatchAsync($"/api/v1/secrets/{id}", new { description = "renamed" }));
-        await Collect(tenant.Developer.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = Marker + "-v2" }));
+        await Collect(tenant.Admin.PatchAsync($"/api/v1/secrets/{id}", new { description = "renamed" }));
+        await Collect(tenant.Admin.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = Marker + "-v2" }));
         await Collect(tenant.Owner.GetAsync("/api/v1/secrets"));
         await Collect(tenant.Owner.GetAsync($"/api/v1/secrets/{id}"));
         await Collect(tenant.Viewer.GetAsync($"/api/v1/applications/{appId}/env-vars"));
         await Collect(tenant.Viewer.GetAsync($"/api/v1/applications/{appId}/env-vars/export"));
         await Collect(tenant.Viewer.GetAsync($"/api/v1/applications/{appId}"));
-        await Collect(tenant.Developer.DeleteAsync($"/api/v1/secrets/{id}?confirm=API_KEY")); // 409: in use
+        await Collect(tenant.Admin.DeleteAsync($"/api/v1/secrets/{id}?confirm=API_KEY")); // 409: in use
         Assert.All(bodies, b => Assert.DoesNotContain(Marker, b));
 
         // Not in the audit trail either, and not in the database in clear.
@@ -133,13 +133,13 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var secret = await tenant.CreateSecretAsync("ROTATING", "first");
         var id = secret.Id();
 
-        var rotated = await tenant.Developer.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = "second" });
+        var rotated = await tenant.Admin.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = "second" });
         Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
         var body = await rotated.ReadAsync();
         Assert.Equal(2, body["currentVersion"]!.GetValue<int>());
         Assert.NotNull(body["rotatedAt"]);
         Assert.Equal("********", body["value"]!.GetValue<string>());
-        await tenant.Developer.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = "third" });
+        await tenant.Admin.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = "third" });
 
         async Task<string> Reveal(string query) => (await (await tenant.Admin.PostAsync($"/api/v1/secrets/{id}/reveal{query}", null)).ReadAsync())["value"]!.GetValue<string>();
         Assert.Equal("third", await Reveal(""));
@@ -150,7 +150,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
         Assert.Equal(2, (await tenant.AuditAsync(id, "secret.rotated")).Count);
         Assert.Equal(3, JsonNode.Parse((await tenant.AuditAsync(id, "secret.rotated")).OrderBy(e => e.OccurredAt).Last().MetadataJson)!["version"]!.GetValue<int>());
 
-        var invalid = await tenant.Developer.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = (string?)null });
+        var invalid = await tenant.Admin.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = (string?)null });
         Assert.Contains(("/value", "required"), await invalid.ValidationErrorsAsync());
     }
 
@@ -192,7 +192,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
 
         // Unique per scope among live secrets.
         foreach (var body in new object[] { new { name = "SHARED", value = "x" }, new { name = "SHARED", value = "x", projectId }, new { name = "SHARED", value = "x", workloadId = appId } })
-            await (await tenant.Developer.PostAsync("/api/v1/secrets", body)).AssertProblemAsync(409, "secret.already_exists");
+            await (await tenant.Admin.PostAsync("/api/v1/secrets", body)).AssertProblemAsync(409, "secret.already_exists");
 
         async Task<List<string>> Ids(string query) => (await tenant.Owner.GetJsonAsync("/api/v1/secrets" + query))["items"]!.AsArray().Select(s => s!.Id()).ToList();
         Assert.Equal(4, (await Ids("")).Count);
@@ -212,21 +212,21 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var other = await fixture.NewTenantAsync();
         var foreignProject = await other.CreateProjectAsync();
 
-        var errors = await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "", description = new string('x', 501) })).ValidationErrorsAsync();
+        var errors = await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "", description = new string('x', 501) })).ValidationErrorsAsync();
         Assert.Contains(("/name", "required"), errors);
         Assert.Contains(("/value", "required"), errors);
         Assert.Contains(("/description", "too_long"), errors);
 
-        var two = await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = Guid.NewGuid(), environmentId = Guid.NewGuid() })).ValidationErrorsAsync();
+        var two = await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = Guid.NewGuid(), environmentId = Guid.NewGuid() })).ValidationErrorsAsync();
         Assert.Contains(("/projectId", "not_unique"), two);
 
-        Assert.Contains(("/projectId", "not_found"), await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = Guid.NewGuid() })).ValidationErrorsAsync());
-        Assert.Contains(("/projectId", "not_found"), await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = foreignProject.Id() })).ValidationErrorsAsync());
-        Assert.Contains(("/environmentId", "not_found"), await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = "v", environmentId = Guid.NewGuid() })).ValidationErrorsAsync());
-        Assert.Contains(("/workloadId", "not_found"), await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = "v", workloadId = Guid.NewGuid() })).ValidationErrorsAsync());
+        Assert.Contains(("/projectId", "not_found"), await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = Guid.NewGuid() })).ValidationErrorsAsync());
+        Assert.Contains(("/projectId", "not_found"), await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = "v", projectId = foreignProject.Id() })).ValidationErrorsAsync());
+        Assert.Contains(("/environmentId", "not_found"), await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = "v", environmentId = Guid.NewGuid() })).ValidationErrorsAsync());
+        Assert.Contains(("/workloadId", "not_found"), await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = "v", workloadId = Guid.NewGuid() })).ValidationErrorsAsync());
 
-        Assert.Contains(("/value", "too_long"), await (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "x", value = new string('v', 65 * 1024) })).ValidationErrorsAsync());
-        Assert.Equal(HttpStatusCode.Created, (await tenant.Developer.PostAsync("/api/v1/secrets", new { name = "empty-is-fine", value = "" })).StatusCode);
+        Assert.Contains(("/value", "too_long"), await (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "x", value = new string('v', 65 * 1024) })).ValidationErrorsAsync());
+        Assert.Equal(HttpStatusCode.Created, (await tenant.Admin.PostAsync("/api/v1/secrets", new { name = "empty-is-fine", value = "" })).StatusCode);
     }
 
     [RequiresDatabaseFact]
@@ -238,7 +238,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var url = $"/api/v1/secrets/{secret.Id()}";
         var etag = (await tenant.Owner.GetAsync(url)).Headers.ETag!.Tag;
 
-        var patched = await tenant.Developer.PatchAsync(url, new { name = "NEW", description = "d", value = "ignored" }, etag);
+        var patched = await tenant.Admin.PatchAsync(url, new { name = "NEW", description = "d", value = "ignored" }, etag);
         Assert.Equal(HttpStatusCode.OK, patched.StatusCode);
         var body = await patched.ReadAsync();
         Assert.Equal("NEW", body["name"]!.GetValue<string>());
@@ -246,9 +246,9 @@ public sealed class SecretTests(ResourcesFixture fixture)
         Assert.Equal(1, body["currentVersion"]!.GetValue<int>());
         Assert.Equal("keep-me", (await (await tenant.Admin.PostAsync(url + "/reveal", null)).ReadAsync())["value"]!.GetValue<string>());
 
-        await (await tenant.Developer.PatchAsync(url, new { name = "TAKEN" })).AssertProblemAsync(409, "secret.already_exists");
-        await (await tenant.Developer.PatchAsync(url, new { description = "x" }, etag)).AssertProblemAsync(412, "precondition.failed");
-        Assert.Contains(("/name", "required"), await (await tenant.Developer.PatchAsync(url, new { name = (string?)null })).ValidationErrorsAsync());
+        await (await tenant.Admin.PatchAsync(url, new { name = "TAKEN" })).AssertProblemAsync(409, "secret.already_exists");
+        await (await tenant.Admin.PatchAsync(url, new { description = "x" }, etag)).AssertProblemAsync(412, "precondition.failed");
+        Assert.Contains(("/name", "required"), await (await tenant.Admin.PatchAsync(url, new { name = (string?)null })).ValidationErrorsAsync());
     }
 
     [RequiresDatabaseFact]
@@ -260,13 +260,13 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var url = $"/api/v1/secrets/{secret.Id()}";
         var variable = await tenant.Admin.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
 
-        await (await tenant.Developer.DeleteAsync(url)).AssertProblemAsync(428, "confirmation.required");
-        var inUse = await tenant.Developer.DeleteAsync(url + "?confirm=IN_USE");
+        await (await tenant.Admin.DeleteAsync(url)).AssertProblemAsync(428, "confirmation.required");
+        var inUse = await tenant.Admin.DeleteAsync(url + "?confirm=IN_USE");
         await inUse.AssertProblemAsync(409, "secret.in_use");
         Assert.Contains("environment variable", (await inUse.ReadAsync())["detail"]!.GetValue<string>());
 
-        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync($"/api/v1/applications/{appId}/env-vars/{variable.Id()}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync(url + "?confirm=IN_USE")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Admin.DeleteAsync($"/api/v1/applications/{appId}/env-vars/{variable.Id()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Admin.DeleteAsync(url + "?confirm=IN_USE")).StatusCode);
         await (await tenant.Owner.GetAsync(url)).AssertProblemAsync(404, "secret.not_found");
         await (await tenant.Admin.PostAsync(url + "/reveal", null)).AssertProblemAsync(404, "secret.not_found");
         Assert.Contains(await tenant.AuditAsync(secret.Id()), e => e.Action == "secret.deleted");
@@ -281,8 +281,8 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var secret = await tenant.CreateSecretAsync("ORPHAN");
         await tenant.Admin.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
         var slug = (await tenant.Viewer.GetJsonAsync($"/api/v1/applications/{appId}"))["slug"]!.GetValue<string>();
-        await tenant.Developer.DeleteAsync($"/api/v1/applications/{appId}?confirm={slug}");
-        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm=ORPHAN")).StatusCode);
+        await tenant.Admin.DeleteAsync($"/api/v1/applications/{appId}?confirm={slug}");
+        Assert.Equal(HttpStatusCode.NoContent, (await tenant.Admin.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm=ORPHAN")).StatusCode);
     }
 
     [RequiresDatabaseFact]
@@ -312,10 +312,10 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var readToken = a.Token(OrganizationRole.Viewer, "secrets:read");
         Assert.Equal(HttpStatusCode.OK, (await readToken.GetAsync("/api/v1/secrets")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await readToken.GetAsync(url)).StatusCode);
-        var denied = await a.Token(OrganizationRole.Developer, "secrets:read").PostAsync(url + "/rotate", new { value = "v" });
+        var denied = await a.Token(OrganizationRole.Admin, "secrets:read").PostAsync(url + "/rotate", new { value = "v" });
         await denied.AssertProblemAsync(403, "auth.insufficient_scope");
         Assert.Equal("secrets:write", (await denied.ReadAsync())["requiredScope"]!.GetValue<string>());
-        var writeToken = a.Token(OrganizationRole.Developer, "secrets:write");
+        var writeToken = a.Token(OrganizationRole.Admin, "secrets:write");
         Assert.Equal(HttpStatusCode.OK, (await writeToken.GetAsync("/api/v1/secrets")).StatusCode); // secrets:write implies secrets:read
         Assert.Equal(HttpStatusCode.OK, (await writeToken.PostAsync(url + "/rotate", new { value = "v2" })).StatusCode);
 

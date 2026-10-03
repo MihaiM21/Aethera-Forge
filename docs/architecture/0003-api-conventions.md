@@ -457,6 +457,7 @@ WP1.6 (security fixes and the trust model, [ADR 0006](./0006-trust-model.md)) ch
 
 - `SecretResponse` gains `purpose` (`user`, `registryCredential`, `sshCredential`, `gitCredential`, `serviceGenerated`), `managed` (`purpose != user`) and `managedBy` (`{type, id, name}` with `type` one of `registry`, `server`, `gitCredential`, `service`; `null` for user secrets). Managed secrets are listed like any other.
 - `PATCH /secrets/{id}`, `POST /secrets/{id}/rotate` and `DELETE /secrets/{id}` on a managed secret: **409 `secret.managed`** (the `detail` names the owning endpoint; the problem also carries `purpose` and `managedBy`). Change them through the registry or server endpoint instead.
+- Creating, changing, rotating or deleting an **organization-scoped** secret needs an Administrator: **403 `secret.org_scope_requires_admin`** (token callers also need `secrets:write`). Secrets scoped to a project, environment or workload stay with Developers. A managed secret answers `secret.managed` first.
 - Binding a secret to an environment variable (`POST` and `PATCH .../env-vars`, `secretId`): a Developer may bind `user` secrets scoped to the same workload, environment or project; an organization-scoped secret needs an Administrator; a managed secret is never bindable (a generated service password only to its own service). Refusals are **403 `secret.binding_forbidden`**. A scope that does not contain the workload is still 422 `scope_mismatch`.
 - `sshCredentialSecretId` on a server turns an organization-scoped user secret into an `sshCredential` (422 `secret.managed`, `secret.in_use`, `scope_mismatch` otherwise) and releases it when no server uses it.
 
@@ -472,6 +473,7 @@ The coarse scopes of WP1.0 are unchanged. Two additions to who needs `secrets:wr
 | Code | Status | When |
 |---|---|---|
 | `secret.managed` | 409 | change, rotate or delete of a managed secret through `/secrets` |
+| `secret.org_scope_requires_admin` | 403 | a Developer creates, changes, rotates or deletes an organization-scoped secret |
 | `secret.binding_forbidden` | 403 | the caller may not bind this secret (managed, or organization-wide without Administrator) |
 | `volume.host_path_requires_admin` | 403 | `hostPath` set or changed by a Developer |
 | `volume.host_path_forbidden` | 422 | host path on the denylist (also for compose bind sources, with `pointers`) |
@@ -493,7 +495,7 @@ The trust-model problems carry `errors[]` entries with a request-body `pointer` 
 
 ### Validation anchors
 
-Every validator regular expression under `Features/Resources`, `Features/Auth` and `Aethera.Domain` uses `\A...\z`. .NET's `$` also matches before a final `\n`, so `^[a-z]+$` accepted `"abc\n"`. A reflection test fails when a new pattern in these namespaces starts with `^` or contains an unescaped `$`.
+Every validator regular expression under `Features/Resources`, `Features/Auth`, `Aethera.Api/Http` (the request id) and `Aethera.Domain` uses `\A...\z`. .NET's `$` also matches before a final `\n`, so `^[a-z]+$` accepted `"abc\n"`. A reflection test fails when a new pattern in these namespaces starts with `^` or contains an unescaped `$`.
 
 ### Dotenv export
 

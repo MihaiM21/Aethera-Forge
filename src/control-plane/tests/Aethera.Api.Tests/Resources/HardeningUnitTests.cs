@@ -111,6 +111,16 @@ public sealed class RegexAnchorRegressionTests
         Assert.Equal("example.com", normalized);
     }
 
+    [Theory]
+    [InlineData("abc-123.x_y:z")]
+    [InlineData("0190f3c2")]
+    public void RequestId(string valid)
+    {
+        Assert.True(Aethera.Api.Http.RequestIdMiddleware.IsSafe(valid));
+        Assert.False(Aethera.Api.Http.RequestIdMiddleware.IsSafe(valid + "\n"));
+        Assert.False(Aethera.Api.Http.RequestIdMiddleware.IsSafe("\n" + valid));
+    }
+
     [Fact]
     public void DomainPathPrefix()
     {
@@ -128,9 +138,10 @@ public sealed class RegexAnchorRegressionTests
                      .Where(m => m.GetCustomAttribute<GeneratedRegexAttribute>() is not null))
         {
             var ns = method.DeclaringType!.Namespace ?? "";
-            // Request-id echo (Aethera.Api.Http), the audit redaction (Infrastructure) and the like are outside the validators.
+            // The audit redaction (Infrastructure) and the like are not validators.
             if (!(ns.StartsWith("Aethera.Api.Features.Resources", StringComparison.Ordinal)
-                  || ns.StartsWith("Aethera.Api.Features.Auth", StringComparison.Ordinal) || ns.StartsWith("Aethera.Domain", StringComparison.Ordinal))) continue;
+                  || ns.StartsWith("Aethera.Api.Features.Auth", StringComparison.Ordinal) || ns.StartsWith("Aethera.Api.Http", StringComparison.Ordinal)
+                  || ns.StartsWith("Aethera.Domain", StringComparison.Ordinal))) continue;
 
             var pattern = method.GetCustomAttribute<GeneratedRegexAttribute>()!.Pattern;
             checkedPatterns++;

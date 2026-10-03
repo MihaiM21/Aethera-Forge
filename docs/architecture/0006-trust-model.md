@@ -17,7 +17,7 @@ Aethera runs containers for other people on servers the operator owns. Two facts
 ## Decision summary
 
 1. **Developers deploy applications normally. Anything root-equivalent on a server needs the Administrator role** (Admin or Owner). The capability table below lists each one, its role, and where it is enforced.
-2. **Secrets have a purpose.** Secrets that belong to another resource are *managed*: visible in `/secrets`, changed only through their owner, never bindable to an environment variable (one narrow exception for generated service passwords).
+2. **Secrets have a purpose and organization-wide ones belong to Admins.** Secrets that belong to another resource are *managed*: visible in `/secrets`, changed only through their owner, never bindable to an environment variable (one narrow exception for generated service passwords).
 3. **Binding a secret is a privilege decision.** A Developer binds user secrets scoped to the workload, its environment or its project. An organization-wide secret needs an Administrator.
 4. **The API checks now; the agent and engine check again later.** Every rule marked "re-check" in the table is validation on untrusted input in Phase 3 as well: the engine and agent must not assume that the API (or an older version of it) accepted the configuration they receive.
 
@@ -34,6 +34,8 @@ The roles are those of ADR 0003 (Viewer < Developer < Admin < Owner). "Admin" in
 | Bind an organization-scoped `user` secret to an env var | **Admin** | same | **403 `secret.binding_forbidden`** | same |
 | Bind a managed secret (`registryCredential`, `sshCredential`, `gitCredential`, other service's `serviceGenerated`) | nobody | same | **403 `secret.binding_forbidden`** | same; the engine reads managed secrets only for their purpose (registry login, SSH, clone). |
 | Bind any secret with an API token | role above **and** scope `secrets:write` | `ManagedSecrets.RequireTokenScope` | `auth.insufficient_scope` (`requiredScope: secrets:write`) | n/a |
+| Create, PATCH, rotate or delete an **organization-scoped** secret | **Admin** | `ManagedSecrets.RequireAdminForOrganizationScope` | **403 `secret.org_scope_requires_admin`** | n/a |
+| Create, PATCH, rotate or delete a secret scoped to a project, environment or workload | Developer (+ `secrets:write` for tokens) | endpoint policies | `auth.forbidden`, `auth.insufficient_scope` | n/a |
 | PATCH, rotate or delete a managed secret through `/secrets` | nobody | `ManagedSecrets.EnsureUserSecretAsync` | **409 `secret.managed`** (the message names the owning endpoint) | n/a |
 | Create, update, delete registries (they own a password secret) | Admin; token needs `write` and `secrets:write` | endpoint policies | `auth.forbidden`, `auth.insufficient_scope` | Credentials are sent only to the registry host they were created for (see 5). |
 | Create, update git credentials (not implemented yet) | Admin; token needs `write` and `secrets:write` | **to be applied by the endpoints that add them** | same | Credentials are sent only to the git host they were created for (see 5). |
@@ -126,6 +128,6 @@ Things the API cannot decide, recorded so the engine and agent work packages pic
 ## Consequences
 
 - Admin and Owner can still do dangerous things (privileged containers, bind mounts outside the denylist). The model limits who, not what, and keeps the worst targets (Docker socket, `/etc`, Aethera's own state) out of reach for everyone.
-- Organization-scoped *user* secrets stay writable by Developers with `secrets:write` (rotate, delete) although they cannot bind them. An Admin-bound organization secret can therefore be rotated by a Developer. Treat Admin-bound values as managed by convention, or scope them; promoting such bindings to a managed purpose is a possible follow-up.
+- Organization-scoped *user* secrets are written (create, change, rotate, delete) by Administrators only, so a Developer cannot swap the value behind an application an Admin wired up. Developers keep full control of secrets scoped to a project, environment or workload. Managed secrets are checked first: a Developer who rotates a registry password gets `secret.managed`, not `secret.org_scope_requires_admin`.
 - Existing data keeps its old bindings (section 3). Existing tests that relied on Developers binding organization secrets, creating host paths, or writing registries with a plain `write` token were changed on purpose.
 - Compose, port and host-path rules add error codes (`volume.host_path_requires_admin`, `volume.host_path_forbidden`, `port.privileged_requires_admin`, `port.reserved`, `compose.option_requires_admin`, `compose.invalid`, `secret.managed`, `secret.binding_forbidden`) that are part of the API contract from now on.

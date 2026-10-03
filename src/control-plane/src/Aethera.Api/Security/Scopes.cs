@@ -9,7 +9,10 @@ public static class Scopes
     /// <summary>Read anything the role may read, except secrets.</summary>
     public const string Read = "read";
 
-    /// <summary>Create, change and delete resources (implies <see cref="Read"/>), except secrets and servers.</summary>
+    /// <summary>
+    /// Create, change and delete resources (implies <see cref="Read"/>), except secrets and servers. Registries and binding a secret to an
+    /// environment variable additionally need <see cref="SecretsWrite"/>: <c>write</c> never covers a credential.
+    /// </summary>
     public const string Write = "write";
 
     /// <summary>Deploy, redeploy, rollback, restart, start, stop; cancel and retry jobs.</summary>
@@ -18,7 +21,12 @@ public static class Scopes
     /// <summary>List secrets (names and metadata, never values).</summary>
     public const string SecretsRead = "secrets:read";
 
-    /// <summary>Create, rotate and delete secrets, reveal values (implies <see cref="SecretsRead"/>).</summary>
+    /// <summary>
+    /// Create, rotate and delete secrets, reveal values (implies <see cref="SecretsRead"/>). Also needed, next to <see cref="Write"/>, to create,
+    /// change or delete registries (and later git credentials) and to bind a secret to an environment variable. The role still decides what
+    /// the scope may be used for: organization-scoped secrets can only be written by an Administrator, managed secrets (registry, SSH, git,
+    /// generated service passwords) not through <c>/secrets</c> at all, and revealing a value needs an Administrator (ADR 0006).
+    /// </summary>
     public const string SecretsWrite = "secrets:write";
 
     /// <summary>Create, change and delete servers, join tokens, agent install, prune.</summary>

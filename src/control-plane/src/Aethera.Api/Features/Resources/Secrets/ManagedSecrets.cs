@@ -67,6 +67,18 @@ public static class ManagedSecrets
             .WithExtension("purpose", secret.Purpose).WithExtension("managedBy", owner));
     }
 
+    /// <summary>
+    /// Organization-wide secrets are shared by every project and may be wired into applications by an Administrator, so creating, changing,
+    /// rotating or deleting one is Administrator-only (403 <c>secret.org_scope_requires_admin</c>). Project, environment and workload secrets
+    /// stay with Developers.
+    /// </summary>
+    public static void RequireAdminForOrganizationScope(ICurrentActor actor, bool organizationScoped, string action)
+    {
+        if (organizationScoped && !actor.IsAdmin())
+            throw new ApiProblemException(new ApiProblem(StatusCodes.Status403Forbidden, ResourceProblemCodes.SecretOrgScopeRequiresAdmin,
+                $"Organization-wide secrets can only be {action} by an Administrator. Developers manage secrets scoped to a project, environment or application."));
+    }
+
     // ---- binding to environment variables -------------------------------------------------------------------------------------------
 
     /// <summary>
