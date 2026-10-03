@@ -2,7 +2,7 @@
 
 PostgreSQL schema owned by `Aethera.Infrastructure` (EF Core 10 + Npgsql). The model lives in `Aethera.Domain`
 (no dependencies), the mapping in `Aethera.Infrastructure/Persistence/Configurations/*`, and the single migration
-`InitialSchema` in `Aethera.Infrastructure/Persistence/Migrations`. The schema follows the product spec
+`InitialSchema` (plus later additive migrations such as `AddJobOrganization`) in `Aethera.Infrastructure/Persistence/Migrations`. The schema follows the product spec
 (`docs/idea/01_AppIdea.md`) and ADR 0002 (agent communication) and ADR 0004 (jobs and deployments); where the ADRs
 named tables or columns, those names are used.
 
@@ -73,7 +73,7 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
 - The state machine and its guards are methods on `Deployment` (`Start`, `BeginStep`, `CompleteStep`, `SkipStep`, `MarkRunning`, `MarkFailed(step, code, reason)`, `MarkCancelled`, `MarkStopped`, `MarkSuperseded`).
 
 **Jobs and logs** (ADR 0004)
-- `jobs` has exactly the ADR columns (plus the EF bookkeeping `created_at`/`updated_at`/`xmin`): `attempt`/`max_attempts`/`retry_no`, `locked_by`, `lease_expires_at`,
+- `jobs` has the ADR columns (plus the EF bookkeeping `created_at`/`updated_at`/`xmin`) and, since `AddJobOrganization`, **`organization_id`** (`uuid NOT NULL`, FK to `organizations` with `RESTRICT`, index `ix_jobs_organization_created_at (organization_id, created_at)`). Tenancy is that column: every REST and hub visibility filter is `organization_id = <actor's organization>`, so a job without a creator (webhook, schedule) belongs to exactly one organization too. The queue takes it from `JobRequest.OrganizationId`, else from `ICurrentActor`, else refuses to enqueue. The migration backfills existing rows from the creator's oldest membership, else the oldest organization: `attempt`/`max_attempts`/`retry_no`, `locked_by`, `lease_expires_at`,
   `cancel_requested_at`, `parent_job_id`, unique `idempotency_key`, `payload`/`result`/`error` jsonb. Indexes: **`ix_jobs_claim`** `(priority DESC, run_after, id) WHERE status = 'queued'`
   (the claim query), `ix_jobs_running_lock_key` and `ix_jobs_running_lease` (partial, `status = 'running'`), `ix_jobs_resource`. The per-application advisory lock is
   `pg_try_advisory_lock(hashtextextended(lock_key, 0))` on a dedicated connection; no column is needed. Transitions are methods on `Job` (`Claim`, `ExtendLease`, `Fail`, `ExpireLease`, `RequestCancel`...).
@@ -114,4 +114,4 @@ dotnet ef database update --project src/Aethera.Infrastructure --startup-project
 - Raw `FromSql` on `jobs`/mutable tables must select `xmin` (`SELECT j.*, j.xmin ...`) for EF to materialise entities.
 - Database tests (`Aethera.Api.Tests`) run when `AETHERA_TEST_DB` is set to a connection string whose role may `CREATE DATABASE`
   (each test class migrates its own throw-away database and drops it); they are skipped with a message otherwise.
-- The migration is the contract: later migrations add to it, they do not edit it.
+- The migrations are the contract: later migrations add to them, they do not edit earlier ones.

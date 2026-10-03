@@ -111,6 +111,7 @@ public sealed partial class JobObservabilityTests(JobsApiFixture fixture) : ICla
                 new JobRequest(Aethera.Infrastructure.Jobs.EchoJobHandler.JobType, new Aethera.Infrastructure.Jobs.EchoPayload { Lines = ["ghost"] })
                 {
                     MaxAttempts = 3,
+                    OrganizationId = fixture.Owner.OrganizationId,
                     RunAfter = DateTimeOffset.UtcNow.AddMinutes(10), // keep the workers away until we have made it a ghost
                 });
             id = job.Id;

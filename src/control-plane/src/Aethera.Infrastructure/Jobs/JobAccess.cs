@@ -6,16 +6,14 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Aethera.Infrastructure.Jobs;
 
 /// <summary>
-/// Which organization a job belongs to. The <c>jobs</c> table has no organization column (ADR 0004), so ownership is derived from
-/// the creator: a job is visible to an organization when its creator (<c>created_by</c>, the acting user; a token acts as its
-/// owner) is a member of it. Jobs created by the system (no creator: webhooks, schedules) are visible to every organization, which is
-/// exactly right for single-organization installs.
+/// Which organization a job belongs to: the <c>organization_id</c> column, set when the job is enqueued (from the request, else from the
+/// acting user's organization). Jobs created by the system (webhooks, schedules) carry the organization of the resource they act on, so
+/// no job is visible to more than one organization.
 /// </summary>
 public static class JobVisibility
 {
-    public static IQueryable<Job> VisibleTo(this IQueryable<Job> jobs, AetheraDbContext db, Guid organizationId) =>
-        jobs.Where(j => j.CreatedBy == null
-            || db.OrganizationMembers.Any(m => m.UserId == j.CreatedBy && m.OrganizationId == organizationId));
+    public static IQueryable<Job> VisibleTo(this IQueryable<Job> jobs, Guid organizationId) =>
+        jobs.Where(j => j.OrganizationId == organizationId);
 }
 
 /// <summary>The log stream id of a job.</summary>
@@ -61,7 +59,7 @@ public sealed class JobLogStreamAuthorizer(IServiceScopeFactory scopes) : ILogSt
         if (!JobStreams.TryParse(streamId, out var jobId)) return LogStreamAccess.Denied;
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
-        var status = await db.Jobs.AsNoTracking().VisibleTo(db, organizationId)
+        var status = await db.Jobs.AsNoTracking().VisibleTo(organizationId)
             .Where(j => j.Id == jobId)
             .Select(j => (JobStatus?)j.Status)
             .FirstOrDefaultAsync(cancellationToken);

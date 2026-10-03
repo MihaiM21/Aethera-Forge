@@ -187,7 +187,7 @@ public sealed record LogBusMessage(string StreamId, LogLine? Line, string? Eof)
 
 /// <summary>Message on <c>jobs:events</c>: a status change (<see cref="Kind"/> <c>updated</c>) or transient progress.</summary>
 public sealed record JobBusEvent(
-    string Kind, Guid JobId, string Type, JobStatus Status, string? ResourceType, Guid? ResourceId, Guid? CreatedBy, int? Percent = null, string? Message = null)
+    string Kind, Guid JobId, string Type, JobStatus Status, string? ResourceType, Guid? ResourceId, Guid OrganizationId, int? Percent = null, string? Message = null)
 {
     public static readonly JsonSerializerOptions Json = LogBusMessage.Json;
 

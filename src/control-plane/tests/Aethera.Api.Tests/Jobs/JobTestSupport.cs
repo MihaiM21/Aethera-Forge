@@ -152,8 +152,33 @@ internal sealed class JobTestHost : IAsyncDisposable
 
     public Task StartAsync() => Host.StartAsync();
 
+    private readonly SemaphoreSlim _organizationGate = new(1, 1);
+    private Guid? _organizationId;
+
+    /// <summary>The organization this host's jobs belong to unless a request names another (there is no HTTP actor here). Seeded on first use.</summary>
+    public async Task<Guid> OrganizationIdAsync()
+    {
+        await _organizationGate.WaitAsync();
+        try
+        {
+            if (_organizationId is { } existing) return existing;
+            await using var scope = Host.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
+            var unique = Guid.NewGuid().ToString("N")[..12];
+            var organization = new Organization { Name = "Org " + unique, Slug = "org-" + unique };
+            db.Add(organization);
+            await db.SaveChangesAsync();
+            return (_organizationId = organization.Id).Value;
+        }
+        finally
+        {
+            _organizationGate.Release();
+        }
+    }
+
     public async Task<Job> EnqueueAsync(JobRequest request)
     {
+        request = request with { OrganizationId = request.OrganizationId ?? await OrganizationIdAsync() };
         await using var scope = Host.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(request);
     }

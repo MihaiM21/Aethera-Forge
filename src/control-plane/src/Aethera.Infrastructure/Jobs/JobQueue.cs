@@ -57,7 +57,7 @@ public sealed class JobEvents : IAsyncDisposable
     }
 
     private static JobBusEvent Create(string kind, Job job) =>
-        new(kind, job.Id, job.Type, job.Status, job.ResourceType, job.ResourceId, job.CreatedBy);
+        new(kind, job.Id, job.Type, job.Status, job.ResourceType, job.ResourceId, job.OrganizationId);
 }
 
 /// <summary>
@@ -77,6 +77,11 @@ public sealed class PostgresJobQueue(AetheraDbContext db, IClock clock, IService
         if (request.IdempotencyKey is { } key && await FindByKeyAsync(key, cancellationToken) is { } existing)
             return existing;
 
+        var actor = services.GetService<ICurrentActor>() is { IsAuthenticated: true } current ? current : null;
+        var organizationId = request.OrganizationId ?? actor?.OrganizationId
+            ?? throw new InvalidOperationException(
+                "A job needs an organization: set JobRequest.OrganizationId when there is no authenticated actor.");
+
         var retryNo = 0;
         if (request.ParentJobId is { } parentId)
         {
@@ -88,6 +93,7 @@ public sealed class PostgresJobQueue(AetheraDbContext db, IClock clock, IService
         var job = new Job
         {
             Type = request.Type.Trim(),
+            OrganizationId = organizationId,
             Priority = request.Priority,
             ResourceType = request.Resource?.Type,
             ResourceId = request.Resource?.Id,
@@ -98,7 +104,7 @@ public sealed class PostgresJobQueue(AetheraDbContext db, IClock clock, IService
             RunAfter = request.RunAfter ?? now,
             ParentJobId = request.ParentJobId,
             IdempotencyKey = request.IdempotencyKey,
-            CreatedBy = services.GetService<ICurrentActor>() is { IsAuthenticated: true } actor ? actor.UserId : null,
+            CreatedBy = actor?.UserId,
             CreatedAt = now,
             UpdatedAt = now,
         };

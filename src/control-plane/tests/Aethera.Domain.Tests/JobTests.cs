@@ -5,7 +5,7 @@ public sealed class JobTests
     private static readonly DateTimeOffset T0 = new(2026, 10, 3, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan Lease = TimeSpan.FromSeconds(60);
 
-    private static Job NewJob(int maxAttempts = 3) => new() { Type = "application.deploy", MaxAttempts = maxAttempts, RunAfter = T0 };
+    private static Job NewJob(int maxAttempts = 3) => new() { OrganizationId = Guid.CreateVersion7(), Type = "application.deploy", MaxAttempts = maxAttempts, RunAfter = T0 };
 
     private static JobError Transient => new("agent.unavailable", "Agent unavailable", Retryable: true);
     private static JobError Permanent => new("build.failed", "Build failed", "exit code 1", "build");

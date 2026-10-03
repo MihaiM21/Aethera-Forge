@@ -110,7 +110,7 @@ public sealed class JobsApiTests(JobsApiFixture fixture) : IClassFixture<JobsApi
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
             systemJob = await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(
-                new JobRequest("t.unhandled", new { a = 1 }) { Resource = resource, MaxAttempts = 2 });
+                new JobRequest("t.unhandled", new { a = 1 }) { Resource = resource, MaxAttempts = 2, OrganizationId = fixture.Owner.OrganizationId });
         }
 
         foreach (var id in ok.Concat(failed).Append(systemJob.Id.ToString())) await JobsApiFixture.WaitForJobAsync(viewer, id);
@@ -189,32 +189,60 @@ public sealed class JobsApiTests(JobsApiFixture fixture) : IClassFixture<JobsApi
     }
 
     [RequiresDatabaseFact]
-    public async Task Jobs_AreScopedToTheCallersOrganization_ButSystemJobsAreShared()
+    public async Task Jobs_AreScopedToTheCallersOrganization_EvenWhenTheyHaveNoCreator()
     {
         var mine = (await JobsApiFixture.PostEchoAsync(Admin(), new { lines = new[] { "mine" } })).Str("id");
         await JobsApiFixture.WaitForJobAsync(Admin(), mine);
-        Job systemJob;
-        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
-            systemJob = await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["system"] }));
 
-        var stranger = fixture.Client(OrganizationRole.Owner, fixture.Other);
-        foreach (var (method, path) in new[]
+        // System jobs (webhooks, schedules) have no creator; they belong to the organization named in the request, and only to it.
+        Job ownerSystemJob, otherSystemJob;
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
-            ("GET", $"/api/v1/jobs/{mine}"),
-            ("GET", $"/api/v1/jobs/{mine}/logs"),
-            ("POST", $"/api/v1/jobs/{mine}/cancel"),
-            ("POST", $"/api/v1/jobs/{mine}/retry"),
-        })
-        {
-            var response = await stranger.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
-            response.AssertProblem(await response.ReadJsonAsync(), 404, "job.not_found");
+            var queue = scope.ServiceProvider.GetRequiredService<IJobQueue>();
+            ownerSystemJob = await queue.EnqueueAsync(new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["system"] })
+                { OrganizationId = fixture.Owner.OrganizationId });
+            otherSystemJob = await queue.EnqueueAsync(new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["other system"] })
+                { OrganizationId = fixture.Other.OrganizationId });
         }
 
-        var list = await (await stranger.GetAsync("/api/v1/jobs?limit=200")).ReadJsonAsync();
-        var ids = list["items"]!.AsArray().Select(i => i!.Str("id")).ToList();
-        Assert.DoesNotContain(mine, ids);
-        Assert.Contains(systemJob.Id.ToString(), ids);
-        Assert.Equal(HttpStatusCode.OK, (await stranger.GetAsync($"/api/v1/jobs/{systemJob.Id}")).StatusCode);
+        Assert.Null(ownerSystemJob.CreatedBy);
+        Assert.Equal(fixture.Owner.OrganizationId, ownerSystemJob.OrganizationId);
+
+        var stranger = fixture.Client(OrganizationRole.Owner, fixture.Other);
+        foreach (var hidden in new[] { mine, ownerSystemJob.Id.ToString() })
+        {
+            foreach (var (method, path) in new[]
+            {
+                ("GET", $"/api/v1/jobs/{hidden}"),
+                ("GET", $"/api/v1/jobs/{hidden}/logs"),
+                ("POST", $"/api/v1/jobs/{hidden}/cancel"),
+                ("POST", $"/api/v1/jobs/{hidden}/retry"),
+            })
+            {
+                var response = await stranger.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
+                response.AssertProblem(await response.ReadJsonAsync(), 404, "job.not_found");
+            }
+        }
+
+        var strangerList = (await (await stranger.GetAsync("/api/v1/jobs?limit=200")).ReadJsonAsync())["items"]!.AsArray().Select(i => i!.Str("id")).ToList();
+        Assert.DoesNotContain(mine, strangerList);
+        Assert.DoesNotContain(ownerSystemJob.Id.ToString(), strangerList);
+        Assert.Contains(otherSystemJob.Id.ToString(), strangerList);
+        Assert.Equal(HttpStatusCode.OK, (await stranger.GetAsync($"/api/v1/jobs/{otherSystemJob.Id}")).StatusCode);
+
+        var ownerList = (await (await Admin().GetAsync("/api/v1/jobs?limit=200")).ReadJsonAsync())["items"]!.AsArray().Select(i => i!.Str("id")).ToList();
+        Assert.Contains(mine, ownerList);
+        Assert.Contains(ownerSystemJob.Id.ToString(), ownerList);
+        Assert.DoesNotContain(otherSystemJob.Id.ToString(), ownerList);
+        Assert.Equal(HttpStatusCode.NotFound, (await Admin().GetAsync($"/api/v1/jobs/{otherSystemJob.Id}")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task EnqueueWithoutAnOrganization_Fails()
+    {
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var queue = scope.ServiceProvider.GetRequiredService<IJobQueue>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.EnqueueAsync(new JobRequest("t.nobody")));
     }
 
     [RequiresDatabaseFact]

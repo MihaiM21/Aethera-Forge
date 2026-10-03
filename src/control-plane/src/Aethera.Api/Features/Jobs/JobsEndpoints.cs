@@ -156,7 +156,7 @@ public static class JobsEndpoints
                 : db.Jobs.FromSql($"SELECT j.*, j.xmin FROM jobs j WHERE (j.created_at, j.id) > ({createdAt}, {position.Id})").AsNoTracking();
         }
 
-        query = query.VisibleTo(db, actor.OrganizationId ?? Guid.Empty);
+        query = query.VisibleTo(actor.OrganizationId ?? Guid.Empty);
         if (statuses.Count > 0) query = query.Where(j => statuses.Contains(j.Status));
         if (types.Count > 0) query = query.Where(j => types.Contains(j.Type));
         if (resourceType is not null) query = query.Where(j => j.ResourceType == resourceType);
@@ -218,7 +218,7 @@ public static class JobsEndpoints
     private static Task<Job?> FindVisibleAsync(AetheraDbContext db, ICurrentActor actor, Guid id, bool tracking, CancellationToken cancellationToken)
     {
         var jobs = tracking ? db.Jobs.AsTracking() : db.Jobs.AsNoTracking();
-        return jobs.VisibleTo(db, actor.OrganizationId ?? Guid.Empty).FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+        return jobs.VisibleTo(actor.OrganizationId ?? Guid.Empty).FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
 
     // ------------------------------------------------------------------ logs
@@ -307,6 +307,7 @@ public static class JobsEndpoints
             Priority = original.Priority,
             MaxAttempts = original.MaxAttempts,
             ParentJobId = original.Id,
+            OrganizationId = original.OrganizationId,
         }, cancellationToken);
 
         var dto = await JobMapper.ToDtoWithPositionAsync(db, retry, cancellationToken);

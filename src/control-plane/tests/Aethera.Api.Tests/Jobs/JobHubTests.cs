@@ -204,12 +204,17 @@ public sealed class JobHubTests(JobsApiFixture fixture) : IClassFixture<JobsApiF
         await byResource.InvokeAsync("SubscribeResource", "application", resource.Id);
 
         var viaApi = (await JobsApiFixture.PostEchoAsync(admin, new { lines = new[] { "api" } })).Str("id");
-        Job onResource;
+        Job onResource, otherOrganizations;
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
+            // a system job (no creator) of the stranger's organization
+            otherOrganizations = await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(
+                new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["theirs"] })
+                    { Resource = resource, OrganizationId = fixture.Other.OrganizationId });
             // created by a member of the caller's organization, acting on the resource
             onResource = await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(
-                new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["res"] }) { Resource = resource });
+                new JobRequest(EchoJobHandler.JobType, new EchoPayload { Lines = ["res"] })
+                { Resource = resource, OrganizationId = fixture.Owner.OrganizationId });
         }
 
         await Eventually.UntilAsync(() => Task.FromResult(allSeen.Contains(viaApi) && allSeen.Contains(onResource.Id.ToString())), Wait);
@@ -219,7 +224,10 @@ public sealed class JobHubTests(JobsApiFixture fixture) : IClassFixture<JobsApiF
 
         Assert.DoesNotContain(viaApi, resourceSeen);
         Assert.DoesNotContain(viaApi, strangerSeen);       // another organization's job never reaches the stranger
-        Assert.Contains(onResource.Id.ToString(), strangerSeen); // a system job (no creator) is visible to every organization
+        Assert.DoesNotContain(onResource.Id.ToString(), strangerSeen); // nor does a creatorless system job of the caller's organization
+        await Eventually.UntilAsync(() => Task.FromResult(strangerSeen.Contains(otherOrganizations.Id.ToString())), Wait);
+        Assert.DoesNotContain(otherOrganizations.Id.ToString(), allSeen);      // and the reverse
+        Assert.DoesNotContain(otherOrganizations.Id.ToString(), resourceSeen); // even on the very same resource id
     }
 
     [RequiresDatabaseFact]
@@ -243,7 +251,7 @@ public sealed class JobHubTests(JobsApiFixture fixture) : IClassFixture<JobsApiF
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
             job = await scope.ServiceProvider.GetRequiredService<IJobQueue>().EnqueueAsync(
-                new JobRequest("t.never-runs") { RunAfter = DateTimeOffset.UtcNow.AddHours(1) });
+                new JobRequest("t.never-runs") { RunAfter = DateTimeOffset.UtcNow.AddHours(1), OrganizationId = fixture.Owner.OrganizationId });
         }
 
         var streamId = $"job:{job.Id}";

@@ -23,8 +23,6 @@ public interface IJobsClient
 /// <summary>Group names of <c>/hubs/jobs</c>. Resource and organization groups embed the organization, so a subscriber only ever joins groups of its own.</summary>
 internal static class JobGroups
 {
-    public const string System = "system";
-
     public static string Job(Guid jobId) => $"job:{jobId:D}";
 
     public static string Resource(string organization, string type, Guid id) => $"resource:{organization}:{type.ToLowerInvariant()}:{id:D}";
@@ -54,7 +52,7 @@ public sealed class JobsHub(IServiceScopeFactory scopes) : Hub<IJobsClient>
         var organization = HubIdentity.OrganizationOf(Context.User);
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
-        var job = await db.Jobs.AsNoTracking().VisibleTo(db, organization).FirstOrDefaultAsync(j => j.Id == jobId, Context.ConnectionAborted);
+        var job = await db.Jobs.AsNoTracking().VisibleTo(organization).FirstOrDefaultAsync(j => j.Id == jobId, Context.ConnectionAborted);
         if (job is null) throw new HubException("job.not_found");
 
         await Groups.AddToGroupAsync(Context.ConnectionId, JobGroups.Job(jobId), Context.ConnectionAborted);
@@ -69,7 +67,6 @@ public sealed class JobsHub(IServiceScopeFactory scopes) : Hub<IJobsClient>
         var organization = JobGroups.Org(HubIdentity.OrganizationOf(Context.User));
         ValidateResourceType(resourceType);
         await Groups.AddToGroupAsync(Context.ConnectionId, JobGroups.Resource(organization, resourceType, resourceId), Context.ConnectionAborted);
-        await Groups.AddToGroupAsync(Context.ConnectionId, JobGroups.Resource(JobGroups.System, resourceType, resourceId), Context.ConnectionAborted);
     }
 
     public async Task UnsubscribeResource(string resourceType, Guid resourceId)
@@ -77,46 +74,23 @@ public sealed class JobsHub(IServiceScopeFactory scopes) : Hub<IJobsClient>
         var organization = JobGroups.Org(HubIdentity.OrganizationOf(Context.User));
         ValidateResourceType(resourceType);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, JobGroups.Resource(organization, resourceType, resourceId));
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, JobGroups.Resource(JobGroups.System, resourceType, resourceId));
     }
 
     public async Task SubscribeAll()
     {
         var organization = JobGroups.Org(HubIdentity.OrganizationOf(Context.User));
         await Groups.AddToGroupAsync(Context.ConnectionId, JobGroups.Organization(organization), Context.ConnectionAborted);
-        await Groups.AddToGroupAsync(Context.ConnectionId, JobGroups.Organization(JobGroups.System), Context.ConnectionAborted);
     }
 
     public async Task UnsubscribeAll()
     {
         var organization = JobGroups.Org(HubIdentity.OrganizationOf(Context.User));
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, JobGroups.Organization(organization));
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, JobGroups.Organization(JobGroups.System));
     }
 
     private static void ValidateResourceType(string resourceType)
     {
         if (string.IsNullOrWhiteSpace(resourceType) || resourceType.Length > 64) throw new HubException("validation.invalid_parameter");
-    }
-}
-
-/// <summary>Resolves the organizations a user belongs to (cached for a minute), to route job events to the right groups.</summary>
-public sealed class OrganizationDirectory(IServiceScopeFactory scopes, TimeProvider time)
-{
-    private static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(60);
-    private readonly ConcurrentDictionary<Guid, (DateTimeOffset Expires, Guid[] Organizations)> _cache = new();
-
-    public async Task<IReadOnlyList<Guid>> OrganizationsOfAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var now = time.GetUtcNow();
-        if (_cache.TryGetValue(userId, out var hit) && hit.Expires > now) return hit.Organizations;
-
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
-        var organizations = await db.OrganizationMembers.AsNoTracking().Where(m => m.UserId == userId)
-            .Select(m => m.OrganizationId).ToArrayAsync(cancellationToken);
-        _cache[userId] = (now + Lifetime, organizations);
-        return organizations;
     }
 }
 
@@ -128,7 +102,6 @@ public sealed class JobEventRelay(
     ILiveBus bus,
     IHubContext<JobsHub, IJobsClient> hub,
     IServiceScopeFactory scopes,
-    OrganizationDirectory organizations,
     ILogger<JobEventRelay> logger) : IHostedService
 {
     private readonly Channel<JobBusEvent> _events = Channel.CreateBounded<JobBusEvent>(
@@ -198,19 +171,11 @@ public sealed class JobEventRelay(
 
     private async Task DeliverAsync(JobBusEvent message, CancellationToken cancellationToken)
     {
-        var groups = new List<string> { JobGroups.Job(message.JobId) };
-        var orgs = message.CreatedBy is { } creator
-            ? (await organizations.OrganizationsOfAsync(creator, cancellationToken)).Select(JobGroups.Org).ToList()
-            : [JobGroups.System];
-        foreach (var org in orgs)
-        {
-            groups.Add(JobGroups.Organization(org));
-            if (message.ResourceType is not null && message.ResourceId is { } resourceId)
-                groups.Add(JobGroups.Resource(org, message.ResourceType, resourceId));
-        }
-
-        if (message.CreatedBy is null && message.ResourceType is not null && message.ResourceId is { } systemResource)
-            groups.Add(JobGroups.Resource(JobGroups.System, message.ResourceType, systemResource));
+        // Every job belongs to exactly one organization, so its events only ever reach groups of that organization.
+        var organization = JobGroups.Org(message.OrganizationId);
+        var groups = new List<string> { JobGroups.Job(message.JobId), JobGroups.Organization(organization) };
+        if (message.ResourceType is not null && message.ResourceId is { } resourceId)
+            groups.Add(JobGroups.Resource(organization, message.ResourceType, resourceId));
 
         if (message.Kind == "progress")
         {

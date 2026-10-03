@@ -27,7 +27,6 @@ public static class JobsModule
         services.AddAetheraJobSystem(configuration);
 
         services.AddSignalR().AddJsonProtocol(options => JsonConventions.Configure(options.PayloadSerializerOptions));
-        services.TryAddSingleton<OrganizationDirectory>();
         services.TryAddSingleton<LogStreamRelay>();
         services.AddHostedService<JobEventRelay>();
 

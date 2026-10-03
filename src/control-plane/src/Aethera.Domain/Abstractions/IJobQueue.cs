@@ -13,6 +13,12 @@ public sealed record JobResource(string Type, Guid Id);
 /// </param>
 public sealed record JobRequest(string Type, object? Payload = null)
 {
+    /// <summary>
+    /// The organization the job belongs to. Null = the current actor's organization; enqueueing fails when neither is known.
+    /// System producers (webhooks, schedules) must pass it, typically the organization of the resource they act on.
+    /// </summary>
+    public Guid? OrganizationId { get; init; }
+
     /// <summary>The resource the job acts on; also what <c>GET /jobs?resourceType&amp;resourceId</c> filters by.</summary>
     public JobResource? Resource { get; init; }
 
@@ -43,7 +49,9 @@ public interface IJobQueue
 {
     /// <summary>
     /// Persists a new <see cref="JobStatus.Queued"/> job and wakes the workers. The creator (<c>created_by</c>) is taken
-    /// from the current actor. Returns the existing job when the request's idempotency key was seen before.
+    /// from the current actor; the organization from <see cref="JobRequest.OrganizationId"/>, else from the actor.
+    /// Returns the existing job when the request's idempotency key was seen before.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The request names no organization and there is no authenticated actor with one.</exception>
     Task<Job> EnqueueAsync(JobRequest request, CancellationToken cancellationToken = default);
 }
