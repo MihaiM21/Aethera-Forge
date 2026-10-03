@@ -18,7 +18,7 @@ internal static class ProtoConvert
 
     public static Timestamp? ToProto(this DateTimeOffset? value) => value is { } v ? Timestamp.FromDateTimeOffset(v) : null;
 
-    public static TimeSpan ToTimeSpan(this Duration? value) => value is null ? TimeSpan.Zero : value.ToTimeSpan();
+    public static TimeSpan AsTimeSpan(this Duration? value) => value is null ? TimeSpan.Zero : value.ToTimeSpan();
 
     public static DateTimeOffset? ToDomain(this Timestamp? value) =>
         value is null || (value.Seconds == 0 && value.Nanos == 0) || value.Seconds < -62135596800L ? null : value.ToDateTimeOffset();
@@ -242,14 +242,14 @@ internal static class ProtoConvert
         s.Ports.Select(ToDomain).ToList())).ToList());
 
     public static BuildOutcome ToDomain(this P.BuildResult r) => new(
-        r.BuildId, r.ImageId, r.Digest, r.Tags.ToList(), r.RepoDigests.ToList(), r.SizeBytes, r.Duration.ToTimeSpan(), r.EngineUsed, r.CommitSha, r.Pushed, r.Platform, r.CacheHit);
+        r.BuildId, r.ImageId, r.Digest, r.Tags.ToList(), r.RepoDigests.ToList(), r.SizeBytes, r.Duration.AsTimeSpan(), r.EngineUsed, r.CommitSha, r.Pushed, r.Platform, r.CacheHit);
 
     public static BuildDetection ToDomain(this P.BuildDetectResult r) => new(r.Candidates.Select(c => new BuildCandidateInfo(
         EnumOf<BuildEngineKind>((int)c.Engine), c.EngineName, c.Confidence, c.Reason, c.DockerfilePath, c.InstallCommand, c.BuildCommand, c.StartCommand, c.OutputDir,
         c.Language, c.SuggestedPorts.Select(p => (int)p).ToList())).ToList(), r.CommitSha);
 
     public static HealthProbeOutcome ToDomain(this P.HealthProbeResult r) =>
-        new(r.Healthy, r.Attempts, r.HttpStatus, r.Latency.ToTimeSpan(), r.Detail, r.CheckedAt.ToDomain());
+        new(r.Healthy, r.Attempts, r.HttpStatus, r.Latency.AsTimeSpan(), r.Detail, r.CheckedAt.ToDomain());
 
     public static DiscoveryInfo ToDomain(this P.DiscoveryReport r)
     {

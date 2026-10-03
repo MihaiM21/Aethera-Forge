@@ -285,7 +285,8 @@ internal static class ServerEndpoints
     }
 
     private static async Task<NoContent> Delete(
-        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock, CancellationToken ct)
+        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
+        Aethera.Infrastructure.Agents.Pki.IInternalCa ca, Aethera.Infrastructure.Agents.Sessions.AgentSessionRegistry sessions, CancellationToken ct)
     {
         var server = await db.GetServerAsync(actor.Org(), id, tracking: true, ct);
         http.CheckIfMatch(server.RowVersion);
@@ -298,7 +299,9 @@ internal static class ServerEndpoints
 
         server.MarkDeleted(clock.UtcNow);
         if (server.SshCredentialSecretId is { } credential) await ManagedSecrets.ReleaseFromServerAsync(db, credential, id, ct);
+        await ca.RevokeServerCertificatesAsync(db, id, "server deleted", clock.UtcNow, ct); // WP2.2: a deleted server's agent loses its identity
         await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct);
+        sessions.Disconnect(id, Aethera.Agent.V1.DisconnectReason.Revoked, "The server was deleted."); // ADR 0002: close the live stream with REVOKED
         return TypedResults.NoContent();
     }
 

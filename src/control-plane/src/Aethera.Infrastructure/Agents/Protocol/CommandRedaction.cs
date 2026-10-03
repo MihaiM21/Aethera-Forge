@@ -29,8 +29,11 @@ public static class CommandRedaction
     public static string ToLogString(IMessage message)
     {
         var copy = Copy(message);
-        Redact(copy);
-        return JsonFormatter.Default.Format(copy);
+        var textFixes = new List<(string Encoded, string Readable)>();
+        Redact(copy, textFixes);
+        var json = JsonFormatter.Default.Format(copy);
+        foreach (var (encoded, readable) in textFixes) json = json.Replace(encoded, readable, StringComparison.Ordinal); // bytes are printed as base64: show the summary instead
+        return json;
     }
 
     /// <summary>Every secret value inside <paramref name="message"/>, so the log pipeline can mask them if an agent echoes one back.</summary>
@@ -75,7 +78,7 @@ public static class CommandRedaction
         else Walk(child, onSecret);
     }
 
-    private static void Redact(IMessage message)
+    private static void Redact(IMessage message, List<(string Encoded, string Readable)> textFixes)
     {
         foreach (var field in message.Descriptor.Fields.InFieldNumberOrder())
         {
@@ -90,7 +93,17 @@ public static class CommandRedaction
                     ByteString bytes when bytes.Length > 0 => $"[{bytes.Length} bytes]",
                     _ => null,
                 };
-                if (summary is not null) field.Accessor.SetValue(message, field.FieldType == FieldType.Bytes ? ByteString.CopyFromUtf8(summary) : summary);
+                if (summary is null) continue;
+                if (field.FieldType == FieldType.Bytes)
+                {
+                    var replacement = ByteString.CopyFromUtf8(summary);
+                    textFixes.Add((replacement.ToBase64(), summary));
+                    field.Accessor.SetValue(message, replacement);
+                }
+                else
+                {
+                    field.Accessor.SetValue(message, summary);
+                }
                 continue;
             }
 
@@ -99,19 +112,19 @@ public static class CommandRedaction
             if (field.IsRepeated)
             {
                 foreach (var item in (IList)value)
-                    if (item is IMessage child) RedactChild(child);
+                    if (item is IMessage child) RedactChild(child, textFixes);
             }
             else if (value is IMessage single)
             {
                 if (single is SecretValue) field.Accessor.SetValue(message, new SecretValue { Value = Placeholder });
-                else RedactChild(single);
+                else RedactChild(single, textFixes);
             }
         }
     }
 
-    private static void RedactChild(IMessage child)
+    private static void RedactChild(IMessage child, List<(string Encoded, string Readable)> textFixes)
     {
         if (child is SecretValue secret) secret.Value = Placeholder;
-        else Redact(child);
+        else Redact(child, textFixes);
     }
 }

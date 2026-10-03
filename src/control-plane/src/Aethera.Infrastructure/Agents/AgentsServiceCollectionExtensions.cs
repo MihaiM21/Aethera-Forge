@@ -2,6 +2,8 @@ using Aethera.Domain;
 using Aethera.Domain.Transport;
 using Aethera.Infrastructure.Agents.Enrollment;
 using Aethera.Infrastructure.Agents.Ingest;
+using Aethera.Infrastructure.Agents.Jobs;
+using Aethera.Infrastructure.Jobs;
 using Aethera.Infrastructure.Agents.Monitoring;
 using Aethera.Infrastructure.Agents.Pki;
 using Aethera.Infrastructure.Agents.Protocol;
@@ -56,6 +58,8 @@ public static class AgentsServiceCollectionExtensions
         services.TryAddSingleton<ISshFallbackPolicy, DbSshFallbackPolicy>();
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IServerTransport, AgentTransport>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, ServerPruneJobHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, ServerDiscoveryRefreshJobHandler>());
         services.TryAddSingleton<IServerTransportResolver, ServerTransportResolver>();
 
         services.AddHostedService<AgentGatewayLifetimeService>();

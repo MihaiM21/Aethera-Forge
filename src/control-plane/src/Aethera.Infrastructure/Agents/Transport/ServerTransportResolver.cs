@@ -73,9 +73,18 @@ public sealed class ServerTransportResolver(IEnumerable<IServerTransport> transp
     /// <summary><c>server.unreachable</c> when the control plane's own probe says the machine does not answer, else <c>server.agent_unavailable</c>.</summary>
     private async Task<ServerTransportException> UnavailableAsync(Guid serverId, CancellationToken cancellationToken)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
-        var reachability = await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => (ReachabilityStatus?)s.ReachabilityStatus).FirstOrDefaultAsync(cancellationToken);
+        ReachabilityStatus? reachability = null;
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
+            reachability = await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => (ReachabilityStatus?)s.ReachabilityStatus).FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Only a refinement of the message: without it the answer is "agent unavailable".
+        }
+
         return reachability == ReachabilityStatus.Unreachable
             ? new ServerTransportException(TransportErrors.Unreachable, "The server does not answer and no agent session exists.")
             : new ServerTransportException(TransportErrors.AgentUnavailable, "No agent session is connected for this server.");

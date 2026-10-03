@@ -207,6 +207,9 @@ public sealed class AgentSessionHandler(
                 await discovery.SaveAsync(session.ServerId, message.Discovery, cancellationToken);
                 break;
             case P.AgentMessage.PayloadOneofCase.CommandResult:
+                // A DiscoveryRefresh answers with the fresh report: store it like a pushed one before the waiting job continues.
+                if (message.CommandResult is { Status: P.CommandStatus.Succeeded, ResultCase: P.CommandResult.ResultOneofCase.Discovery } done)
+                    await discovery.SaveAsync(session.ServerId, done.Discovery, cancellationToken);
                 dispatcher.OnResult(state, message.CommandResult);
                 break;
             case P.AgentMessage.PayloadOneofCase.LogChunk:

@@ -1,4 +1,5 @@
 using Aethera.Api;
+using Aethera.Api.Features.Agents;
 using Aethera.Api.Features.Auth;
 using Aethera.Api.Features.Jobs;
 using Aethera.Api.Features.Resources;
@@ -14,6 +15,7 @@ builder.Services.AddAetheraApi(builder.Configuration); // WP1.0: JSON, errors, s
 builder.Services.AddAuth(builder.Configuration);       // WP1.1
 builder.Services.AddResources(builder.Configuration);  // WP1.2
 builder.Services.AddJobs(builder.Configuration);       // WP1.3
+builder.Services.AddAgentGateway(builder.Configuration); // WP2.2: internal CA, mTLS gRPC gateway, agent transport
 
 var app = builder.Build();
 
@@ -21,6 +23,7 @@ var app = builder.Build();
 // Not reached by the build-time OpenAPI generator, which stops the host after Build().
 await app.Services.MigrateAetheraDatabaseIfEnabledAsync(app.Configuration);
 
+app.UseAgentGateway();    // WP2.2: keeps the gRPC port and the API ports apart
 app.UseAetheraApi();
 app.MapOperationalEndpoints(); // /health, /ready
 app.MapAetheraDocs();          // /api/openapi/{documentName}.json, /api/docs
@@ -29,8 +32,10 @@ var api = app.MapApiGroup();   // /api/v1, authenticated by default
 api.MapAuth();                 // WP1.1
 api.MapResources();            // WP1.2
 api.MapJobs();                 // WP1.3
+api.MapAgents();               // WP2.2
 api.MapContributors();         // test/extension seam
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root
+app.MapAgentGateway();         // WP2.2: AgentService + EnrollmentService (gRPC, mTLS listener only)
 app.UseAetheraStaticWeb();     // ADR 0005: the Next.js export, for every path no endpoint claimed
 
 app.Run();

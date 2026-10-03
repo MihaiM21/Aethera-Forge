@@ -62,20 +62,23 @@ public sealed class InternalCa : IInternalCa, IDisposable
     private const string ServerAuthOid = "1.3.6.1.5.5.7.3.1";
 
     private readonly IServiceScopeFactory _scopes;
-    private readonly ISecretProtector _protector;
+    private readonly IServiceProvider _services;
     private readonly AgentGatewayOptions _options;
     private readonly ILogger<InternalCa> _logger;
     private readonly ConcurrentDictionary<string, byte> _revoked = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _gate = new();
     private Task<CaMaterial>? _material;
 
-    public InternalCa(IServiceScopeFactory scopes, ISecretProtector protector, IOptions<AgentGatewayOptions> options, ILogger<InternalCa> logger)
+    public InternalCa(IServiceScopeFactory scopes, IServiceProvider services, IOptions<AgentGatewayOptions> options, ILogger<InternalCa> logger)
     {
         _scopes = scopes;
-        _protector = protector;
+        _services = services;
         _options = options.Value;
         _logger = logger;
     }
+
+    // Resolved on first use: the master key must not be needed just to construct the hosted services (the build-time OpenAPI generator has none).
+    private ISecretProtector Protector => _services.GetRequiredService<ISecretProtector>();
 
     private sealed record CaMaterial(CaPublicInfo Info, X509Certificate2 Certificate, ECDsa Key);
 
@@ -255,7 +258,7 @@ public sealed class InternalCa : IInternalCa, IDisposable
         var pkcs8 = key.ExportPkcs8PrivateKey();
         try
         {
-            var protectedKey = _protector.Protect(pkcs8, AssociatedData(id));
+            var protectedKey = Protector.Protect(pkcs8, AssociatedData(id));
             return new CertificateAuthority
             {
                 Id = id, Name = _options.CaName, Subject = subject, CertificatePem = certificate.ExportCertificatePem(),
@@ -274,7 +277,7 @@ public sealed class InternalCa : IInternalCa, IDisposable
 
     private CaMaterial Load(CertificateAuthority row)
     {
-        var pkcs8 = _protector.Unprotect(
+        var pkcs8 = Protector.Unprotect(
             new ProtectedValue(row.PrivateKeyCiphertext, row.PrivateKeyNonce, row.MasterKeyVersion)
             { WrappedDataKey = row.WrappedDataKey, WrappedDataKeyNonce = row.WrappedDataKeyNonce },
             AssociatedData(row.Id));

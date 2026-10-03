@@ -105,5 +105,33 @@ public sealed class AgentEnrollmentService(
         };
     }
 
+    /// <summary>
+    /// <c>AgentService.RenewCertificate</c>: a fresh certificate for the caller's server (authenticated by its still-valid certificate), signed
+    /// over a new key pair. The previous certificate stays valid until the agent reconnects with the new one, at which point the session
+    /// handler revokes it (ADR 0002 "Renewal").
+    /// </summary>
+    public async Task<RenewCertificateResponse> RenewAsync(AgentIdentity identity, string? csrPem, CancellationToken cancellationToken)
+    {
+        var csr = CsrValidator.Validate(csrPem); // CsrValidationException -> INVALID_ARGUMENT in the gRPC layer
+        var now = clock.UtcNow;
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
+        var server = await db.Servers.FirstOrDefaultAsync(s => s.Id == identity.ServerId, cancellationToken)
+            ?? throw new EnrollmentException(EnrollmentFailure.Denied, EnrollmentException.DeniedMessage);
+
+        var issued = await ca.IssueAgentCertificateAsync(db, server.Id, csr, now, cancellationToken);
+        server.CertSerial = issued.Serial;
+        server.CertFingerprint = issued.FingerprintSha256;
+        server.CertExpiresAt = issued.NotAfter;
+        await db.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync("agent.certificate_renewed", "server", server.Id, new { serial = issued.Serial, notAfter = issued.NotAfter, previousSerial = identity.Serial },
+            AuditActorType.Agent, server.OrganizationId, cancellationToken: cancellationToken);
+        return new RenewCertificateResponse
+        {
+            ClientCertificatePem = issued.CertificatePem, CaChainPem = issued.CaChainPem, CertificateNotAfter = Timestamp.FromDateTimeOffset(issued.NotAfter),
+        };
+    }
+
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

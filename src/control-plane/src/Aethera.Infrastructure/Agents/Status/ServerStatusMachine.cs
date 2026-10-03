@@ -135,7 +135,7 @@ public static class ServerStatusMachine
         return new ApplicationSummary(total, unavailable, healthy, unknown);
     }
 
-    internal static string Camel<T>(T value) where T : struct, Enum
+    public static string Camel<T>(T value) where T : struct, Enum
     {
         var name = value.ToString();
         return name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
