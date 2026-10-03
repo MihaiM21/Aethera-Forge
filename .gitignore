@@ -1,0 +1,46 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.user
+*.suo
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+appsettings.*.local.json
+
+# Claude Code local state
+.claude/worktrees/
+.claude/settings.local.json
+
+# .NET
+bin/
+obj/
+*.nupkg
+TestResults/
+coverage*.xml
+*.binlog
+.vs/
+
+# Go
+src/agent/dist/
+*.test
+*.out
+vendor/
+
+# Node / Next.js
+node_modules/
+.pnpm-store/
+src/web/.next/
+src/web/out/
+src/web/coverage/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+.pnpm-debug.log*
