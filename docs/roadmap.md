@@ -9,10 +9,12 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP0.3 Protocol code generation (Go via buf, C# via Grpc.Tools, CI `proto` job)
 
 ## Phase 1 — Control plane core + UI shell
-- [ ] WP1.1 Auth & access
-- [ ] WP1.2 Resource API
-- [ ] WP1.3 Job system
-- [ ] WP1.4 UI shell
+- [x] WP1.0 Shared API seams (module stubs, abstractions, errors/validation/pagination, authorization, OpenAPI, test support)
+- [x] WP1.1 Auth & access
+- [x] WP1.2 Resource API
+- [x] WP1.3 Job system
+- [x] WP1.4 UI shell
+- [x] WP1.5 Integration & hardening (hub Origin check, job tenancy, static UI hosting, readiness, forwarded headers, CI with Postgres/Redis, `deploy/smoke.sh`)
 
 ## Phase 2 — Servers & agent
 - [ ] WP2.1 Go agent

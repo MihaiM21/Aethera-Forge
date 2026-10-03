@@ -29,6 +29,10 @@ public class Job : MutableEntity
     public const string WorkerLostCode = "job.worker_lost";
 
     public required string Type { get; set; }
+
+    /// <summary>The organization the job belongs to. Every visibility check (REST, hubs, log streams) compares against it.</summary>
+    public required Guid OrganizationId { get; init; }
+
     public JobStatus Status { get; private set; } = JobStatus.Queued;
     public int Priority { get; set; }
     public string? ResourceType { get; set; }

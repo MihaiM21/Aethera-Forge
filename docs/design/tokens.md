@@ -316,8 +316,11 @@ Import `tokens.css` first in the global stylesheet. With **Tailwind CSS v4** and
   --color-sidebar-border: var(--sidebar-border);
   --color-chart-1: var(--chart-1); /* ... through --chart-8 */
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  /* Spell the stacks out: `--font-sans: var(--font-sans)` would reference itself and be invalid. */
+  --font-sans: var(--font-geist-sans), "Geist", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular",
+    "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   /* Square corners: do NOT derive from --radius with calc() */
   --radius-sm: 0;

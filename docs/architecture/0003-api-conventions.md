@@ -281,7 +281,7 @@ Top-level resource families follow spec section 27. IDs in paths are UUIDv7. `{i
 
 | Resource | Endpoints | Notes |
 |---|---|---|
-| **auth** | `POST /auth/setup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/csrf`, `POST /auth/password` | no auth required for `setup`/`login` only |
+| **auth** | `GET /auth/setup` -> `{ "setupRequired": bool }` (anonymous; true while no user exists, so the UI knows whether to show first-run setup or login), `POST /auth/setup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/csrf`, `POST /auth/password` | no auth required for `GET`/`POST /auth/setup` and `POST /auth/login` only |
 | **users** | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}`, `PUT /users/{id}/role` | admin only |
 | **api-tokens** | `GET/POST /api-tokens`, `GET/DELETE /api-tokens/{id}` | secret only in the POST response; `DELETE` = revoke |
 | **organizations** | `GET /organizations`, `GET/PATCH /organizations/{id}` | one default org per install in the MVP; teams/members under `/organizations/{id}/members` later |
@@ -356,3 +356,148 @@ GET  /api/v1/deployments/{deploymentId}          -> final status, failedStep, im
 - (+) Long-running operations are uniform (job + hubs) for UI, CLI and CI.
 - (-) Strictness (unknown params rejected, idempotency storage, ETags) adds some boilerplate; it is centralised in shared endpoint filters and middleware.
 - (-) Two live channels beyond REST (three hubs) must keep payloads consistent with REST; mitigated by reusing the same DTOs.
+
+## Implementation notes (WP1.0)
+
+WP1.0 built the shared plumbing; feature work packages only add endpoints. Where this section differs from the text above, this section is what the code does.
+
+### Composition
+
+- `Program.cs` is final: `AddAetheraApi` (shared), then `AddAuth` / `AddResources` / `AddJobs` (WP1.1 / 1.2 / 1.3, `Aethera.Api/Features/*/…Module.cs`), the pipeline (`UseAetheraApi`), and `MapAuth` / `MapResources` / `MapJobs` on **one** `app.MapGroup("/api/v1")`, plus `MapJobsHubs(root)` for `/hubs/*`. No work package edits `Program.cs`.
+- The `/api/v1` group is **secure by default**: it requires an authenticated caller and limits request bodies to 1 MiB. Anonymous endpoints (`GET/POST /auth/setup`, `POST /auth/login`) must say `.AllowAnonymous()`. Add `.RequireRole(AetheraPolicies.X)` and `.RequireScope(Scopes.Y)` per endpoint. Every endpoint needs `.WithName("verbNoun")` (the OpenAPI `operationId`, unique, camelCase; a test fails otherwise) and a tag per resource family (`.WithTags("Projects")`, usually on the `MapGroup("/projects")`).
+- Validators (FluentValidation) in the API assembly are registered automatically; endpoints opt in with `.Validate<TBody>()` (422, `errors[]` with JSON Pointers). Domain exceptions, `DbUpdateConcurrencyException` (409 `concurrency.conflict`) and unique violations (409 `resource.conflict`) are mapped centrally; deeper code can `throw new ApiProblemException(ApiProblems.X(...))`.
+- `GET /ready` runs every registered `IReadinessCheck` (PostgreSQL built in; WP1.3 registers Redis) and reports them by name in `checks`.
+
+### Differences and clarifications
+
+- `traceId` in error bodies **is** the `X-Request-Id` of the response (an inbound id that matches `[A-Za-z0-9._:-]{1,100}` is echoed; otherwise the W3C trace id or a new GUID is used). `traceparent` is also returned when the request has an activity.
+- Out-of-range `limit` is `400 validation.invalid_parameter` (section 2); the `limit` line in the 422 example of section 3 is illustrative only. Unknown `sort` fields are the same `400` with `parameter: "sort"`.
+- The 401 for a bad/absent credential is `auth.unauthenticated`; a handler can refine it (`auth.token_expired`, `auth.token_revoked`) by setting `HttpContext.Items["Aethera.AuthFailureCode"]`. A token missing a scope gets `403 auth.insufficient_scope` with the `requiredScope` extension; a role failure is `403 auth.forbidden` (and wins when both fail).
+- Validation errors only carry `pointer` or `parameter` (whichever applies); the other member is omitted.
+- The shared `ProblemDetails` / `ValidationProblem` / `FieldError` schemas and the `cookieAuth` / `bearerAuth` security schemes are in the OpenAPI document; each operation gets 401/403 (when authorized), 422 (when it validates) and 500 responses plus the `x-required-scope` extension. The `Idempotency-Key` / `If-Match` header parameters are not yet added to the document (no middleware implements them yet).
+- The build writes the document to `src/web/openapi/aethera.v1.json` (the generator only accepts `[A-Za-z0-9_-]` in file names, so a build target renames `aethera-v1.json`). The document name stays `v1`, so it is served at `/api/openapi/v1.json`. With `AETHERA_DOCS=false` the Scalar UI is not mapped and the JSON requires at least the Viewer role.
+- Audit: `IAuditLog` / `EfAuditLog` are the writer (actor, request id, IP from `ICurrentActor`; metadata redacted). The "every mutating request" middleware of section 7 belongs to WP1.1.
+
+### Token scopes (Phase 1)
+
+Phase 1 implements seven coarse scopes (`Aethera.Api.Security.Scopes`). The resource-level table in section 7 is the longer-term vocabulary; add finer scopes there only with an ADR amendment. Scopes only narrow a token below its owner's role (effective permission = scope AND role); browser sessions are bound by role only, so `RequireScope` is ignored for them.
+
+| Scope | Grants |
+|---|---|
+| `read` | all reads except secrets |
+| `write` | create/update/delete resources except secrets and servers; implies `read` |
+| `deploy` | deploy, redeploy, rollback, restart, start, stop; cancel/retry jobs |
+| `secrets:read` | list secrets (masked) |
+| `secrets:write` | create/rotate/delete/reveal secrets; implies `secrets:read` |
+| `servers:write` | servers CRUD, join tokens, agent install, prune |
+| `admin` | users, roles, others' tokens, settings, audit log; satisfies every scope (as does `*`) |
+
+### Claim types (`Aethera.Api.Security.AetheraClaimTypes`)
+
+| Claim | Meaning |
+|---|---|
+| `aethera:user_id` | user id (sessions and tokens) |
+| `aethera:token_id` | API token id (token principals only) |
+| `aethera:org_id` | organization id |
+| `aethera:role` | `viewer` / `developer` / `admin` / `owner` (for tokens: the owner's role) |
+| `aethera:scope` | one claim per token scope (token principals only) |
+| `aethera:auth_method` | `session` or `token` |
+
+Authentication schemes: default `Aethera` (policy scheme) forwards to `Aethera.Session` (cookie) or `Aethera.Token` (`Authorization: Bearer`, or `access_token` under `/hubs`). `AetheraPrincipal.Create` builds principals with exactly these claims.
+
+## Implementation notes (WP1.5)
+
+WP1.5 (integration and hardening) changed or fixed the following. Where this section differs from the text above, this section is what the code does.
+
+### Hub Origin rule (`auth.origin_not_allowed`)
+
+The session cookie is `SameSite=Lax`, but applications deployed by Aethera usually run on **sibling subdomains** of the panel, and those are the *same site*. A page on `app.example.com` could therefore open a WebSocket, or send negotiate / long-polling requests, to `/hubs/*` and the browser would attach the administrator's cookie (SignalR has no per-request CSRF token).
+
+- Every `/hubs/*` request (negotiate, WebSocket, SSE, long polling) that is authenticated by the **session** scheme must carry an `Origin` header equal to the request's own origin (`scheme://host[:port]`, compared after forwarded-header processing, default ports normalised, case-insensitive) **or** listed in `AETHERA_CORS_ORIGINS`. Otherwise: `403` with ProblemDetails code `auth.origin_not_allowed`.
+- Bearer-token requests (the `Authorization` header and the `access_token` query parameter) are exempt: they carry no ambient credentials. So are anonymous requests, which are answered `401` by authorization as before. The REST API is unaffected (CSRF tokens cover it).
+- Browsers send `Origin` on WebSocket handshakes and same-origin POSTs but **not** on same-origin GETs (the SSE and long-polling transports). For those, the browser-controlled `Sec-Fetch-Site: same-origin` header is accepted instead; a sibling subdomain sends `same-site` and is still refused. A cookie request with neither header is not a browser page and is refused.
+- Implemented by `HubOriginMiddleware` (after authentication, before authorization); the code is in the OpenAPI `x-known-codes`.
+
+### Reveal requires Admin and `secrets:write`
+
+`POST /secrets/{id}/reveal` needs the **Administrator** role (or Owner) *and*, for API tokens, the `secrets:write` scope, which covers reveal in Phase 1 (the finer `secrets:reveal` scope of section 7 is the long-term vocabulary). It is audited on every call, answers with `Cache-Control: no-store`, and the plaintext appears in no other response, log or audit entry. Developers can create, rotate and delete secrets but never read one back.
+
+### Dictionary keys are verbatim
+
+`JsonSerializerOptions.DictionaryKeyPolicy` is **not** set. Property names are camelCase; the keys of dictionaries are data and are kept exactly as stored (`NODE_ENV`, `X-Custom`). WP1.0 had set `CamelCase` for both, which turned `NODE_ENV` into `node_ENV`.
+
+### Forwarded headers
+
+`UseForwardedHeaders` runs **first** in the pipeline, so the login per-IP limit, audit events, token `lastUsedIp`, cookie security and the hub origin check all see the real client address and scheme behind Traefik.
+
+- Honoured: `X-Forwarded-For` and `X-Forwarded-Proto` only (not `X-Forwarded-Host`; Traefik preserves `Host`).
+- Only when the TCP peer is a trusted proxy: `Aethera:Http:TrustedProxies` (environment `Aethera__Http__TrustedProxies`), comma-separated IP addresses or CIDR ranges, for example `172.18.0.0/16,10.0.0.5`. **Default: loopback only** (`127.0.0.0/8`, `::1`); a configured list replaces the default. There is no wildcard; an invalid entry stops the start-up. From any other peer the headers are ignored.
+- Behind Traefik in Docker, set it to the subnet of the Docker network Traefik is on.
+
+### Readiness is tri-state
+
+`IReadinessCheck.CheckAsync` returns a `ReadinessResult`: `Ok`, `Unavailable` or `Skipped`, each with an optional `Detail`. `GET /ready` answers `503` **only** when a check is `Unavailable` (an exception or a 3 s timeout counts as unavailable). `Skipped` means "not configured, nothing needs it" and never fails readiness: the Redis check is `skipped` when `ConnectionStrings:Redis` is not set. The body is `{ "status": "ready|unavailable", "checks": { "database": "ok", "redis": "skipped" }, "details": { "redis": "..." } }`. A detail is a fixed phrase written by the check; it never contains a connection string, host, user name or exception message (exceptions are logged, not returned).
+
+### Jobs belong to an organization
+
+`jobs.organization_id` (NOT NULL, FK) replaces the inference from `created_by`; see `src/control-plane/docs/schema.md`. `IJobQueue.EnqueueAsync` takes it from `JobRequest.OrganizationId`, else from `ICurrentActor`, else throws. Creator-less system jobs (webhooks, schedules) therefore belong to exactly one organization, and REST, hubs and log streams all filter on it.
+
+### Smaller changes
+
+- `GET /auth/csrf` needs a session, so the web client sends no CSRF token for `POST /auth/login` and `POST /auth/setup`.
+- Brotli/gzip response compression is enabled for text responses (not over TLS terminated by the app itself).
+- The static web UI is served by the API (ADR 0005, `Aethera:Web:Root`).
+- Hosted services and start-up checks do nothing while the build-time OpenAPI generator runs (`AetheraHost.IsOpenApiGeneration`).
+
+## Implementation notes (WP1.6)
+
+WP1.6 (security fixes and the trust model, [ADR 0006](./0006-trust-model.md)) changed the Resource API as follows. Where this section differs from the text above, this section is what the code does.
+
+### Secrets have a purpose
+
+- `SecretResponse` gains `purpose` (`user`, `registryCredential`, `sshCredential`, `gitCredential`, `serviceGenerated`), `managed` (`purpose != user`) and `managedBy` (`{type, id, name}` with `type` one of `registry`, `server`, `gitCredential`, `service`; `null` for user secrets). Managed secrets are listed like any other.
+- `PATCH /secrets/{id}`, `POST /secrets/{id}/rotate` and `DELETE /secrets/{id}` on a managed secret: **409 `secret.managed`** (the `detail` names the owning endpoint; the problem also carries `purpose` and `managedBy`). Change them through the registry or server endpoint instead.
+- Creating, changing, rotating or deleting an **organization-scoped** secret needs an Administrator: **403 `secret.org_scope_requires_admin`** (token callers also need `secrets:write`). Secrets scoped to a project, environment or workload stay with Developers. A managed secret answers `secret.managed` first.
+- Binding a secret to an environment variable (`POST` and `PATCH .../env-vars`, `secretId`): a Developer may bind `user` secrets scoped to the same workload, environment or project; an organization-scoped secret needs an Administrator; a managed secret is never bindable (a generated service password only to its own service). Refusals are **403 `secret.binding_forbidden`**. A scope that does not contain the workload is still 422 `scope_mismatch`.
+- `sshCredentialSecretId` on a server turns an organization-scoped user secret into an `sshCredential` (422 `secret.managed`, `secret.in_use`, `scope_mismatch` otherwise) and releases it when no server uses it.
+
+### Scopes
+
+The coarse scopes of WP1.0 are unchanged. Two additions to who needs `secrets:write` (the `write` scope still excludes secrets):
+
+- Registries: `POST`, `PATCH`, `DELETE /registries` need **`write` and `secrets:write`** (they create, replace or remove a credential). A token with `write` only gets `403 auth.insufficient_scope` with `requiredScope: secrets:write`. The OpenAPI `x-required-scope` shows the last, `secrets:write`. Git credential endpoints, when added, follow the same rule.
+- Binding a secret to an environment variable with a token needs `secrets:write` on top of `write`.
+
+### New problem codes
+
+| Code | Status | When |
+|---|---|---|
+| `secret.managed` | 409 | change, rotate or delete of a managed secret through `/secrets` |
+| `secret.org_scope_requires_admin` | 403 | a Developer creates, changes, rotates or deletes an organization-scoped secret |
+| `secret.binding_forbidden` | 403 | the caller may not bind this secret (managed, or organization-wide without Administrator) |
+| `volume.host_path_requires_admin` | 403 | `hostPath` set or changed by a Developer |
+| `volume.host_path_forbidden` | 422 | host path on the denylist (also for compose bind sources, with `pointers`) |
+| `port.privileged_requires_admin` | 403 | published host port below 1024 by a Developer |
+| `port.reserved` | 422 | published host port reserved by Aethera, without Administrator and `allowReserved` |
+| `compose.option_requires_admin` | 403 | inline compose uses root-equivalent options; `pointers` lists JSON Pointers into the compose document |
+| `compose.invalid` | 422 | inline compose is not valid YAML or exceeds a limit (256 KiB, 50 aliases, depth 32) |
+
+The trust-model problems carry `errors[]` entries with a request-body `pointer` (`/hostPath`, `/runtime/ports/0/publishedPort`, `/compose/inlineContent`, `/config/compose`) and the problem's own `code`.
+
+### Request changes
+
+- `PortRequest.allowReserved` (bool, optional, not stored, Administrators only): publish a reserved host port anyway. Unchanged ports of an update are not checked again.
+- `hostPath` is normalized (`//` collapsed, `.` dropped, trailing `/` removed, `..` rejected) before it is checked and stored.
+- `pathPrefix` of a domain: `\A/[A-Za-z0-9._~/-]*\z`, at most 256 characters, no `//`, `.` or `..` segment (was: anything without whitespace, `?`, `#`, `\`, `"`; `//` was collapsed, now it is a `pattern` error).
+- `build.context`, `build.dockerfilePath`, `build.outputDirectory`, `compose.filePath`: relative, inside the repository (no `..`, leading `/`, `~` or `-`, drive letter, backslash, control character).
+- `gitSource.branch`: a valid git ref that cannot be an option (no leading `-`, whitespace, control characters, `~ ^ : ? * [ \`, `..`, `@{`). `gitSource.repositoryUrl`: http(s), ssh or git URL or `user@host:path`, with no `-` at the start of a user or host, no `file:` and no `::` transport helper, no whitespace or control characters.
+- `compose.inlineContent` is limited to 256 KiB (was 512 KiB).
+
+### Validation anchors
+
+Every validator regular expression under `Features/Resources`, `Features/Auth`, `Aethera.Api/Http` (the request id) and `Aethera.Domain` uses `\A...\z`. .NET's `$` also matches before a final `\n`, so `^[a-z]+$` accepted `"abc\n"`. A reflection test fails when a new pattern in these namespaces starts with `^` or contains an unescaped `$`.
+
+### Dotenv export
+
+`GET .../env-vars/export` writes every value in single quotes with an embedded `'` as `'\''` (`KEY='it'\''s'`), so sourcing the file in a shell cannot expand or execute anything. Import still accepts unquoted, double-quoted and single-quoted values, including the `'\''` idiom; export then import reproduces the values (the one exception: a carriage return is read back as a line feed).
+

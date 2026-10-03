@@ -10,5 +10,6 @@
     <Project Path="tests/Aethera.Agent.Protocol.Tests/Aethera.Agent.Protocol.Tests.csproj" />
     <Project Path="tests/Aethera.Api.Tests/Aethera.Api.Tests.csproj" />
     <Project Path="tests/Aethera.Domain.Tests/Aethera.Domain.Tests.csproj" />
+    <Project Path="tests/Aethera.Testing/Aethera.Testing.csproj" />
   </Folder>
 </Solution>

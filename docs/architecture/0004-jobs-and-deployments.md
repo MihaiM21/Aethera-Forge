@@ -47,11 +47,13 @@ CREATE TABLE jobs (
   cancel_requested_at timestamptz,
   parent_job_id      uuid,                            -- retry chain / sub-jobs
   idempotency_key    text,
-  created_by         uuid                             -- user or token id
+  created_by         uuid,                            -- user (or the user behind a token); NULL for system jobs
+  organization_id    uuid        NOT NULL             -- tenancy (added by WP1.5, FK organizations); every visibility filter uses it
 );
 CREATE INDEX jobs_claim_idx ON jobs (priority DESC, run_after, id) WHERE status = 'queued';
 CREATE INDEX jobs_running_lock_idx ON jobs (lock_key) WHERE status = 'running';
 CREATE INDEX jobs_resource_idx ON jobs (resource_type, resource_id, created_at DESC);
+CREATE INDEX jobs_organization_idx ON jobs (organization_id, created_at);
 ```
 
 `job_logs` / `log_chunks` are described in section 6.

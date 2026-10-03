@@ -558,17 +558,18 @@ public sealed class PersistenceIntegrationTests(TestDatabaseFixture database) : 
     {
         var type = Unique("test-job");
         var busyKey = Unique("app");
+        var org = (await SeedBaseAsync()).OrgId;
         using (var lease = database.NewContext())
         {
-            var running = new Job { Type = type, LockKey = busyKey };
+            var running = new Job { OrganizationId = org, Type = type, LockKey = busyKey };
             running.Claim("other-worker", Now, TimeSpan.FromMinutes(1));
             lease.Db.AddRange(
                 running,
-                new Job { Type = type, Priority = 0, RunAfter = Now.AddHours(-3) },
-                new Job { Type = type, Priority = 10, RunAfter = Now.AddHours(-2) },
-                new Job { Type = type, Priority = 5, RunAfter = Now.AddHours(-1) },
-                new Job { Type = type, Priority = 50, RunAfter = Now.AddHours(-1), LockKey = busyKey }, // blocked by the running job
-                new Job { Type = type, Priority = 100, RunAfter = Now.AddDays(1) }); // not due yet
+                new Job { OrganizationId = org, Type = type, Priority = 0, RunAfter = Now.AddHours(-3) },
+                new Job { OrganizationId = org, Type = type, Priority = 10, RunAfter = Now.AddHours(-2) },
+                new Job { OrganizationId = org, Type = type, Priority = 5, RunAfter = Now.AddHours(-1) },
+                new Job { OrganizationId = org, Type = type, Priority = 50, RunAfter = Now.AddHours(-1), LockKey = busyKey }, // blocked by the running job
+                new Job { OrganizationId = org, Type = type, Priority = 100, RunAfter = Now.AddDays(1) }); // not due yet
             await lease.Db.SaveChangesAsync();
         }
 
@@ -618,16 +619,17 @@ public sealed class PersistenceIntegrationTests(TestDatabaseFixture database) : 
     public async Task JobIdempotencyKey_IsUniqueWhenSet()
     {
         var key = Unique("delivery");
+        var org = (await SeedBaseAsync()).OrgId;
         using (var lease = database.NewContext())
         {
-            lease.Db.Add(new Job { Type = "application.deploy", IdempotencyKey = key });
-            lease.Db.Add(new Job { Type = "x" }); // null keys never collide
-            lease.Db.Add(new Job { Type = "y" });
+            lease.Db.Add(new Job { OrganizationId = org, Type = "application.deploy", IdempotencyKey = key });
+            lease.Db.Add(new Job { OrganizationId = org, Type = "x" }); // null keys never collide
+            lease.Db.Add(new Job { OrganizationId = org, Type = "y" });
             await lease.Db.SaveChangesAsync();
         }
 
         using var second = database.NewContext();
-        second.Db.Add(new Job { Type = "application.deploy", IdempotencyKey = key });
+        second.Db.Add(new Job { OrganizationId = org, Type = "application.deploy", IdempotencyKey = key });
         await AssertConstraintAsync(() => second.Db.SaveChangesAsync(), UniqueViolation);
     }
 

@@ -21,6 +21,9 @@ internal sealed class JobConfiguration : IEntityTypeConfiguration<Job>
         b.Property(x => x.ErrorJson).HasColumnName("error").HasColumnType("jsonb");
 
         b.HasOne<Job>().WithMany().HasForeignKey(x => x.ParentJobId).OnDelete(DeleteBehavior.SetNull);
+        // Tenancy: every visibility filter is organization_id = <actor org>; the list endpoint pages by created_at within it.
+        b.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.OrganizationId, x.CreatedAt }).HasDatabaseName("ix_jobs_organization_created_at");
 
         // ADR 0004 claim query: WHERE status = 'queued' AND run_after <= now() ... ORDER BY priority DESC, run_after, id
         // FOR UPDATE SKIP LOCKED. A partial index on the queued rows keeps it tiny and ordered.

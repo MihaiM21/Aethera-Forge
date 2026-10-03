@@ -33,7 +33,7 @@ public partial class EnvironmentVariable : MutableEntity
     /// <summary>Injected into the running container.</summary>
     public bool IsRuntime { get; set; } = true;
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$")]
+    [GeneratedRegex(@"\A[A-Za-z_][A-Za-z0-9_]*\z")]
     private static partial Regex KeyPattern();
 
     public static bool IsValidKey(string? key) => !string.IsNullOrEmpty(key) && KeyPattern().IsMatch(key);

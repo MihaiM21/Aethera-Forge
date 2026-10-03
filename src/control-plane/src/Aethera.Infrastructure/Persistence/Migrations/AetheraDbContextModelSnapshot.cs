@@ -1291,6 +1291,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("max_attempts");
 
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
                     b.Property<Guid?>("ParentJobId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_job_id");
@@ -1369,6 +1373,9 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ParentJobId")
                         .HasDatabaseName("ix_jobs_parent_job_id");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_jobs_organization_created_at");
 
                     b.HasIndex("Priority", "RunAfter", "Id")
                         .IsDescending(true, false, false)
@@ -2009,6 +2016,14 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("purpose")
+                        .HasDefaultValueSql("'user'");
+
                     b.Property<DateTimeOffset?>("RotatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("rotated_at");
@@ -2048,6 +2063,8 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
                     b.ToTable("secrets", null, t =>
                         {
+                            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated')");
+
                             t.HasCheckConstraint("ck_secrets_single_scope", "num_nonnulls(project_id, environment_id, workload_id) <= 1");
                         });
                 });
@@ -3463,6 +3480,13 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Aethera.Domain.Job", b =>
                 {
+                    b.HasOne("Aethera.Domain.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_jobs_organizations_organization_id");
+
                     b.HasOne("Aethera.Domain.Job", null)
                         .WithMany()
                         .HasForeignKey("ParentJobId")

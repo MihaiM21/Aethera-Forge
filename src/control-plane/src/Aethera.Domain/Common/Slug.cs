@@ -8,7 +8,7 @@ public static partial class Slug
 {
     public const int MaxLength = 63;
 
-    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$")]
+    [GeneratedRegex(@"\A[a-z0-9]+(-[a-z0-9]+)*\z")]
     private static partial Regex ValidPattern();
 
     public static bool IsValid(string? slug) =>

@@ -8,12 +8,28 @@
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
     <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />
+    <!-- Auth: PasswordHasher<TUser> (PBKDF2, versioned, rehash-aware) without the rest of ASP.NET Identity -->
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.12" />
+    <!-- Job system (WP1.3): hosted worker, Prometheus metrics, SignalR test client -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="prometheus-net" Version="8.2.1" />
+    <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
+    <!-- HTTP API: validation, OpenAPI document (+ build-time generation) and the Scalar reference UI -->
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />
+    <!-- Trust model (ADR 0006): inline compose content is read into a plain YAML node tree, never deserialized into types -->
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- Agent protocol (gRPC / protobuf) -->
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Core.Api" Version="2.84.0" />
     <PackageVersion Include="Grpc.Tools" Version="2.84.0" />
     <!-- Test -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
