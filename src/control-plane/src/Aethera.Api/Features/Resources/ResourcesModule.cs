@@ -3,6 +3,7 @@
 // automatically, so no registration is needed for them.
 using Aethera.Api.Features.Resources.DomainNames;
 using Aethera.Api.Features.Resources.Organizations;
+using Aethera.Api.Features.Resources.Projects;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Servers;
 using Aethera.Api.Features.Resources.Workloads;
@@ -39,6 +40,7 @@ public static class ResourcesModule
     public static IEndpointRouteBuilder MapResources(this IEndpointRouteBuilder api)
     {
         OrganizationEndpoints.Map(api);
+        ProjectEndpoints.Map(api);
         ServerEndpoints.Map(api);
         ApplicationEndpoints.Map(api);
         ServiceEndpoints.Map(api);
