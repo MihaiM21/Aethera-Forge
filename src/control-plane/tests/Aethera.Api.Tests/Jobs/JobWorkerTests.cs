@@ -11,6 +11,15 @@ public sealed class JobWorkerTests
     /// <summary>jsonb normalises whitespace; compare the compact form.</summary>
     private static string Compact(string? json) => System.Text.Json.Nodes.JsonNode.Parse(json ?? "null")?.ToJsonString() ?? "null";
 
+    /// <summary>
+    /// Advisory locks held in the test's own database. pg_locks is server-wide and test databases share one server, so
+    /// locks taken by parallel tests (or anything else on the server) must not be counted.
+    /// </summary>
+    private static Task<long> CountAdvisoryLocksAsync(JobDatabase db, bool grantedOnly = false) =>
+        db.ScalarAsync<long>("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'"
+            + (grantedOnly ? " AND granted" : "")
+            + " AND database = (SELECT oid FROM pg_database WHERE datname = current_database())");
+
     [RequiresDatabaseFact]
     public async Task Echo_RunsEndToEnd_AndLogsAreStoredInOrder()
     {
@@ -138,7 +147,7 @@ public sealed class JobWorkerTests
         foreach (var key in new[] { "app:a", "app:b", "app:c" })
             Assert.Equal(1, log.MaxConcurrentFor(key));
         Assert.True(log.MaxConcurrent > 1, "different lock keys should run in parallel");
-        Assert.Equal(0, await db.ScalarAsync<long>("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"));
+        Assert.Equal(0, await CountAdvisoryLocksAsync(db));
     }
 
     [RequiresDatabaseFact]
@@ -156,11 +165,11 @@ public sealed class JobWorkerTests
 
         var job = await host.EnqueueAsync(new JobRequest("t.hold") { LockKey = "app:hold" });
         await running.Task.WaitAsync(Long);
-        Assert.Equal(1, await db.ScalarAsync<long>("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted"));
+        Assert.Equal(1, await CountAdvisoryLocksAsync(db, grantedOnly: true));
 
         release.SetResult();
         await db.WaitForStatusAsync(job.Id, Long, JobStatus.Succeeded);
-        await Eventually.UntilAsync(async () => await db.ScalarAsync<long>("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted") == 0);
+        await Eventually.UntilAsync(async () => await CountAdvisoryLocksAsync(db, grantedOnly: true) == 0);
     }
 
     [RequiresDatabaseFact]
