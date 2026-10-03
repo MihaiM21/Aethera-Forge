@@ -69,7 +69,7 @@ ASP.NET Core sketch: `UseStaticFiles()` for rules 4 and `_next` caching, then a 
 
 ## Dev workflow
 
-- `pnpm dev` runs `next dev` on `http://localhost:3000` and proxies `/api/*` and `/hubs/*` to the API (`AETHERA_API_ORIGIN`, default `http://localhost:5080`) with Next `rewrites`, so the browser stays same-origin (cookies, CSRF, SignalR work unchanged).
+- `pnpm dev` runs `next dev` on `http://localhost:3000` and proxies `/api/*` and `/hubs/*` to the API (`AETHERA_API_ORIGIN`, default `http://localhost:5033`) with Next `rewrites`, so the browser stays same-origin (cookies, CSRF, SignalR work unchanged).
 - The rewrites are added **only when `NODE_ENV === 'development'`**; `next build` runs in production mode and emits no rewrites, so the export stays valid and builds with no warnings.
 - **`output: 'export'` is applied to production builds only.** Verified on Next 16.3: `/api/*` rewrites are tolerated with `output: 'export'` in `next dev` (with a notice), but the detail-route rewrite (`/projects/:id` -> `/projects/_`) fails with "missing param in generateStaticParams", because dev validates the *original* URL's params. So `next.config.ts` sets `output: isDev ? undefined : 'export'`. Dev therefore runs as a normal Next server (no notice, rewrites work); `pnpm build` is the check that the app is exportable, and `pnpm verify:export` checks the output.
 - The dev rewrites also mimic rule 6 for the routes listed in `DETAIL_ROOTS` in `next.config.ts` (`/projects/:id` -> `/projects/_`). **Add a new detail root there when adding one.**
@@ -100,4 +100,3 @@ The API serves the export (`Aethera.Api/Web`: `ExportRouter`, `StaticWebMiddlewa
 - **Status codes**: `400 request.malformed` for `\`, NUL, `.`/`..` segments and malformed percent-encoding (decoded once, strictly, like `decodeURIComponent`); `308` for a trailing slash (query kept); `404` with `404.html` only for HTML requests of path-like URLs, else a plain-text `404`; other methods on a static path are `405 request.method_not_allowed` with `Allow: GET, HEAD`; other methods on an unknown path fall through to the API's own `404`.
 - **Caching**: `_next/static/**` is `public, max-age=31536000, immutable`; everything else `no-cache` with `ETag`/`Last-Modified` and `304` on `If-None-Match`. Text responses are compressed when the client accepts it.
 - **Hub origin**: the UI connects to `/hubs/*` from its own origin, which is what the API's hub Origin rule requires (ADR 0003, WP1.5 notes).
-

@@ -26,7 +26,7 @@ docker compose -f deploy/docker-compose.dev.yml up -d
 # Control plane
 cd src/control-plane
 dotnet build && dotnet test
-dotnet run --project src/Aethera.Api     # GET /health
+dotnet run --project src/Aethera.Api     # GET http://localhost:5033/health
 
 # Agent
 cd src/agent

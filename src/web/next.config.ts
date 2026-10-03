@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
-const apiOrigin = process.env.AETHERA_API_ORIGIN ?? "http://localhost:5080";
+const apiOrigin = process.env.AETHERA_API_ORIGIN ?? "http://localhost:5033";
 
 /**
  * Routes that have a `[id]` detail page, exported once as `<root>/_.html`.
