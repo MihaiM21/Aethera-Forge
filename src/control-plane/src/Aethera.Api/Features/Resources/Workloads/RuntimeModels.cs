@@ -13,6 +13,12 @@ public sealed record PortRequest
     public string? Protocol { get; init; }
     public int? PublishedPort { get; init; }
     public bool? IsHttp { get; init; }
+
+    /// <summary>
+    /// Administrators only: publish a host port that Aethera itself uses (22, 80, 443, 2375, 2376, 5080, 9443 by default) anyway. Not stored;
+    /// repeat it whenever the port is (re)sent. See ADR 0006.
+    /// </summary>
+    public bool? AllowReserved { get; init; }
 }
 
 public sealed record ResourceLimitsRequest

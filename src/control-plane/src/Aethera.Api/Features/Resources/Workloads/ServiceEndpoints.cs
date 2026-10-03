@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Services;
+using Aethera.Api.Features.Resources.Trust;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -145,9 +146,11 @@ internal static class ServiceEndpoints
 
     private static async Task<Created<ServiceResponse>> Create(
         CreateServiceRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, SecretVault vault,
-        CancellationToken ct)
+        TrustPolicy trust, CancellationToken ct)
     {
         var org = actor.Org();
+        CheckConfig(actor, trust, request.Config, null);
+        TrustChecks.CheckPorts(actor, trust, request.Runtime?.Ports);
         var references = new ReferenceCheck();
         var environment = references.Check(await db.FindEnvironmentAsync(org, request.EnvironmentId, ct), "/environmentId", "environment")!;
         var server = references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server")!;
@@ -178,12 +181,14 @@ internal static class ServiceEndpoints
 
     private static async Task<Ok<ServiceResponse>> Update(
         Guid id, PatchRequest<UpdateServiceRequest> patch, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit,
-        CancellationToken ct)
+        TrustPolicy trust, CancellationToken ct)
     {
         var org = actor.Org();
         var service = await FindAsync(db, org, id, tracking: true, ct);
         http.CheckIfMatch(service.RowVersion);
         var body = patch.Body;
+        if (patch.Get("config") is JsonObject configChange) CheckConfig(actor, trust, configChange, JsonNode.Parse(service.ConfigJson) as JsonObject);
+        if (patch.Has("runtime.ports")) TrustChecks.CheckPorts(actor, trust, body.Runtime?.Ports, service.Ports);
 
         var changed = new List<string>();
         if (patch.Has("name") && body.Name is { } name) { service.Name = name.Trim(); changed.Add("name"); }
@@ -234,6 +239,17 @@ internal static class ServiceEndpoints
         WorkloadSupport.SoftDeleteDomains(db, await db.Domains.Where(d => d.WorkloadId == id).ToListAsync(ct), now);
         await audit.RecordAsync("service.deleted", "service", id, new { slug = service.Slug, template = service.TemplateKey }, ct);
         return TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// A service has no compose file today, but its <c>config</c> is stored as given. If it carries inline compose content under the reserved key
+    /// <c>compose</c>, that content passes the same trust checks as an application's (ADR 0006).
+    /// </summary>
+    private static void CheckConfig(ICurrentActor actor, TrustPolicy trust, JsonObject? config, JsonObject? stored)
+    {
+        if (config?["compose"] is not JsonValue value || !value.TryGetValue<string>(out var content)) return;
+        var current = stored?["compose"] is JsonValue old && old.TryGetValue<string>(out var oldContent) ? oldContent : null;
+        TrustChecks.CheckCompose(actor, trust, content, "/config/compose", current);
     }
 
     private static async Task<Service> FindAsync(AetheraDbContext db, Guid org, Guid id, bool tracking, CancellationToken ct)

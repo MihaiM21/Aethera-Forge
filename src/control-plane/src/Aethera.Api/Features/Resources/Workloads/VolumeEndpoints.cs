@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Aethera.Api.Features.Resources.Trust;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -21,7 +22,11 @@ public sealed record CreateVolumeRequest
     /// <summary>Absolute path inside the container; not <c>/</c>.</summary>
     public string? MountPath { get; init; }
 
-    /// <summary>Absolute host path for a bind mount; absent for a named Docker volume.</summary>
+    /// <summary>
+    /// Absolute host path for a bind mount; absent for a named Docker volume. Administrators only (403 <c>volume.host_path_requires_admin</c>), and
+    /// never <c>/</c>, <c>/etc</c>, <c>/var/run</c> (the Docker socket), <c>/proc</c>, <c>/sys</c>, <c>/dev</c>, <c>/boot</c>, <c>/root</c>, <c>/run</c> or
+    /// <c>/var/lib/aethera</c> (422 <c>volume.host_path_forbidden</c>) unless below an allowlisted prefix. See ADR 0006.
+    /// </summary>
     public string? HostPath { get; init; }
 
     public bool? ReadOnly { get; init; }
@@ -67,6 +72,11 @@ public static partial class VolumeRules
     public static IRuleBuilderOptions<T, string?> MustBeAbsolutePath<T>(this IRuleBuilder<T, string?> rule) =>
         rule.Must(p => TryNormalizePath(p, out _)).WithErrorCode("pattern")
             .WithMessage("Must be an absolute path other than '/', without '..', spaces, ':' or ','.");
+
+    /// <summary>A syntactically valid host path (<c>/</c> passes here and is refused by the host-path policy with its own code).</summary>
+    public static IRuleBuilderOptions<T, string?> MustBeHostPath<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.Must(p => TrustPolicy.TryNormalizeHostPath(p, out _)).WithErrorCode("pattern")
+            .WithMessage("Must be an absolute path without '..', spaces, ':' or ','.");
 }
 
 public sealed class CreateVolumeValidator : AbstractValidator<CreateVolumeRequest>
@@ -75,7 +85,7 @@ public sealed class CreateVolumeValidator : AbstractValidator<CreateVolumeReques
     {
         RuleFor(x => x.MountPath).NotEmpty();
         RuleFor(x => x.MountPath).MustBeAbsolutePath().When(x => !string.IsNullOrEmpty(x.MountPath));
-        RuleFor(x => x.HostPath).MustBeAbsolutePath().When(x => x.HostPath is not null);
+        RuleFor(x => x.HostPath).MustBeHostPath().When(x => x.HostPath is not null);
         RuleFor(x => x.Name).Must(VolumeRules.IsValidName).WithErrorCode("pattern")
             .WithMessage("Must start with a letter or digit and contain only letters, digits, '_', '.' and '-' (at most 255 characters).")
             .When(x => x.Name is not null);
@@ -87,7 +97,7 @@ public sealed class UpdateVolumeValidator : AbstractValidator<UpdateVolumeReques
     public UpdateVolumeValidator()
     {
         RuleFor(x => x.MountPath).MustBeAbsolutePath().When(x => x.MountPath is not null);
-        RuleFor(x => x.HostPath).MustBeAbsolutePath().When(x => x.HostPath is not null);
+        RuleFor(x => x.HostPath).MustBeHostPath().When(x => x.HostPath is not null);
         RuleFor(x => x.Name).Must(VolumeRules.IsValidName).WithErrorCode("pattern")
             .WithMessage("Must start with a letter or digit and contain only letters, digits, '_', '.' and '-' (at most 255 characters).")
             .When(x => x.Name is not null);
@@ -104,8 +114,8 @@ internal static class VolumeEndpoints
         var group = api.MapGroup("/volumes").WithTags("Volumes");
 
         group.MapGet("/", List).WithName("listVolumes").RequireRead();
-        group.MapPost("/", (CreateVolumeRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, CancellationToken ct) =>
-                Create(request, request.WorkloadId, http, db, actor, audit, ct))
+        group.MapPost("/", (CreateVolumeRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
+                CancellationToken ct) => Create(request, request.WorkloadId, http, db, actor, audit, trust, ct))
             .WithName("createVolume").Validate<CreateVolumeRequest>().RequireWrite();
         group.MapGet("/{id:guid}", Get).WithName("getVolume").RequireRead();
         group.MapPatch("/{id:guid}", Update).WithName("updateVolume")
@@ -122,13 +132,13 @@ internal static class VolumeEndpoints
                     ListForWorkload(isApplication, workloadId, http, db, actor, cursors, page, sort, q, ct))
                 .WithName($"list{singular}Volumes").RequireRead();
             nested.MapPost("/", async (Guid workloadId, CreateVolumeRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor,
-                    IAuditLog audit, CancellationToken ct) =>
+                    IAuditLog audit, TrustPolicy trust, CancellationToken ct) =>
                 {
                     await WorkloadSupport.RequireWorkloadRouteAsync(db, actor.Org(), isApplication, workloadId, ct);
                     if (request.WorkloadId is { } given && given != workloadId)
                         throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/workloadId", "mismatch",
                             "Does not match the application or service in the URL.")]));
-                    return await Create(request, workloadId, http, db, actor, audit, ct);
+                    return await Create(request, workloadId, http, db, actor, audit, trust, ct);
                 })
                 .WithName($"create{singular}Volume").Validate<CreateVolumeRequest>().RequireWrite();
         }
@@ -161,9 +171,12 @@ internal static class VolumeEndpoints
     }
 
     private static async Task<Created<VolumeResponse>> Create(
-        CreateVolumeRequest request, Guid? workloadId, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, CancellationToken ct)
+        CreateVolumeRequest request, Guid? workloadId, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
+        CancellationToken ct)
     {
         var org = actor.Org();
+        var hostPath = request.HostPath is null ? null : NormalizeHostPath(request.HostPath);
+        if (hostPath is not null) TrustChecks.CheckHostPath(actor, trust, hostPath, "/hostPath");
         var workload = await db.RequireWorkloadAsync(org, workloadId, "/workloadId", ct);
         VolumeRules.TryNormalizePath(request.MountPath, out var mountPath);
         var name = request.Name ?? VolumeRules.NameFromPath(mountPath);
@@ -173,11 +186,11 @@ internal static class VolumeEndpoints
         var volume = new Volume
         {
             WorkloadId = workload.Id, Name = name, MountPath = mountPath,
-            HostPath = request.HostPath is null ? null : Normalize(request.HostPath),
+            HostPath = hostPath,
             ReadOnly = request.ReadOnly ?? false, BackupEnabled = request.BackupEnabled ?? false,
         };
         db.Volumes.Add(volume);
-        await audit.RecordAsync("volume.created", "volume", volume.Id, new { workloadId = workload.Id, name, mountPath }, ct);
+        await audit.RecordAsync("volume.created", "volume", volume.Id, new { workloadId = workload.Id, name, mountPath, hostPath }, ct);
         http.SetETag(volume.RowVersion);
         return TypedResults.Created(ResourceHttp.Path("volumes", volume.Id), ToResponse(volume));
     }
@@ -190,7 +203,8 @@ internal static class VolumeEndpoints
     }
 
     private static async Task<Ok<VolumeResponse>> Update(
-        Guid id, PatchRequest<UpdateVolumeRequest> patch, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, CancellationToken ct)
+        Guid id, PatchRequest<UpdateVolumeRequest> patch, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
+        CancellationToken ct)
     {
         var volume = await FindAsync(db, actor.Org(), id, tracking: true, ct);
         http.CheckIfMatch(volume.RowVersion);
@@ -213,7 +227,15 @@ internal static class VolumeEndpoints
             volume.MountPath = mountPath;
         }
 
-        if (patch.Has("hostPath")) { volume.HostPath = body.HostPath is null ? null : Normalize(body.HostPath); changed.Add("hostPath"); }
+        if (patch.Has("hostPath"))
+        {
+            // Dropping a host path (back to a named volume) is always allowed; setting a different one is root-equivalent (ADR 0006).
+            var hostPath = body.HostPath is null ? null : NormalizeHostPath(body.HostPath);
+            if (hostPath is not null && hostPath != volume.HostPath) TrustChecks.CheckHostPath(actor, trust, hostPath, "/hostPath");
+            volume.HostPath = hostPath;
+            changed.Add("hostPath");
+        }
+
         if (patch.Has("readOnly") && body.ReadOnly is { } readOnly) { volume.ReadOnly = readOnly; changed.Add("readOnly"); }
         if (patch.Has("backupEnabled") && body.BackupEnabled is { } backup) { volume.BackupEnabled = backup; changed.Add("backupEnabled"); }
 
@@ -233,9 +255,9 @@ internal static class VolumeEndpoints
         return TypedResults.NoContent();
     }
 
-    private static string Normalize(string path)
+    private static string NormalizeHostPath(string path)
     {
-        VolumeRules.TryNormalizePath(path, out var normalized);
+        TrustPolicy.TryNormalizeHostPath(path, out var normalized);
         return normalized;
     }
 

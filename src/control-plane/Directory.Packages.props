@@ -21,6 +21,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.12" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />
+    <!-- Trust model (ADR 0006): inline compose content is read into a plain YAML node tree, never deserialized into types -->
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <!-- Agent protocol (gRPC / protobuf) -->
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Core.Api" Version="2.84.0" />

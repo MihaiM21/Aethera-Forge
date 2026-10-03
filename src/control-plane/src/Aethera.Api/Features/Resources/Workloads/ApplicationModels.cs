@@ -113,20 +113,20 @@ public sealed record ApplicationSummary(
 
 public static partial class ApplicationRules
 {
-    [GeneratedRegex(@"^(https?://|ssh://|git://)[^\s]+$|^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$")]
-    private static partial Regex RepositoryUrlPattern();
-
-    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$")]
+    [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._\-/:@]*\z")]
     private static partial Regex ImagePattern();
 
-    [GeneratedRegex(@"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}$")]
+    [GeneratedRegex(@"\A[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}\z")]
     private static partial Regex TagPattern();
 
-    [GeneratedRegex(@"^[0-9a-fA-F]{7,64}$")]
+    [GeneratedRegex(@"\A[0-9a-fA-F]{7,64}\z")]
     private static partial Regex CommitPattern();
 
-    [GeneratedRegex(@"^[a-z0-9]+/[a-z0-9]+(/[a-z0-9]+)?$")]
+    [GeneratedRegex(@"\A[a-z0-9]+/[a-z0-9]+(/[a-z0-9]+)?\z")]
     private static partial Regex PlatformPattern();
+
+    public const string RelativePathMessage =
+        "Must be a path inside the repository: relative, with '/' separators, no '..' segment, no leading '/', '~' or '-', no backslash.";
 
     public static readonly string[] BuildEngineNames = [BuildEngines.Dockerfile, BuildEngines.Nixpacks, BuildEngines.Static];
 
@@ -146,7 +146,7 @@ public static partial class ApplicationRules
         _ => null,
     };
 
-    public static bool IsRepositoryUrl(string value) => RepositoryUrlPattern().IsMatch(value);
+    public static bool IsRepositoryUrl(string value) => BuildInputRules.IsSafeRepositoryUrl(value);
     public static bool IsImage(string value) => ImagePattern().IsMatch(value);
     public static bool IsTag(string value) => TagPattern().IsMatch(value);
     public static bool IsCommit(string value) => CommitPattern().IsMatch(value);
@@ -161,10 +161,10 @@ public abstract class GitSourceValidator : AbstractValidator<GitSourceRequest>
         var url = RuleFor(x => x.RepositoryUrl);
         if (create) url.NotEmpty();
         url.MaximumLength(1000).Must(u => u is null || ApplicationRules.IsRepositoryUrl(u)).WithErrorCode("pattern")
-            .WithMessage("Must be an http(s), ssh or git URL, or an scp-style address such as git@host:org/repo.git.");
+            .WithMessage("Must be an http(s), ssh or git URL, or an scp-style address such as git@host:org/repo.git (no file://, ext:: or '-' at the start of a user or host).");
         RuleFor(x => x.Provider).MustBeEnum<GitSourceRequest, GitProvider>();
-        RuleFor(x => x.Branch).MaximumLength(255).Must(b => b is null || (b.Length > 0 && !b.Any(char.IsWhiteSpace))).WithErrorCode("pattern")
-            .WithMessage("Must not contain whitespace.");
+        RuleFor(x => x.Branch).MaximumLength(255).Must(b => b is null || BuildInputRules.IsSafeGitRef(b)).WithErrorCode("pattern")
+            .WithMessage("Must be a valid git ref: it cannot start with '-', contain whitespace, control characters or any of ~ ^ : ? * [ \\, '..' or '@{'.");
         RuleFor(x => x.CommitPin).Must(c => c is null || ApplicationRules.IsCommit(c)).WithErrorCode("pattern")
             .WithMessage("Must be a hexadecimal commit id (7-64 characters).");
     }
@@ -193,26 +193,30 @@ public sealed class ImageSourceUpdateValidator() : ImageSourceValidator(create: 
 
 public sealed class ComposeSourceValidator : AbstractValidator<ComposeSourceRequest>
 {
+    private const string RelativePathMessage = ApplicationRules.RelativePathMessage;
+
     public ComposeSourceValidator()
     {
-        RuleFor(x => x.FilePath).MaximumLength(500);
-        RuleFor(x => x.InlineContent).MaximumLength(512 * 1024);
+        RuleFor(x => x.FilePath).MaximumLength(500).Must(BuildInputRules.IsSafeRelativePath).WithErrorCode("pattern").WithMessage(RelativePathMessage);
+        RuleFor(x => x.InlineContent).MaximumLength(Trust.ComposeInspector.MaxChars);
     }
 }
 
 public sealed class BuildConfigValidator : AbstractValidator<BuildConfigRequest>
 {
+    private const string RelativePathMessage = ApplicationRules.RelativePathMessage;
+
     public BuildConfigValidator()
     {
         RuleFor(x => x.Engine).Must(e => e is null || ApplicationRules.BuildEngineNames.Contains(e)).WithErrorCode("invalid_enum")
             .WithMessage($"Must be one of: {string.Join(", ", ApplicationRules.BuildEngineNames)}.");
-        RuleFor(x => x.Context).MaximumLength(500);
-        RuleFor(x => x.DockerfilePath).MaximumLength(500);
+        RuleFor(x => x.Context).MaximumLength(500).Must(BuildInputRules.IsSafeRelativePath).WithErrorCode("pattern").WithMessage(RelativePathMessage);
+        RuleFor(x => x.DockerfilePath).MaximumLength(500).Must(BuildInputRules.IsSafeRelativePath).WithErrorCode("pattern").WithMessage(RelativePathMessage);
         RuleFor(x => x.DockerfileInline).MaximumLength(64 * 1024);
         RuleFor(x => x.InstallCommand).MaximumLength(2000);
         RuleFor(x => x.BuildCommand).MaximumLength(2000);
         RuleFor(x => x.StartCommand).MaximumLength(2000);
-        RuleFor(x => x.OutputDirectory).MaximumLength(500);
+        RuleFor(x => x.OutputDirectory).MaximumLength(500).Must(BuildInputRules.IsSafeRelativePath).WithErrorCode("pattern").WithMessage(RelativePathMessage);
         RuleFor(x => x.TargetPlatform).Must(p => p is null || ApplicationRules.IsPlatform(p)).WithErrorCode("pattern")
             .WithMessage("Must look like linux/amd64 or linux/arm64.");
         RuleFor(x => x.BuildArgs).Must(a => a is null || a.Count <= 100).WithErrorCode("too_long").WithMessage("At most 100 build arguments.")

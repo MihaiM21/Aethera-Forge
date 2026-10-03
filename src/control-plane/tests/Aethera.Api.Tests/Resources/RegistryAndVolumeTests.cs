@@ -197,7 +197,8 @@ public sealed class VolumeTests(ResourcesFixture fixture)
         Assert.Null(volume["hostPath"]);
         Assert.Equal(appId, volume["workloadId"]!.GetValue<string>());
 
-        var nested = await tenant.Developer.CreateAsync($"/api/v1/applications/{appId}/volumes", new { name = "cache", mountPath = "/cache", readOnly = true, hostPath = "/srv/cache" });
+        // A host path is root-equivalent on the server: Admin only since WP1.6 (the Developer case is in TrustModelTests).
+        var nested = await tenant.Admin.CreateAsync($"/api/v1/applications/{appId}/volumes", new { name = "cache", mountPath = "/cache", readOnly = true, hostPath = "/srv/cache" });
         Assert.Equal("/srv/cache", nested["hostPath"]!.GetValue<string>());
 
         var listing = await tenant.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/volumes");

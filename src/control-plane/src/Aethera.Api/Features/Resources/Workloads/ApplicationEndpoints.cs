@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Aethera.Api.Features.Resources.Trust;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -52,9 +53,12 @@ internal static class ApplicationEndpoints
     }
 
     private static async Task<Created<ApplicationResponse>> Create(
-        CreateApplicationRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, CancellationToken ct)
+        CreateApplicationRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
+        CancellationToken ct)
     {
         var org = actor.Org();
+        TrustChecks.CheckCompose(actor, trust, request.Compose?.InlineContent, "/compose/inlineContent");
+        TrustChecks.CheckPorts(actor, trust, request.Runtime?.Ports);
         var references = new ReferenceCheck();
         var environment = references.Check(await db.FindEnvironmentAsync(org, request.EnvironmentId, ct), "/environmentId", "environment");
         var server = references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server");
@@ -89,12 +93,17 @@ internal static class ApplicationEndpoints
 
     private static async Task<Ok<ApplicationResponse>> Update(
         Guid id, PatchRequest<UpdateApplicationRequest> patch, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit,
-        CancellationToken ct)
+        TrustPolicy trust, CancellationToken ct)
     {
         var org = actor.Org();
         var app = await FindAsync(db, org, id, tracking: true, ct);
         http.CheckIfMatch(app.RowVersion);
         var body = patch.Body;
+
+        // Root-equivalent settings need an Administrator (ADR 0006); values the request leaves as they are are not checked again.
+        if (patch.Has("compose.inlineContent"))
+            TrustChecks.CheckCompose(actor, trust, body.Compose?.InlineContent, "/compose/inlineContent", app.ComposeSource?.InlineContent);
+        if (patch.Has("runtime.ports")) TrustChecks.CheckPorts(actor, trust, body.Runtime?.Ports, app.Ports);
 
         var changed = new List<string>();
         if (patch.Has("name") && body.Name is { } name) { app.Name = name.Trim(); changed.Add("name"); }

@@ -6,11 +6,13 @@ using Aethera.Api.Features.Resources.Organizations;
 using Aethera.Api.Features.Resources.Projects;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Servers;
+using Aethera.Api.Features.Resources.Trust;
 using Aethera.Api.Features.Resources.Workloads;
 using Aethera.Domain;
 using Aethera.Infrastructure;
 using Aethera.Infrastructure.Crypto;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Aethera.Api.Features.Resources;
 
@@ -31,6 +33,11 @@ public static class ResourcesModule
         });
         services.TryAddSingleton<ISecretProtector>(sp => new AesGcmSecretProtector(sp.GetRequiredService<MasterKeyring>()));
         services.AddHostedService<SecretProtectorStartupCheck>();
+
+        // Trust model (ADR 0006): host-path allowlist and reserved ports are configurable (Aethera:Trust). A bad allowlist stops the start-up.
+        services.AddOptions<TrustOptions>().Configure<IConfiguration>((options, root) => root.GetSection(TrustOptions.SectionName).Bind(options));
+        services.TryAddSingleton(sp => new TrustPolicy(sp.GetRequiredService<IOptions<TrustOptions>>().Value));
+        services.AddHostedService<TrustPolicyStartupCheck>();
 
         services.TryAddScoped<SecretVault>();
         services.TryAddSingleton<IDnsResolver, SystemDnsResolver>();
@@ -65,6 +72,18 @@ internal sealed class SecretProtectorStartupCheck(IServiceProvider services) : I
         if (AetheraHost.IsOpenApiGeneration) return Task.CompletedTask;
 
         _ = services.GetRequiredService<ISecretProtector>();
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>Builds the trust policy when the host starts, so an invalid <c>Aethera:Trust</c> setting is a clear start-up failure.</summary>
+internal sealed class TrustPolicyStartupCheck(IServiceProvider services) : IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _ = services.GetRequiredService<TrustPolicy>();
         return Task.CompletedTask;
     }
 
