@@ -343,6 +343,13 @@
   .ae-boot-line {
     animation: none !important;
   }
+
+  /* Boot lines start at opacity 0 and only the animation fades them in. With the
+     animation off they would stay invisible, so show them at once. (!important:
+     section 5.8 sets `opacity: 0` further down, and would win on source order.) */
+  .ae-boot-line {
+    opacity: 1 !important;
+  }
 }
 
 /* =========================================================================
@@ -408,7 +415,9 @@
 /* 5.4 Terminal-window card (3 dots + `aethera://...` title + index) --------------- */
 .ae-terminal {
   position: relative;
-  background: var(--ae-terminal-bg);
+  /* No background here: this element sits BELOW its z-index:-1 offset plate (::before)
+     in the isolated stacking context, so a background on it would be painted over by the
+     plate. The bar and body paint the card instead. */
   border: var(--ae-border-width) solid var(--border);
   font-family: var(--font-mono);
   font-size: var(--ae-text-xs);
@@ -424,6 +433,7 @@
   z-index: -1;
 }
 .ae-terminal__bar {
+  background: var(--ae-terminal-bg);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -449,6 +459,7 @@
   justify-self: end;
 }
 .ae-terminal__body {
+  background: var(--ae-terminal-bg);
   padding: var(--ae-space-5) var(--ae-space-4);
   line-height: 2;
 }
