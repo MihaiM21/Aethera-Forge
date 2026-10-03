@@ -6,6 +6,7 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP0.1 Toolchain & skeleton
 - [x] WP0.2a Contracts: agent `.proto`, ADRs 0002-0004, design tokens
 - [x] WP0.2b Domain model + initial EF migration (`src/control-plane/docs/schema.md`)
+- [x] WP0.3 Protocol code generation (Go via buf, C# via Grpc.Tools, CI `proto` job)
 
 ## Phase 1 — Control plane core + UI shell
 - [ ] WP1.1 Auth & access
