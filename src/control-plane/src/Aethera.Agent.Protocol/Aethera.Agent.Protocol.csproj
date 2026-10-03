@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Agent protocol (control plane <-> Go agent). The .proto files under /proto are the
+    contract and are compiled here by Grpc.Tools at build time; generated C# is not
+    committed. Server base classes and client stubs are generated (GrpcServices="Both"):
+    they only need Grpc.Core.Api, so hosting (Grpc.AspNetCore) and the client transport
+    (Grpc.Net.Client) are referenced by the projects that use them.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Core.Api" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="../../../../proto/aethera/agent/v1/*.proto" ProtoRoot="../../../../proto" GrpcServices="Both" />
+  </ItemGroup>
+
+</Project>
