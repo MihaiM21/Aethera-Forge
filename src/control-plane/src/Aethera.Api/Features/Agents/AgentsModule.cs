@@ -43,7 +43,7 @@ public static class AgentsModule
         app.Use(async (context, next) =>
         {
             var local = context.Connection.LocalPort;
-            var isAgentCall = context.Request.Path.StartsWithSegments("/aethera.agent.v1");
+            var isAgentCall = context.Request.Path.Value?.StartsWith("/aethera.agent.v1.", StringComparison.Ordinal) == true; // /aethera.agent.v1.AgentService/Connect
             if (local > 0 && ((local == port) != isAgentCall))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;

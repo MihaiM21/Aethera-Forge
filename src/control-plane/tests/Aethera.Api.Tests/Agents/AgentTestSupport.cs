@@ -201,10 +201,13 @@ public sealed class FakeAgent : IAsyncDisposable
 
     public Welcome? Welcome { get; private set; }
 
-    public static FakeAgent Start(GatewayFixture fixture, Guid serverId, Action<Hello>? configureHello = null, bool heartbeats = true, string? serial = null, bool sendHello = true, DateTimeOffset? certNotAfter = null)
+    public static FakeAgent Start(GatewayFixture fixture, Guid serverId, Action<Hello>? configureHello = null, bool heartbeats = true, string? serial = null, bool sendHello = true, DateTimeOffset? certNotAfter = null) =>
+        Start(fixture.Services, serverId, configureHello, heartbeats, serial, sendHello, certNotAfter);
+
+    public static FakeAgent Start(IServiceProvider services, Guid serverId, Action<Hello>? configureHello = null, bool heartbeats = true, string? serial = null, bool sendHello = true, DateTimeOffset? certNotAfter = null)
     {
         var agent = new FakeAgent(serverId, serial ?? Guid.NewGuid().ToString("N").ToUpperInvariant(), certNotAfter);
-        var handler = fixture.Get<AgentSessionHandler>();
+        var handler = services.GetRequiredService<AgentSessionHandler>();
         agent.Run = Task.Run(() => handler.RunAsync(agent.Identity, new ChannelStreamReader<AgentMessage>(agent._toServer.Reader), new ChannelStreamWriter<ControlMessage>(agent._fromServer.Writer), agent._stop.Token));
         if (sendHello)
         {
