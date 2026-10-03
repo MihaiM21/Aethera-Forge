@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http.Json;
 
 namespace Aethera.Api.Http;
 
-/// <summary>JSON conventions of ADR 0003: camelCase, camelCase enum strings, nulls kept, RFC 3339 UTC timestamps with a <c>Z</c>.</summary>
+/// <summary>JSON conventions of ADR 0003: camelCase properties (dictionary keys verbatim), camelCase enum strings, nulls kept, RFC 3339 UTC timestamps with a <c>Z</c>.</summary>
 public static class JsonConventions
 {
     public static IServiceCollection AddAetheraJson(this IServiceCollection services) =>
@@ -14,7 +14,7 @@ public static class JsonConventions
     public static void Configure(JsonSerializerOptions options)
     {
         options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+        options.DictionaryKeyPolicy = null; // keys are data (NODE_ENV, X-Custom): kept verbatim, never camel-cased
         options.DefaultIgnoreCondition = JsonIgnoreCondition.Never; // declared properties are always present; "no value" is null
         options.PropertyNameCaseInsensitive = true;
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));

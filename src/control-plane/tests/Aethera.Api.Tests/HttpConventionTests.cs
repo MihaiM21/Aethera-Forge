@@ -95,6 +95,26 @@ public sealed class JsonConventionTests(TestApiFixture fixture)
     }
 
     [Fact]
+    public async Task DictionaryKeys_AreKeptVerbatim_PropertyNamesAreStillCamelCase()
+    {
+        var response = await fixture.Factory.CreateClientAs(OrganizationRole.Viewer).GetAsync("/api/v1/_test/json-dictionary");
+        var text = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal("{\"variables\":{\"NODE_ENV\":\"production\",\"X-Custom\":\"1\",\"PascalCase\":\"p\",\"camelCase\":\"c\"}}", text);
+    }
+
+    [Fact]
+    public void DictionaryKeys_AreKeptVerbatim_InTheSharedOptions_AlsoWhenReading()
+    {
+        var options = JsonConventions.CreateOptions();
+        var written = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, int> { ["NODE_ENV"] = 1, ["Port"] = 2 }, options);
+        Assert.Equal("{\"NODE_ENV\":1,\"Port\":2}", written);
+
+        var read = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(written, options)!;
+        Assert.Equal(["NODE_ENV", "Port"], read.Keys);
+    }
+
+    [Fact]
     public void Converter_ReadsOffsets_AndNormalisesToUtc()
     {
         var options = JsonConventions.CreateOptions();

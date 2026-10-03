@@ -29,6 +29,8 @@ public sealed class CreateThingValidator : AbstractValidator<CreateThing>
 
 public sealed record JsonSample(ThingStatus Status, string? Note, DateTimeOffset CreatedAt, DateTime Local, Guid Id);
 
+public sealed record DictionarySample(Dictionary<string, string> Variables);
+
 public sealed record WhoAmI(bool IsAuthenticated, Guid? UserId, Guid? ApiTokenId, Guid? OrganizationId, string? Role, string[] Scopes, string RequestId);
 
 /// <summary>Throw-away endpoints under /api/v1/_test that exercise the shared plumbing. Each is named, as required of real endpoints.</summary>
@@ -83,6 +85,9 @@ public static class TestApi
                 new DateTimeOffset(2026, 10, 3, 16, 7, 31, 482, TimeSpan.FromHours(2)),
                 new DateTime(2026, 10, 3, 14, 7, 31, 482, DateTimeKind.Utc), Guid.Parse("0190f3c2-7b1e-7c3a-9f4d-2a6b8e1d4c55")))
             .WithName("testJson");
+        t.MapGet("/json-dictionary", () => new DictionarySample(
+                new Dictionary<string, string> { ["NODE_ENV"] = "production", ["X-Custom"] = "1", ["PascalCase"] = "p", ["camelCase"] = "c" }))
+            .WithName("testJsonDictionary");
         t.MapGet("/page", (KeysetCursor cursor, [AsParameters] PageRequest page, string? sort) =>
             {
                 var request = page.Validated();
