@@ -161,7 +161,7 @@ public sealed partial class JobObservabilityTests(JobsApiFixture fixture) : ICla
     }
 
     [RequiresDatabaseFact]
-    public async Task Ready_ReportsRedisAsOk_WhenItIsNotConfigured_AndTheWarningIsLogged()
+    public async Task Ready_ReportsRedisAsSkipped_WhenItIsNotConfigured_AndStaysReady()
     {
         var logs = new CapturingLoggerProvider();
         using var factory = JobsApiFixture.Configure(fixture.Factory, b => b.ConfigureLogging(l => l.AddProvider(logs)));
@@ -171,7 +171,9 @@ public sealed partial class JobObservabilityTests(JobsApiFixture fixture) : ICla
         var body = await response.ReadJsonAsync();
         Assert.Equal("ready", body.Str("status"));
         Assert.Equal("ok", body["checks"]!.Str("database"));
-        Assert.Equal("ok", body["checks"]!.Str("redis"));
+        Assert.Equal("skipped", body["checks"]!.Str("redis"));
+        Assert.Contains("not configured", body["details"]!.Str("redis"));
+        Assert.Null(body["details"]!["database"]);
         Assert.Contains(logs.Entries, e => e.Level == LogLevel.Warning && e.Category == "Aethera.Jobs" && e.Message.Contains("Redis is not configured"));
     }
 

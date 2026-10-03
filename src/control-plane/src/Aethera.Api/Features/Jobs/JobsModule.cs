@@ -81,13 +81,18 @@ public static class JobsModule
     }
 }
 
-/// <summary><c>redis</c> in <c>GET /ready</c>. Not configured counts as ready: the in-process fan-out needs nothing.</summary>
+/// <summary>
+/// <c>redis</c> in <c>GET /ready</c>. <b>Skipped</b> when Redis is not configured (the in-process fan-out needs nothing), otherwise
+/// <c>ok</c> / <c>unavailable</c> by a ping.
+/// </summary>
 internal sealed class RedisReadinessCheck : IReadinessCheck
 {
     public string Name => "redis";
 
-    public async Task<bool> IsReadyAsync(IServiceProvider services, CancellationToken cancellationToken) =>
-        services.GetRequiredService<ILiveBus>() is not RedisLiveBus redis || await redis.PingAsync(cancellationToken);
+    public async Task<ReadinessResult> CheckAsync(IServiceProvider services, CancellationToken cancellationToken) =>
+        services.GetRequiredService<ILiveBus>() is not RedisLiveBus redis
+            ? ReadinessResult.Skipped("Redis is not configured; live updates stay inside this process.")
+            : ReadinessResult.FromBoolean(await redis.PingAsync(cancellationToken));
 }
 
 /// <summary>Adds the Prometheus HTTP request middleware (request count, duration, in progress) first in the pipeline.</summary>
