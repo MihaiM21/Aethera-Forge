@@ -9,6 +9,9 @@ using Microsoft.Extensions.Options;
 namespace Aethera.Infrastructure.Agents.Monitoring;
 
 /// <summary>What one retention pass did.</summary>
+/// <param name="RolledUpRaw">Rows written at 5-minute resolution (the raw rows they replace are deleted).</param>
+/// <param name="RolledUpFiveMinute">Rows written at hourly resolution.</param>
+/// <param name="DeletedHourly">Hourly rows past their retention that were deleted.</param>
 public sealed record RetentionResult(long RolledUpRaw, long RolledUpFiveMinute, long DeletedHourly, bool Skipped);
 
 /// <summary>
@@ -35,7 +38,7 @@ public sealed class MetricsRetentionService(IServiceScopeFactory scopes, IClock 
             {
                 var result = await RunOnceAsync(clock.UtcNow, stoppingToken);
                 if (!result.Skipped && (result.RolledUpRaw > 0 || result.RolledUpFiveMinute > 0 || result.DeletedHourly > 0))
-                    logger.LogInformation("Metrics retention: {Raw} raw and {Five} five-minute rows rolled up, {Hourly} hourly rows deleted", result.RolledUpRaw, result.RolledUpFiveMinute, result.DeletedHourly);
+                    logger.LogInformation("Metrics retention: {Raw} five-minute and {Five} hourly rows written by roll-up, {Hourly} hourly rows deleted", result.RolledUpRaw, result.RolledUpFiveMinute, result.DeletedHourly);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

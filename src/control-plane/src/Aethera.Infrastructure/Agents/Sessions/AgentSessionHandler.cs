@@ -86,6 +86,8 @@ public sealed class AgentSessionHandler(
         {
             session.Abandon();
             queue.Writer.TryComplete();
+            // A goodbye that is still queued (protocol violation found by the reader) must reach the agent before the pump is stopped.
+            if (session.SentDisconnect is not null) await Task.WhenAny(pump, Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None));
             await linked.CancelAsync();
             await Task.WhenAll(Quiet(pump), Quiet(worker), Quiet(watchdog), Quiet(connected), Quiet(reader));
             await OnEndedAsync(session, state);

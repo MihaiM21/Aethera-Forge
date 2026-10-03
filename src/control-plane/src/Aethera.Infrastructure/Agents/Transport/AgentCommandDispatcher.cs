@@ -56,7 +56,8 @@ public sealed class AgentCommandDispatcher(
         var replayed = false;
         try
         {
-            if (!session.Send(new P.ControlMessage { Command = proto })) throw Unavailable("The agent session closed while the command was being sent.");
+            pending.SentOn = session.SessionId;
+            if (!session.Send(new P.ControlMessage { Command = proto.Clone() })) throw Unavailable("The agent session closed while the command was being sent.");
 
             P.CommandResult result;
             try
@@ -89,7 +90,7 @@ public sealed class AgentCommandDispatcher(
                 await audit.RecordAsync("agent.command", "server", serverId,
                     new
                     {
-                        command = command.Name, commandId = pending.CommandId, idempotencyKey = commandOptions.IdempotencyKey, jobId = commandOptions.JobId,
+                        command = command.Name, commandId = pending.CommandId, idempotency = commandOptions.IdempotencyKey, jobId = commandOptions.JobId,
                         outcome = outcomeLabel, errorCode = errorCode == CommandErrorCode.None ? null : errorCode.ToString(), replayed, deliveries = pending.Deliveries,
                         durationMs = (long)(clock.UtcNow - started).TotalMilliseconds,
                     },
@@ -144,7 +145,7 @@ public sealed class AgentCommandDispatcher(
         state.Session?.Send(CancelMessage(pending));
         try
         {
-            return await pending.Result.Task.WaitAsync(pending.CancelGrace + TimeSpan.FromSeconds(10));
+            return await pending.Result.Task.WaitAsync(pending.CancelGrace + TimeSpan.FromSeconds(_options.CancelWaitSeconds));
         }
         catch (Exception ex) when (ex is TimeoutException or ServerTransportException)
         {
@@ -203,7 +204,7 @@ public sealed class AgentCommandDispatcher(
         var running = new HashSet<string>(session.Hello.RunningCommandIds, StringComparer.Ordinal);
         foreach (var pending in state.Pending.Values.ToList())
         {
-            if (pending.Result.Task.IsCompleted) continue;
+            if (pending.Result.Task.IsCompleted || pending.SentOn == session.SessionId) continue; // answered, or already sent on this very session
 
             if (running.Contains(pending.CommandId))
             {
@@ -229,7 +230,8 @@ public sealed class AgentCommandDispatcher(
             state.Pending[newId] = pending;
             await RebindStreamAsync(state, pending, oldId, newId, cancellationToken);
             logger.LogInformation("Server {ServerId}: re-sending command {Command} after reconnect (delivery {Delivery})", state.ServerId, pending.Name, pending.Deliveries);
-            session.Send(new P.ControlMessage { Command = pending.Proto });
+            pending.SentOn = session.SessionId;
+            session.Send(new P.ControlMessage { Command = pending.Proto.Clone() });
         }
     }
 

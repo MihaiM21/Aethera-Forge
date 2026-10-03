@@ -54,6 +54,9 @@ public sealed class PendingCommand
 
     public int Deliveries { get; set; } = 1;
 
+    /// <summary>The session this command was last sent on. Reconciliation after a <c>Hello</c> skips commands that already went out on the new session.</summary>
+    public string? SentOn { get; set; }
+
     /// <summary>Agent stream ids this command produces chunks for (its command id, a build id).</summary>
     public HashSet<string> StreamIds { get; } = [];
 

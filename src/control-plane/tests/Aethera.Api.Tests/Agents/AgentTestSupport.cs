@@ -48,6 +48,8 @@ public sealed class GatewayFixture : IAsyncLifetime
             ["Aethera:Agents:AckTimeoutSeconds"] = "0.6",
             ["Aethera:Agents:DeadlineGraceSeconds"] = "0.3",
             ["Aethera:Agents:HelloTimeoutSeconds"] = "1",
+            ["Aethera:Agents:PingSeconds"] = "0.5",
+            ["Aethera:Agents:CancelWaitSeconds"] = "0.3",
             ["Aethera:Agents:HeartbeatPersistSeconds"] = "0",
             ["Aethera:Agents:LogInitialWindowBytes"] = "200",
             ["Aethera:Agents:LogChunkMaxBytes"] = "1000",
@@ -74,6 +76,14 @@ public sealed class GatewayFixture : IAsyncLifetime
     }
 
     public T Get<T>() where T : notnull => Services.GetRequiredService<T>();
+
+    /// <summary>Waits until the gateway processed the acknowledgements of every pending command of the server (the fake agent is faster than the stream worker).</summary>
+    public Task AckSettledAsync(Guid serverId) => EventuallyAsync(
+        () => Task.FromResult(Get<AgentSessionRegistry>().State(serverId).Pending.Values.All(p => p.AckReceived)), "the acknowledgement to be processed");
+
+    /// <summary>The real agent transport (registered as one of the <c>IServerTransport</c>s).</summary>
+    public Aethera.Infrastructure.Agents.Transport.AgentTransport Transport =>
+        Services.GetServices<Aethera.Domain.Transport.IServerTransport>().OfType<Aethera.Infrastructure.Agents.Transport.AgentTransport>().Single();
 
     public async Task<T> WithDbAsync<T>(Func<AetheraDbContext, Task<T>> action)
     {
@@ -177,10 +187,10 @@ public sealed class FakeAgent : IAsyncDisposable
     private Task? _heartbeats;
     private ulong _seq;
 
-    private FakeAgent(Guid serverId, string serial)
+    private FakeAgent(Guid serverId, string serial, DateTimeOffset? notAfter)
     {
         ServerId = serverId;
-        Identity = new AgentIdentity(serverId, serial, "00", DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(30));
+        Identity = new AgentIdentity(serverId, serial, "00", DateTimeOffset.UtcNow.AddMinutes(-5), notAfter ?? DateTimeOffset.UtcNow.AddDays(30));
     }
 
     public Guid ServerId { get; }
@@ -191,9 +201,9 @@ public sealed class FakeAgent : IAsyncDisposable
 
     public Welcome? Welcome { get; private set; }
 
-    public static FakeAgent Start(GatewayFixture fixture, Guid serverId, Action<Hello>? configureHello = null, bool heartbeats = true, string? serial = null, bool sendHello = true)
+    public static FakeAgent Start(GatewayFixture fixture, Guid serverId, Action<Hello>? configureHello = null, bool heartbeats = true, string? serial = null, bool sendHello = true, DateTimeOffset? certNotAfter = null)
     {
-        var agent = new FakeAgent(serverId, serial ?? Guid.NewGuid().ToString("N").ToUpperInvariant());
+        var agent = new FakeAgent(serverId, serial ?? Guid.NewGuid().ToString("N").ToUpperInvariant(), certNotAfter);
         var handler = fixture.Get<AgentSessionHandler>();
         agent.Run = Task.Run(() => handler.RunAsync(agent.Identity, new ChannelStreamReader<AgentMessage>(agent._toServer.Reader), new ChannelStreamWriter<ControlMessage>(agent._fromServer.Writer), agent._stop.Token));
         if (sendHello)

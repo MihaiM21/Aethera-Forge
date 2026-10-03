@@ -81,6 +81,9 @@ public sealed class AgentGatewayOptions
     /// <summary>No <c>CommandAck</c> within this time fails the dispatch (ADR: 10 s).</summary>
     public double AckTimeoutSeconds { get; set; } = 10;
 
+    /// <summary>After a cancel the gateway waits <c>grace + this</c> for the agent's CANCELLED result (ADR: 10 s) before giving up.</summary>
+    public double CancelWaitSeconds { get; set; } = 10;
+
     /// <summary>The gateway gives up waiting for a result at <c>deadline + this</c> (ADR: 30 s).</summary>
     public double DeadlineGraceSeconds { get; set; } = 30;
 
