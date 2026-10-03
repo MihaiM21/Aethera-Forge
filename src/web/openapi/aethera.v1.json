@@ -10914,6 +10914,7 @@
             "x-known-codes": [
               "auth.forbidden",
               "auth.insufficient_scope",
+              "auth.origin_not_allowed",
               "auth.unauthenticated",
               "concurrency.conflict",
               "confirmation.required",
@@ -12746,6 +12747,7 @@
             "x-known-codes": [
               "auth.forbidden",
               "auth.insufficient_scope",
+              "auth.origin_not_allowed",
               "auth.unauthenticated",
               "concurrency.conflict",
               "confirmation.required",

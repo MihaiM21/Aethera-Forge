@@ -16,6 +16,7 @@ public static class ProblemCodes
     public const string Unauthenticated = "auth.unauthenticated";
     public const string Forbidden = "auth.forbidden";
     public const string InsufficientScope = "auth.insufficient_scope";
+    public const string OriginNotAllowed = "auth.origin_not_allowed";
     public const string RouteNotFound = "route.not_found";
     public const string ResourceConflict = "resource.conflict";
     public const string ConcurrencyConflict = "concurrency.conflict";
@@ -53,6 +54,7 @@ public static class ProblemCodes
         [Unauthenticated] = "Authentication required",
         [Forbidden] = "Forbidden",
         [InsufficientScope] = "Insufficient token scope",
+        [OriginNotAllowed] = "Origin not allowed",
         [RouteNotFound] = "Not found",
         [ResourceConflict] = "Conflict",
         [ConcurrencyConflict] = "Concurrent modification",

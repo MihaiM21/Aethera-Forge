@@ -69,6 +69,12 @@ public static class ApiProblems
             $"This API token lacks the '{requiredScope}' scope.")
             .WithExtension("requiredScope", requiredScope);
 
+    /// <summary>403 <c>auth.origin_not_allowed</c>: a cookie-authenticated hub request from a page of another origin (see <c>HubOriginMiddleware</c>).</summary>
+    public static ApiProblem OriginNotAllowed() =>
+        new(StatusCodes.Status403Forbidden, ProblemCodes.OriginNotAllowed,
+            "Live connections with a browser session are only accepted from the application's own origin. "
+            + "Add the origin to AETHERA_CORS_ORIGINS to allow a custom frontend.");
+
     /// <summary>429 <c>rate_limited</c> with <c>Retry-After</c> (seconds).</summary>
     public static ApiProblem RateLimited(int retryAfterSeconds) =>
         new ApiProblem(StatusCodes.Status429TooManyRequests, ProblemCodes.RateLimited, "Too many requests. Try again later.")

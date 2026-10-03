@@ -106,6 +106,8 @@ public sealed class JobsApiFixture : IAsyncLifetime
                 options.Transports = HttpTransportType.LongPolling;
                 foreach (var header in client.DefaultRequestHeaders)
                     options.Headers[header.Key] = string.Join(',', header.Value);
+                // What a browser page of this server sends: session-authenticated hub requests must come from the server's own origin.
+                options.Headers["Origin"] = server.BaseAddress.GetLeftPart(UriPartial.Authority);
             })
             .AddJsonProtocol(options => JsonConventions.Configure(options.PayloadSerializerOptions))
             .Build();

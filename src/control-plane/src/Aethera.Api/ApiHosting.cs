@@ -24,6 +24,8 @@ public static class ApiHosting
 
     public static IServiceCollection AddAetheraApi(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddAetheraForwardedHeaders();
+        services.AddAetheraResponseCompression();
         services.AddAetheraJson();
         services.AddAetheraProblemDetails();
         services.AddAetheraSecurity();
@@ -41,16 +43,23 @@ public static class ApiHosting
         return services;
     }
 
-    /// <summary>The cross-cutting middleware, in order: request id, exception handling, status-code bodies, routing, CORS, authN, authZ.</summary>
+    /// <summary>
+    /// The cross-cutting middleware, in order: forwarded headers (first, so everything after sees the real client address and scheme:
+    /// login rate limit, audit, origin checks), request id, response compression, exception handling, status-code bodies, routing, CORS,
+    /// authN, hub origin check, authZ.
+    /// </summary>
     public static WebApplication UseAetheraApi(this WebApplication app)
     {
+        app.UseAetheraForwardedHeaders();
         app.UseMiddleware<RequestIdMiddleware>();
+        app.UseResponseCompression();
         app.UseExceptionHandler();
         app.UseStatusCodePages();
         app.UseRouting();
         app.UseMiddleware<BodySizeLimitMiddleware>();
         app.UseAetheraCors(app.Configuration);
         app.UseAuthentication();
+        app.UseMiddleware<HubOriginMiddleware>(); // needs the principal; cookie-authenticated /hubs/* requests must come from our own origin
         app.UseAuthorization();
         return app;
     }
@@ -73,6 +82,14 @@ public static class ApiHosting
         foreach (var contributor in api.ServiceProvider.GetServices<IApiEndpointContributor>())
             contributor.MapEndpoints(api);
     }
+
+    /// <summary>Brotli and gzip for text responses (JSON, HTML, JS, CSS). Not over HTTPS terminated here (BREACH); Traefik compresses there.</summary>
+    private static IServiceCollection AddAetheraResponseCompression(this IServiceCollection services) =>
+        services.AddResponseCompression(options =>
+        {
+            options.MimeTypes = [.. Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes,
+                "application/problem+json", "image/svg+xml", "font/woff2"];
+        });
 
     private static byte[]? CursorKey(IConfiguration configuration) =>
         configuration["Aethera:Pagination:CursorKey"] is { Length: >= 16 } key ? System.Text.Encoding.UTF8.GetBytes(key) : null;

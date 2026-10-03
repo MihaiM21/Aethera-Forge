@@ -263,3 +263,63 @@ public sealed class LoginRateLimitTests(RateLimitedAuthApiFactory factory) : ICl
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/auth/setup")).StatusCode);
     }
 }
+
+/// <summary>The per-IP login limit and the audit trail see the client behind Traefik, not Traefik.</summary>
+public sealed class LoginRateLimitBehindProxyTests(RateLimitedAuthApiFactory factory) : IClassFixture<RateLimitedAuthApiFactory>, IAsyncLifetime
+{
+    public async Task InitializeAsync()
+    {
+        if (!factory.HasDatabase) return;
+        await AuthDb.ResetAsync(factory);
+        await factory.SetupOwnerAsync();
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    private static async Task<HttpStatusCode> LoginAsync(HttpClient client, string? forwardedFor)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+        {
+            // An unknown email each time: the per-account lockout is a different mechanism and must not get in the way.
+            Content = new StringContent($$"""{"email":"ghost-{{Guid.NewGuid():N}}@example.com","password":"wrong password","rememberMe":false}""", Encoding.UTF8, "application/json"),
+        };
+        if (forwardedFor is not null) request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return (await client.SendAsync(request)).StatusCode;
+    }
+
+    [RequiresDatabaseFact]
+    public async Task BehindATrustedProxy_EachClientIpHasItsOwnLimit()
+    {
+        using var proxied = FakeRemoteIpStartupFilter.From(factory, "10.1.2.3", "10.0.0.0/8");
+        using var client = proxied.CreateClient();
+
+        // Four different clients behind the same proxy: nobody is limited (3 attempts per IP and minute)...
+        foreach (var ip in new[] { "203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4" })
+            Assert.Equal(HttpStatusCode.Unauthorized, await LoginAsync(client, ip));
+
+        // ...while one client that keeps failing is.
+        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.Unauthorized, await LoginAsync(client, "203.0.113.50"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await LoginAsync(client, "203.0.113.50"));
+    }
+
+    [RequiresDatabaseFact]
+    public async Task ASpoofedForwardedFor_FromAnUntrustedPeer_CannotEscapeTheLimit()
+    {
+        using var direct = FakeRemoteIpStartupFilter.From(factory, "198.51.100.9", "10.0.0.0/8");
+        using var client = direct.CreateClient();
+
+        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.Unauthorized, await LoginAsync(client, $"203.0.113.{i}"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await LoginAsync(client, "203.0.113.99"));
+    }
+
+    [RequiresDatabaseFact]
+    public async Task FailedLogins_AreAuditedWithTheRealClientIp()
+    {
+        using var proxied = FakeRemoteIpStartupFilter.From(factory, "10.1.2.3", "10.0.0.0/8");
+        using var client = proxied.CreateClient();
+        await LoginAsync(client, "203.0.113.77");
+
+        Assert.Equal("203.0.113.77", await AuthDb.ScalarAsync<string>(factory,
+            "SELECT ip_address FROM audit_events WHERE action = 'auth.login.failed' ORDER BY occurred_at DESC LIMIT 1"));
+    }
+}
