@@ -1,0 +1,309 @@
+// Aethera agent <-> control plane protocol, v1.
+//
+// The agent dials OUT to the control plane over gRPC with mutual TLS and keeps
+// one long-lived bidirectional stream (AgentService.Connect). The control plane
+// never opens inbound connections to agents. See
+// docs/architecture/0002-agent-communication.md for the full design.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/commands.proto";
+import "aethera/agent/v1/common.proto";
+import "aethera/agent/v1/discovery.proto";
+import "aethera/agent/v1/metrics.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// AgentService requires a valid client certificate issued by the Aethera CA.
+// The server identity is taken from the certificate (SAN URI), never from
+// message contents; Hello.server_id must match it or the stream is closed.
+service AgentService {
+  // Connect is the agent's single long-lived stream. The first AgentMessage
+  // MUST be Hello; the control plane answers with Welcome (or Disconnect).
+  //
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc Connect(stream AgentMessage) returns (stream ControlMessage);
+
+  // RenewCertificate issues a fresh client certificate. It is authenticated
+  // by the still-valid current certificate (mTLS), so an agent whose cert has
+  // fully expired must re-enroll with a new join token.
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
+}
+
+message RenewCertificateRequest {
+  // PEM PKCS#10 CSR; a new key pair is generated for each renewal.
+  string csr_pem = 1;
+}
+
+message RenewCertificateResponse {
+  string client_certificate_pem = 1;
+  string ca_chain_pem = 2;
+  google.protobuf.Timestamp certificate_not_after = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Agent -> control plane
+// ---------------------------------------------------------------------------
+
+message AgentMessage {
+  oneof payload {
+    Hello hello = 1;
+    Heartbeat heartbeat = 2;
+    MetricsReport metrics = 3;
+    DiscoveryReport discovery = 4;
+    CommandAck command_ack = 5;
+    CommandProgress command_progress = 6;
+    CommandResult command_result = 7;
+    LogChunk log_chunk = 8;
+    EventNotice event = 9;
+    Pong pong = 10;
+  }
+}
+
+// Hello is the first message on every (re)connect.
+message Hello {
+  // Must equal the server id in the client certificate.
+  string server_id = 1;
+  string agent_version = 2;
+  // Wire protocol revision (currently 1). The control plane may refuse
+  // versions it no longer supports with a Disconnect(UPGRADE_REQUIRED).
+  uint32 protocol_version = 3;
+  // Feature flags the agent supports, e.g. "build.dockerfile",
+  // "build.nixpacks", "compose.v2", "proxy.traefik", "logs.follow",
+  // "selfupdate". The control plane only dispatches commands whose capability
+  // is listed.
+  repeated string capabilities = 4;
+  string os = 5;
+  string architecture = 6;
+  // Changes only when the host reboots; lets the control plane distinguish
+  // "agent restarted" from "host rebooted".
+  string boot_id = 7;
+  // Random per agent process start; changes when the agent process restarts.
+  string process_id = 8;
+  // Commands still executing (so the control plane can reconcile in-flight
+  // work after a reconnect instead of failing it).
+  repeated string running_command_ids = 9;
+  // Log streams the agent is still serving.
+  repeated string active_log_stream_ids = 10;
+  // Consecutive failed connection attempts before this one (diagnostics).
+  uint32 reconnect_attempt = 11;
+}
+
+message Heartbeat {
+  // Monotonic per stream; gaps indicate lost messages (should never happen
+  // on a healthy stream) and let the control plane detect agent restarts.
+  uint64 seq = 1;
+  // Agent wall clock, for skew detection.
+  google.protobuf.Timestamp sent_at = 2;
+  // Agent monotonic uptime since process start.
+  google.protobuf.Duration agent_uptime = 3;
+  // Docker daemon status as seen by the agent (spec 44).
+  DockerStatus docker_status = 4;
+  // Number of commands currently executing / queued in the agent.
+  uint32 running_commands = 5;
+  // Welcome.config_version the agent is currently applying.
+  string config_version = 6;
+}
+
+message Pong {
+  // Echo of Ping.nonce.
+  string nonce = 1;
+  google.protobuf.Timestamp ping_sent_at = 2;
+  google.protobuf.Timestamp received_at = 3;
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  ACK_STATUS_ACCEPTED = 1;
+  // Command type not supported by this agent version / missing capability.
+  ACK_STATUS_REJECTED_UNSUPPORTED = 2;
+  // Agent is at max_concurrent_commands.
+  ACK_STATUS_REJECTED_BUSY = 3;
+  // Deadline already passed on arrival.
+  ACK_STATUS_REJECTED_EXPIRED = 4;
+  // Local policy refused it (error_code carries the detail).
+  ACK_STATUS_REJECTED_POLICY = 5;
+  // Same idempotency_key is currently running; the new command_id is bound to
+  // the running execution and will receive its result.
+  ACK_STATUS_DUPLICATE_RUNNING = 6;
+  // Same idempotency_key already finished; the cached result follows with
+  // replayed = true.
+  ACK_STATUS_DUPLICATE_COMPLETED = 7;
+}
+
+// CommandAck is sent promptly (before execution finishes) for every Command.
+message CommandAck {
+  string command_id = 1;
+  AckStatus status = 2;
+  ErrorCode error_code = 3;
+  string message = 4;
+  google.protobuf.Timestamp received_at = 5;
+}
+
+// CommandProgress is optional step-level progress for long commands
+// (build stages, image pull layers, compose services).
+message CommandProgress {
+  string command_id = 1;
+  // Short machine id of the step, e.g. "clone", "pull", "build", "push".
+  string step = 2;
+  string message = 3;
+  // 0..100; negative when unknown.
+  int32 percent = 4;
+  google.protobuf.Timestamp at = 5;
+}
+
+// LogChunk carries a slice of log output for a stream. Chunks are credit
+// controlled per stream_id; see LogFlowControl and ADR 0002.
+message LogChunk {
+  // Build id for builds, command id for deploys, or the id chosen in
+  // LogStreamStart for container logs.
+  string stream_id = 1;
+  LogSource source = 2;
+  // Strictly increasing per stream_id, starting at 1. Used for ordering,
+  // de-duplication on replay and as the flow-control ack unit.
+  uint64 sequence = 3;
+  // Time of the first line in `data`.
+  google.protobuf.Timestamp timestamp = 4;
+  LogStream stream = 5;
+  // Raw bytes, one or more complete lines (UTF-8 not guaranteed). Secrets have
+  // already been masked by the agent using the values it was given.
+  bytes data = 6;
+  // Last chunk of this stream; no further chunks follow.
+  bool eof = 7;
+  // Set on eof when the stream ended abnormally (container removed, ...).
+  string eof_reason = 8;
+  // Number of bytes dropped by the agent before this chunk because the
+  // control plane did not grant credit in time (0 for lossless streams).
+  uint64 dropped_bytes = 9;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_CONTAINER_STARTED = 1;
+  EVENT_TYPE_CONTAINER_STOPPED = 2;
+  EVENT_TYPE_CONTAINER_DIED = 3;
+  EVENT_TYPE_CONTAINER_OOM = 4;
+  EVENT_TYPE_CONTAINER_RESTARTING = 5;
+  EVENT_TYPE_CONTAINER_HEALTH_CHANGED = 6;
+  EVENT_TYPE_CONTAINER_REMOVED = 7;
+  EVENT_TYPE_DOCKER_DAEMON_UP = 8;
+  EVENT_TYPE_DOCKER_DAEMON_DOWN = 9;
+  EVENT_TYPE_DISK_PRESSURE = 10;
+}
+
+// EventNotice is an unsolicited, edge-triggered notification from the agent's
+// Docker event watcher, delivered faster than the next metrics tick.
+message EventNotice {
+  // Unique per agent process (UUIDv7); lets the control plane de-duplicate.
+  string event_id = 1;
+  EventType type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  string container_id = 4;
+  string container_name = 5;
+  map<string, string> labels = 6;
+  int32 exit_code = 7;
+  bool oom_killed = 8;
+  ContainerHealth health = 9;
+  ContainerHealth previous_health = 10;
+  string message = 11;
+}
+
+// ---------------------------------------------------------------------------
+// Control plane -> agent
+// ---------------------------------------------------------------------------
+
+message ControlMessage {
+  oneof payload {
+    Welcome welcome = 1;
+    Command command = 2;
+    CancelCommand cancel_command = 3;
+    Ping ping = 4;
+    CertRotationHint cert_rotation = 5;
+    LogFlowControl log_flow_control = 6;
+    Disconnect disconnect = 7;
+  }
+}
+
+// Welcome answers a valid Hello and carries server-driven agent config.
+message Welcome {
+  // Echo of the verified server id.
+  string server_id = 1;
+  // Identifies this stream session in control-plane logs.
+  string session_id = 2;
+  google.protobuf.Duration heartbeat_interval = 3;
+  google.protobuf.Duration metrics_interval = 4;
+  // How often the agent re-sends a full DiscoveryReport unprompted
+  // (0 = only at connect and on change).
+  google.protobuf.Duration discovery_interval = 5;
+  uint32 max_concurrent_commands = 6;
+  // Largest LogChunk.data the agent may send.
+  uint32 log_chunk_max_bytes = 7;
+  // Initial per-stream credit (bytes the agent may have unacknowledged).
+  uint64 log_initial_window_bytes = 8;
+  // Version of this server-driven config; echoed in Heartbeat.config_version.
+  string config_version = 9;
+  google.protobuf.Timestamp server_time = 10;
+  // Oldest agent version still supported; older agents should self-update.
+  string min_agent_version = 11;
+}
+
+message CancelCommand {
+  string command_id = 1;
+  string reason = 2;
+  // Time to stop gracefully (e.g. docker build SIGINT) before the agent
+  // force-kills the work and reports CANCELLED.
+  google.protobuf.Duration grace = 3;
+}
+
+message Ping {
+  string nonce = 1;
+  google.protobuf.Timestamp sent_at = 2;
+}
+
+// CertRotationHint tells the agent to renew its certificate now (e.g. the CA
+// was rotated or the cert is nearing expiry); the agent calls
+// AgentService.RenewCertificate and then reconnects with the new cert.
+message CertRotationHint {
+  google.protobuf.Timestamp current_not_after = 1;
+  // Renew before this instant.
+  google.protobuf.Timestamp renew_by = 2;
+  string reason = 3;
+}
+
+// LogFlowControl grants the agent more send credit for one log stream. The
+// agent may have at most `window_bytes` of un-acked data outstanding per
+// stream; everything up to `acked_sequence` is considered delivered.
+message LogFlowControl {
+  string stream_id = 1;
+  uint64 acked_sequence = 2;
+  // Window size to use from now on. 0 = pause the stream until a later grant.
+  uint64 window_bytes = 3;
+}
+
+enum DisconnectReason {
+  DISCONNECT_REASON_UNSPECIFIED = 0;
+  // Control plane is shutting down / restarting; reconnect with backoff.
+  DISCONNECT_REASON_SERVER_SHUTDOWN = 1;
+  // A newer stream from the same server replaced this one.
+  DISCONNECT_REASON_SUPERSEDED = 2;
+  // Certificate revoked or server deleted; do NOT reconnect until re-enrolled.
+  DISCONNECT_REASON_REVOKED = 3;
+  // Protocol/agent version too old; self-update then reconnect.
+  DISCONNECT_REASON_UPGRADE_REQUIRED = 4;
+  DISCONNECT_REASON_PROTOCOL_VIOLATION = 5;
+  // Heartbeats stopped arriving.
+  DISCONNECT_REASON_HEARTBEAT_TIMEOUT = 6;
+}
+
+// Disconnect is the control plane's polite goodbye before it closes the stream.
+message Disconnect {
+  DisconnectReason reason = 1;
+  string message = 2;
+  // Minimum wait before reconnecting (0 = use normal backoff).
+  google.protobuf.Duration reconnect_after = 3;
+}
