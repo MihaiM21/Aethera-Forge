@@ -17,6 +17,34 @@ jobs:
     defaults:
       run:
         working-directory: src/control-plane
+    # The database and Redis tests (about 470 of them) are skipped unless AETHERA_TEST_DB / AETHERA_TEST_REDIS are set.
+    # The role may CREATE DATABASE: every test class migrates and drops its own throw-away database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aethera
+          POSTGRES_PASSWORD: aethera
+          POSTGRES_DB: aethera
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aethera -d aethera"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AETHERA_TEST_DB: Host=localhost;Port=5432;Username=aethera;Password=aethera;Database=postgres
+      AETHERA_TEST_REDIS: localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -92,4 +120,5 @@ jobs:
           cache-dependency-path: src/web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - run: pnpm test
       - run: pnpm build
