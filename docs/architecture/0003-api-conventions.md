@@ -404,3 +404,48 @@ Phase 1 implements seven coarse scopes (`Aethera.Api.Security.Scopes`). The reso
 | `aethera:auth_method` | `session` or `token` |
 
 Authentication schemes: default `Aethera` (policy scheme) forwards to `Aethera.Session` (cookie) or `Aethera.Token` (`Authorization: Bearer`, or `access_token` under `/hubs`). `AetheraPrincipal.Create` builds principals with exactly these claims.
+
+## Implementation notes (WP1.5)
+
+WP1.5 (integration and hardening) changed or fixed the following. Where this section differs from the text above, this section is what the code does.
+
+### Hub Origin rule (`auth.origin_not_allowed`)
+
+The session cookie is `SameSite=Lax`, but applications deployed by Aethera usually run on **sibling subdomains** of the panel, and those are the *same site*. A page on `app.example.com` could therefore open a WebSocket, or send negotiate / long-polling requests, to `/hubs/*` and the browser would attach the administrator's cookie (SignalR has no per-request CSRF token).
+
+- Every `/hubs/*` request (negotiate, WebSocket, SSE, long polling) that is authenticated by the **session** scheme must carry an `Origin` header equal to the request's own origin (`scheme://host[:port]`, compared after forwarded-header processing, default ports normalised, case-insensitive) **or** listed in `AETHERA_CORS_ORIGINS`. Otherwise: `403` with ProblemDetails code `auth.origin_not_allowed`.
+- Bearer-token requests (the `Authorization` header and the `access_token` query parameter) are exempt: they carry no ambient credentials. So are anonymous requests, which are answered `401` by authorization as before. The REST API is unaffected (CSRF tokens cover it).
+- Browsers send `Origin` on WebSocket handshakes and same-origin POSTs but **not** on same-origin GETs (the SSE and long-polling transports). For those, the browser-controlled `Sec-Fetch-Site: same-origin` header is accepted instead; a sibling subdomain sends `same-site` and is still refused. A cookie request with neither header is not a browser page and is refused.
+- Implemented by `HubOriginMiddleware` (after authentication, before authorization); the code is in the OpenAPI `x-known-codes`.
+
+### Reveal requires Admin and `secrets:write`
+
+`POST /secrets/{id}/reveal` needs the **Administrator** role (or Owner) *and*, for API tokens, the `secrets:write` scope, which covers reveal in Phase 1 (the finer `secrets:reveal` scope of section 7 is the long-term vocabulary). It is audited on every call, answers with `Cache-Control: no-store`, and the plaintext appears in no other response, log or audit entry. Developers can create, rotate and delete secrets but never read one back.
+
+### Dictionary keys are verbatim
+
+`JsonSerializerOptions.DictionaryKeyPolicy` is **not** set. Property names are camelCase; the keys of dictionaries are data and are kept exactly as stored (`NODE_ENV`, `X-Custom`). WP1.0 had set `CamelCase` for both, which turned `NODE_ENV` into `node_ENV`.
+
+### Forwarded headers
+
+`UseForwardedHeaders` runs **first** in the pipeline, so the login per-IP limit, audit events, token `lastUsedIp`, cookie security and the hub origin check all see the real client address and scheme behind Traefik.
+
+- Honoured: `X-Forwarded-For` and `X-Forwarded-Proto` only (not `X-Forwarded-Host`; Traefik preserves `Host`).
+- Only when the TCP peer is a trusted proxy: `Aethera:Http:TrustedProxies` (environment `Aethera__Http__TrustedProxies`), comma-separated IP addresses or CIDR ranges, for example `172.18.0.0/16,10.0.0.5`. **Default: loopback only** (`127.0.0.0/8`, `::1`); a configured list replaces the default. There is no wildcard; an invalid entry stops the start-up. From any other peer the headers are ignored.
+- Behind Traefik in Docker, set it to the subnet of the Docker network Traefik is on.
+
+### Readiness is tri-state
+
+`IReadinessCheck.CheckAsync` returns a `ReadinessResult`: `Ok`, `Unavailable` or `Skipped`, each with an optional `Detail`. `GET /ready` answers `503` **only** when a check is `Unavailable` (an exception or a 3 s timeout counts as unavailable). `Skipped` means "not configured, nothing needs it" and never fails readiness: the Redis check is `skipped` when `ConnectionStrings:Redis` is not set. The body is `{ "status": "ready|unavailable", "checks": { "database": "ok", "redis": "skipped" }, "details": { "redis": "..." } }`. A detail is a fixed phrase written by the check; it never contains a connection string, host, user name or exception message (exceptions are logged, not returned).
+
+### Jobs belong to an organization
+
+`jobs.organization_id` (NOT NULL, FK) replaces the inference from `created_by`; see `src/control-plane/docs/schema.md`. `IJobQueue.EnqueueAsync` takes it from `JobRequest.OrganizationId`, else from `ICurrentActor`, else throws. Creator-less system jobs (webhooks, schedules) therefore belong to exactly one organization, and REST, hubs and log streams all filter on it.
+
+### Smaller changes
+
+- `GET /auth/csrf` needs a session, so the web client sends no CSRF token for `POST /auth/login` and `POST /auth/setup`.
+- Brotli/gzip response compression is enabled for text responses (not over TLS terminated by the app itself).
+- The static web UI is served by the API (ADR 0005, `Aethera:Web:Root`).
+- Hosted services and start-up checks do nothing while the build-time OpenAPI generator runs (`AetheraHost.IsOpenApiGeneration`).
+

@@ -56,8 +56,8 @@ Headers and caching:
 - `_next/static/**`: `Cache-Control: public, max-age=31536000, immutable` (file names are content-hashed).
 - Every other file, notably all `*.html`: `Cache-Control: no-cache` (revalidate with ETag), so a deploy is picked up immediately.
 - Content types: `.html` `text/html; charset=utf-8`, `.js` `text/javascript`, `.css` `text/css`, `.txt` `text/plain`, `.woff2` `font/woff2`, `.ico` `image/x-icon`. Serve Brotli/gzip for text assets.
-- **CSP**: the export contains inline scripts (the theme-init snippet in `<head>` and Next's `self.__next_f.push(...)` payload scripts). A strict CSP therefore needs `script-src 'self' 'unsafe-inline'`, or hashes computed from the exported HTML at startup. `connect-src 'self'` is enough for the API and SignalR (same origin).
-- Set `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and `X-Frame-Options: DENY` on HTML.
+- **CSP**: the API sends `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` on HTML. The export contains inline scripts (the theme-init snippet in `<head>` and Next's `self.__next_f.push(...)` payload scripts). A strict CSP therefore needs `script-src 'self' 'unsafe-inline'`, or hashes computed from the exported HTML at startup. `connect-src 'self'` is enough for the API and SignalR (same origin).
+- Set `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY` on HTML (`nosniff` is sent on every static response).
 
 ASP.NET Core sketch: `UseStaticFiles()` for rules 4 and `_next` caching, then a small endpoint/middleware implementing rules 5 to 8 (a `Dictionary<string,string>` for pages and an ordered template list), registered **after** `MapControllers`/minimal API groups and `MapHub`. `app.MapFallback` alone is not sufficient because of the 404 status and file-like path rules.
 
@@ -89,3 +89,15 @@ ASP.NET Core sketch: `UseStaticFiles()` for rules 4 and `_next` caching, then a 
 - (-) The API owns a tiny piece of routing logic and must be updated in step with the template convention (it is derived from the file listing, so new detail pages need no API change).
 - (-) Detail pages render a skeleton until the client has read the id, and cannot set a per-resource `<title>` at build time (set `document.title` after load).
 - (-) Links to detail pages cause a full document load instead of a client transition. Acceptable at this scale; revisit with a client-side catch-all if it becomes a UX problem.
+
+## Implementation notes (WP1.5)
+
+The API serves the export (`Aethera.Api/Web`: `ExportRouter`, `StaticWebMiddleware`); `ExportRouterTests` carries the cases of `export-routing.test.ts`, so the C# port and the reference stay in step.
+
+- **Root**: `Aethera:Web:Root` (environment `Aethera__Web__Root`; relative paths are relative to the content root). Default: a `wwwroot` folder next to the application; in Development, `../../../web/out` relative to the Api project if it exists. With no root, nothing is served and one information message says where it looked. A configured root that does not exist behaves the same.
+- **Order**: the middleware only handles requests **no endpoint claimed**, so `/api/*`, `/hubs/*`, `/health`, `/ready`, `/metrics`, the OpenAPI document and the docs always win, and a stray `api/x.html` in the export is never served. Reserved prefixes are matched case-insensitively.
+- **Startup scan**: the file table and the dynamic-template table (fewest wildcards first, then ordinal file name) are built once at start. After a new `pnpm build`, restart the API (new content-hashed file names would otherwise 404). Hidden files (dot-prefixed, except `.well-known`) are never served.
+- **Status codes**: `400 request.malformed` for `\`, NUL, `.`/`..` segments and malformed percent-encoding (decoded once, strictly, like `decodeURIComponent`); `308` for a trailing slash (query kept); `404` with `404.html` only for HTML requests of path-like URLs, else a plain-text `404`; other methods on a static path are `405 request.method_not_allowed` with `Allow: GET, HEAD`; other methods on an unknown path fall through to the API's own `404`.
+- **Caching**: `_next/static/**` is `public, max-age=31536000, immutable`; everything else `no-cache` with `ETag`/`Last-Modified` and `304` on `If-None-Match`. Text responses are compressed when the client accepts it.
+- **Hub origin**: the UI connects to `/hubs/*` from its own origin, which is what the API's hub Origin rule requires (ADR 0003, WP1.5 notes).
+
