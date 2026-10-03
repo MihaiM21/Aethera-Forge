@@ -1,0 +1,43 @@
+# Aethera Roadmap
+
+Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when it is merged.
+
+## Phase 0 — Foundation
+- [x] WP0.1 Toolchain & skeleton
+- [ ] WP0.2 Contracts (domain model, EF migration, agent `.proto`, API conventions ADR, design tokens)
+
+## Phase 1 — Control plane core + UI shell
+- [ ] WP1.1 Auth & access
+- [ ] WP1.2 Resource API
+- [ ] WP1.3 Job system
+- [ ] WP1.4 UI shell
+
+## Phase 2 — Servers & agent
+- [ ] WP2.1 Go agent
+- [ ] WP2.2 Agent gateway (.NET)
+- [ ] WP2.3 SSH transport
+- [ ] WP2.4 UI servers
+
+## Phase 3 — Build & deploy engine
+- [ ] WP3.1 Build engines
+- [ ] WP3.2 Deployment engine
+- [ ] WP3.3 Traefik & networking
+- [ ] WP3.4 Git integration
+
+## Phase 4 — Product UI & services
+- [ ] WP4.1 App flows
+- [ ] WP4.2 Deployments UI
+- [ ] WP4.3 Service templates
+- [ ] WP4.4 Dashboard & ops pages
+
+## Phase 5 — Ship it (MVP)
+- [ ] WP5.1 Packaging (Dockerfile, compose, install.sh, release workflow)
+- [ ] WP5.2 Self-ops (self-update, maintenance jobs, log retention)
+- [ ] WP5.3 Docs (install, architecture, Coolify migration, CONTRIBUTING, CHANGELOG)
+
+## Later phases
+- [ ] 6. Multi-server roles & resources
+- [ ] 7. Secure networking (WireGuard / Tailscale)
+- [ ] 8. Backups
+- [ ] 9. Alerts & notifications
+- [ ] 10. Scheduled jobs, CLI, config-as-code, environment promotion, blue/green & canary, OIDC, integrated registry
