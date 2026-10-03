@@ -5877,7 +5877,7 @@
             "bearerAuth": [ ]
           }
         ],
-        "x-required-scope": "write"
+        "x-required-scope": "secrets:write"
       }
     },
     "/api/v1/registries/{id}": {
@@ -6040,7 +6040,7 @@
             "bearerAuth": [ ]
           }
         ],
-        "x-required-scope": "write"
+        "x-required-scope": "secrets:write"
       },
       "delete": {
         "tags": [
@@ -6108,7 +6108,7 @@
             "bearerAuth": [ ]
           }
         ],
-        "x-required-scope": "write"
+        "x-required-scope": "secrets:write"
       }
     },
     "/api/v1/registries/{id}/test": {
@@ -10837,6 +10837,12 @@
               "null",
               "boolean"
             ]
+          },
+          "allowReserved": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -11419,6 +11425,38 @@
           }
         }
       },
+      "SecretOwnerResponse": {
+        "required": [
+          "type",
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SecretPurpose": {
+        "enum": [
+          "user",
+          "registryCredential",
+          "sshCredential",
+          "gitCredential",
+          "serviceGenerated"
+        ]
+      },
       "SecretResponse": {
         "required": [
           "id",
@@ -11432,7 +11470,10 @@
           "value",
           "createdAt",
           "updatedAt",
-          "rotatedAt"
+          "rotatedAt",
+          "purpose",
+          "managed",
+          "managedBy"
         ],
         "type": "object",
         "properties": {
@@ -11492,6 +11533,22 @@
           },
           "rotatedAt": {
             "format": "date-time"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/SecretPurpose"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "managedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SecretOwnerResponse"
+              }
+            ]
           }
         }
       },

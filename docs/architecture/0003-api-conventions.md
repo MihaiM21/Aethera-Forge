@@ -449,3 +449,53 @@ The session cookie is `SameSite=Lax`, but applications deployed by Aethera usual
 - The static web UI is served by the API (ADR 0005, `Aethera:Web:Root`).
 - Hosted services and start-up checks do nothing while the build-time OpenAPI generator runs (`AetheraHost.IsOpenApiGeneration`).
 
+## Implementation notes (WP1.6)
+
+WP1.6 (security fixes and the trust model, [ADR 0006](./0006-trust-model.md)) changed the Resource API as follows. Where this section differs from the text above, this section is what the code does.
+
+### Secrets have a purpose
+
+- `SecretResponse` gains `purpose` (`user`, `registryCredential`, `sshCredential`, `gitCredential`, `serviceGenerated`), `managed` (`purpose != user`) and `managedBy` (`{type, id, name}` with `type` one of `registry`, `server`, `gitCredential`, `service`; `null` for user secrets). Managed secrets are listed like any other.
+- `PATCH /secrets/{id}`, `POST /secrets/{id}/rotate` and `DELETE /secrets/{id}` on a managed secret: **409 `secret.managed`** (the `detail` names the owning endpoint; the problem also carries `purpose` and `managedBy`). Change them through the registry or server endpoint instead.
+- Binding a secret to an environment variable (`POST` and `PATCH .../env-vars`, `secretId`): a Developer may bind `user` secrets scoped to the same workload, environment or project; an organization-scoped secret needs an Administrator; a managed secret is never bindable (a generated service password only to its own service). Refusals are **403 `secret.binding_forbidden`**. A scope that does not contain the workload is still 422 `scope_mismatch`.
+- `sshCredentialSecretId` on a server turns an organization-scoped user secret into an `sshCredential` (422 `secret.managed`, `secret.in_use`, `scope_mismatch` otherwise) and releases it when no server uses it.
+
+### Scopes
+
+The coarse scopes of WP1.0 are unchanged. Two additions to who needs `secrets:write` (the `write` scope still excludes secrets):
+
+- Registries: `POST`, `PATCH`, `DELETE /registries` need **`write` and `secrets:write`** (they create, replace or remove a credential). A token with `write` only gets `403 auth.insufficient_scope` with `requiredScope: secrets:write`. The OpenAPI `x-required-scope` shows the last, `secrets:write`. Git credential endpoints, when added, follow the same rule.
+- Binding a secret to an environment variable with a token needs `secrets:write` on top of `write`.
+
+### New problem codes
+
+| Code | Status | When |
+|---|---|---|
+| `secret.managed` | 409 | change, rotate or delete of a managed secret through `/secrets` |
+| `secret.binding_forbidden` | 403 | the caller may not bind this secret (managed, or organization-wide without Administrator) |
+| `volume.host_path_requires_admin` | 403 | `hostPath` set or changed by a Developer |
+| `volume.host_path_forbidden` | 422 | host path on the denylist (also for compose bind sources, with `pointers`) |
+| `port.privileged_requires_admin` | 403 | published host port below 1024 by a Developer |
+| `port.reserved` | 422 | published host port reserved by Aethera, without Administrator and `allowReserved` |
+| `compose.option_requires_admin` | 403 | inline compose uses root-equivalent options; `pointers` lists JSON Pointers into the compose document |
+| `compose.invalid` | 422 | inline compose is not valid YAML or exceeds a limit (256 KiB, 50 aliases, depth 32) |
+
+The trust-model problems carry `errors[]` entries with a request-body `pointer` (`/hostPath`, `/runtime/ports/0/publishedPort`, `/compose/inlineContent`, `/config/compose`) and the problem's own `code`.
+
+### Request changes
+
+- `PortRequest.allowReserved` (bool, optional, not stored, Administrators only): publish a reserved host port anyway. Unchanged ports of an update are not checked again.
+- `hostPath` is normalized (`//` collapsed, `.` dropped, trailing `/` removed, `..` rejected) before it is checked and stored.
+- `pathPrefix` of a domain: `\A/[A-Za-z0-9._~/-]*\z`, at most 256 characters, no `//`, `.` or `..` segment (was: anything without whitespace, `?`, `#`, `\`, `"`; `//` was collapsed, now it is a `pattern` error).
+- `build.context`, `build.dockerfilePath`, `build.outputDirectory`, `compose.filePath`: relative, inside the repository (no `..`, leading `/`, `~` or `-`, drive letter, backslash, control character).
+- `gitSource.branch`: a valid git ref that cannot be an option (no leading `-`, whitespace, control characters, `~ ^ : ? * [ \`, `..`, `@{`). `gitSource.repositoryUrl`: http(s), ssh or git URL or `user@host:path`, with no `-` at the start of a user or host, no `file:` and no `::` transport helper, no whitespace or control characters.
+- `compose.inlineContent` is limited to 256 KiB (was 512 KiB).
+
+### Validation anchors
+
+Every validator regular expression under `Features/Resources`, `Features/Auth` and `Aethera.Domain` uses `\A...\z`. .NET's `$` also matches before a final `\n`, so `^[a-z]+$` accepted `"abc\n"`. A reflection test fails when a new pattern in these namespaces starts with `^` or contains an unescaped `$`.
+
+### Dotenv export
+
+`GET .../env-vars/export` writes every value in single quotes with an embedded `'` as `'\''` (`KEY='it'\''s'`), so sourcing the file in a shell cannot expand or execute anything. Import still accepts unquoted, double-quoted and single-quoted values, including the `'\''` idiom; export then import reproduces the values (the one exception: a carriage return is read back as a line feed).
+
