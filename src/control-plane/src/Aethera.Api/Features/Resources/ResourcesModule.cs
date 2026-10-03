@@ -5,6 +5,7 @@ using Aethera.Api.Features.Resources.DomainNames;
 using Aethera.Api.Features.Resources.Organizations;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Servers;
+using Aethera.Api.Features.Resources.Workloads;
 using Aethera.Domain;
 using Aethera.Infrastructure.Crypto;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -39,8 +40,13 @@ public static class ResourcesModule
     {
         OrganizationEndpoints.Map(api);
         ServerEndpoints.Map(api);
+        ApplicationEndpoints.Map(api);
+        ServiceEndpoints.Map(api);
+        EnvVarEndpoints.Map(api, "applications", "application");
+        EnvVarEndpoints.Map(api, "services", "service");
         SecretEndpoints.Map(api);
         RegistryEndpoints.Map(api);
+        VolumeEndpoints.Map(api);
         return api;
     }
 }
