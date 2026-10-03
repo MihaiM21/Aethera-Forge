@@ -1,0 +1,16 @@
+# Go code for the agent is generated into src/agent/gen (committed).
+# C# code is NOT generated here: the control plane compiles the .proto files
+# with Grpc.Tools at build time (<Protobuf Include="..." /> in the .csproj).
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/mihaim21/aethera-forge/agent/gen
+plugins:
+  - local: protoc-gen-go
+    out: src/agent/gen
+    opt: paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: src/agent/gen
+    opt: paths=source_relative

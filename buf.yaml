@@ -1,0 +1,10 @@
+# Buf module for the agent protocol. Contract owned by the orchestrator.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
