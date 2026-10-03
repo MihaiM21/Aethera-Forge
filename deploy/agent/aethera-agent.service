@@ -1,0 +1,60 @@
+# Aethera server agent (ADR 0002 "Agent over-privilege").
+#
+# Install:
+#   useradd --system --home-dir /var/lib/aethera --shell /usr/sbin/nologin aethera-agent
+#   usermod -aG docker aethera-agent       # root-equivalent on the host; prefer rootless Docker
+#   install -d -o aethera-agent -g aethera-agent -m 0700 /var/lib/aethera /var/lib/aethera/bin
+#   install -m 0755 aethera-agent /var/lib/aethera/bin/aethera-agent
+#   install -d -m 0755 /etc/aethera && install -m 0644 agent.yaml /etc/aethera/agent.yaml   # root-owned policy
+#   sudo -u aethera-agent /var/lib/aethera/bin/aethera-agent enroll --endpoint <host:9443> --token <join token> --ca-sha256 <hex>
+#   systemctl enable --now aethera-agent
+#
+# The binary lives under the state directory because that is the only writable
+# path: self-update (AgentSelfUpdate) swaps it atomically and keeps the previous
+# one for rollback. The agent listens on no socket; it only dials out.
+[Unit]
+Description=Aethera server agent
+Documentation=https://github.com/MihaiM21/aethera-forge
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aethera-agent
+Group=aethera-agent
+SupplementaryGroups=docker
+ExecStart=/var/lib/aethera/bin/aethera-agent run --config /etc/aethera/agent.yaml
+# Self-update and rollback end the process on purpose; always bring it back.
+Restart=always
+RestartSec=3
+# Containers keep running independently of the agent: never kill them with it.
+KillMode=process
+TimeoutStopSec=30
+
+# --- Hardening -----------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/aethera
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
