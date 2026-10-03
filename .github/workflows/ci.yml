@@ -24,6 +24,13 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet restore
       - run: dotnet build --no-restore -warnaserror
+      # The build regenerates src/web/openapi/aethera.v1.json from the code. A diff means the API contract changed without the
+      # committed document being updated (and doubles as the contract-change review).
+      - name: OpenAPI document is up to date
+        working-directory: ${{ github.workspace }}
+        run: |
+          git add --intent-to-add src/web/openapi
+          git diff --exit-code src/web/openapi
       - run: dotnet test --no-build
 
   agent:
