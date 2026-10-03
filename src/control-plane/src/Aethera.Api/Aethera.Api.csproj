@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aethera.Domain\Aethera.Domain.csproj" />
+    <ProjectReference Include="..\Aethera.Infrastructure\Aethera.Infrastructure.csproj" />
+    <ProjectReference Include="..\Aethera.Engine\Aethera.Engine.csproj" />
+  </ItemGroup>
+
+</Project>
