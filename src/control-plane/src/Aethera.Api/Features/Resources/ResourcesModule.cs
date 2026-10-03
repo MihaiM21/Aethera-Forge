@@ -49,6 +49,7 @@ public static class ResourcesModule
         SecretEndpoints.Map(api);
         RegistryEndpoints.Map(api);
         VolumeEndpoints.Map(api);
+        DomainEndpoints.Map(api);
         return api;
     }
 }
