@@ -61,8 +61,8 @@ public sealed class AgentGatewayOptions
 
     public long LogInitialWindowBytes { get; set; } = 256 * 1024;
 
-    /// <summary>Oldest agent version still accepted; older agents get <c>Disconnect(UPGRADE_REQUIRED)</c>.</summary>
-    public string MinAgentVersion { get; set; } = "0.1.0";
+    /// <summary>Oldest agent version still accepted; older agents (and, above 0.0.0, unparseable ones such as "dev") get <c>Disconnect(UPGRADE_REQUIRED)</c>. The default accepts every agent.</summary>
+    public string MinAgentVersion { get; set; } = "0.0.0";
 
     /// <summary>Oldest wire protocol revision accepted.</summary>
     public int MinProtocolVersion { get; set; } = 1;

@@ -180,6 +180,7 @@ public static class TransportErrors
     public const string CommandCancelled = "transport.command_cancelled";
     public const string CommandTimedOut = "transport.command_timed_out";
     public const string Superseded = "transport.superseded";
+    public const string AgentBusy = "transport.agent_busy";
 }
 
 /// <summary>
@@ -193,11 +194,12 @@ public sealed class ServerTransportException(string code, string message, Comman
 
     public CommandErrorCode AgentError { get; } = agentError;
 
-    public bool Transient => Code is TransportErrors.AgentUnavailable or TransportErrors.Unreachable or TransportErrors.AckTimeout or TransportErrors.Superseded;
+    public bool Transient => Code is TransportErrors.AgentUnavailable or TransportErrors.Unreachable or TransportErrors.AckTimeout or TransportErrors.Superseded or TransportErrors.AgentBusy;
 }
 
 /// <summary>One persisted/streamed log chunk, as delivered to <see cref="IServerTransport.StreamLogsAsync"/> subscribers.</summary>
-public sealed record LogEntry(string StreamId, long Sequence, DateTimeOffset Timestamp, LogSource Source, LogStream Stream, string Text, long DroppedBytes = 0);
+public sealed record LogEntry(
+    string StreamId, long Sequence, DateTimeOffset Timestamp, LogSource Source, LogStream Stream, string Text, long DroppedBytes = 0, bool Eof = false, string? EofReason = null);
 
 /// <summary>Request to follow a container's logs (the transport-neutral <c>LogStreamStart</c>).</summary>
 public sealed record LogStreamRequest(string Container, bool Follow, DateTimeOffset? Since, int Tail, bool IncludeStdout = true, bool IncludeStderr = true);
