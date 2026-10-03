@@ -1,5 +1,6 @@
 using Aethera.Api.Features;
 using Aethera.Api.Security;
+using Aethera.Infrastructure.Crypto;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -31,12 +32,18 @@ public class AetheraApiFactory : WebApplicationFactory<Program>
     public string ConnectionString => _database.Value?.ConnectionString
         ?? throw new InvalidOperationException($"{RequiresDatabaseFactAttribute.EnvironmentVariable} is not set.");
 
+    /// <summary>The master key (base64) every factory configures. Public on purpose: it protects nothing real.</summary>
+    public static readonly string TestMasterKey = Convert.ToBase64String(MasterKeyring.TestKey);
+
     /// <summary>Replace the real authentication with <see cref="TestAuthHandler"/>. Override to false to exercise the real handlers.</summary>
     protected virtual bool UseTestAuthentication => true;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // A fixed test master key whatever the environment a subclass picks (Production refuses to start without one). It overrides
+        // AETHERA_MASTER_KEY from the developer's shell, so test runs never depend on, or touch, a real key.
+        builder.UseSetting(MasterKeyring.MasterKeyConfigKey, TestMasterKey);
         if (_database.Value is { } database) builder.UseSetting("ConnectionStrings:Aethera", database.ConnectionString);
 
         if (UseTestAuthentication)
