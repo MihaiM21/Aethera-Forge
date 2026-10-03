@@ -1,0 +1,190 @@
+// Shared primitives for the Aethera agent protocol.
+//
+// Conventions used throughout aethera.agent.v1:
+//   * Every enum has an `_UNSPECIFIED = 0` value. Receivers MUST treat
+//     UNSPECIFIED as "not set" and reject it where a value is required.
+//   * Time is google.protobuf.Timestamp (UTC); spans are google.protobuf.Duration.
+//   * IDs are opaque strings (UUIDv7 for control-plane generated IDs).
+//   * Any field that carries secret material has type `SecretValue` and a
+//     `// SECRET: never log` comment. Logging/audit code MUST redact
+//     SecretValue generically (walk the descriptor, replace the message).
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// SecretValue wraps every secret that crosses the agent protocol: registry
+// passwords, git tokens, private keys, join tokens, secret env vars, build
+// secrets. Redaction code detects secrets by message type, not by field name,
+// so NEVER carry a secret in a plain string/bytes field.
+message SecretValue {
+  // SECRET: never log
+  string value = 1;
+}
+
+// EnvVar is an environment variable whose value is either plain or secret.
+// The control plane decides which; the agent treats both identically when
+// injecting but MUST NOT log the secret variant's value.
+message EnvVar {
+  string name = 1;
+  oneof value {
+    string plain = 2;
+    // SECRET: never log
+    SecretValue secret = 3;
+  }
+}
+
+// RegistryAuth is credentials for one container registry.
+message RegistryAuth {
+  // Registry host, e.g. "ghcr.io" or "registry-1.docker.io".
+  string server = 1;
+  string username = 2;
+  // SECRET: never log
+  SecretValue password = 3;
+  // Optional OAuth identity token (alternative to password).
+  // SECRET: never log
+  SecretValue identity_token = 4;
+}
+
+// LogSource says which subsystem produced a LogChunk.
+enum LogSource {
+  LOG_SOURCE_UNSPECIFIED = 0;
+  LOG_SOURCE_BUILD = 1;
+  LOG_SOURCE_DEPLOY = 2;
+  LOG_SOURCE_CONTAINER = 3;
+  LOG_SOURCE_AGENT = 4;
+}
+
+// LogStream is the OS stream a log line was written to.
+enum LogStream {
+  LOG_STREAM_UNSPECIFIED = 0;
+  LOG_STREAM_STDOUT = 1;
+  LOG_STREAM_STDERR = 2;
+}
+
+enum PortProtocol {
+  PORT_PROTOCOL_UNSPECIFIED = 0;
+  PORT_PROTOCOL_TCP = 1;
+  PORT_PROTOCOL_UDP = 2;
+  PORT_PROTOCOL_SCTP = 3;
+}
+
+enum ContainerState {
+  CONTAINER_STATE_UNSPECIFIED = 0;
+  CONTAINER_STATE_CREATED = 1;
+  CONTAINER_STATE_RUNNING = 2;
+  CONTAINER_STATE_PAUSED = 3;
+  CONTAINER_STATE_RESTARTING = 4;
+  CONTAINER_STATE_REMOVING = 5;
+  CONTAINER_STATE_EXITED = 6;
+  CONTAINER_STATE_DEAD = 7;
+}
+
+// ContainerHealth mirrors Docker's HEALTHCHECK status.
+enum ContainerHealth {
+  CONTAINER_HEALTH_UNSPECIFIED = 0;
+  // The container defines no healthcheck.
+  CONTAINER_HEALTH_NONE = 1;
+  CONTAINER_HEALTH_STARTING = 2;
+  CONTAINER_HEALTH_HEALTHY = 3;
+  CONTAINER_HEALTH_UNHEALTHY = 4;
+}
+
+// ErrorCode is the stable, machine-readable failure reason for a command.
+// The control plane maps these to ProblemDetails `code` values and to the
+// failure reasons recorded on deployments (`failedStep` + reason).
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_NOT_FOUND = 2;
+  ERROR_CODE_ALREADY_EXISTS = 3;
+  ERROR_CODE_CONFLICT = 4;
+  ERROR_CODE_PERMISSION_DENIED = 5;
+  // The agent-side policy refused the command (e.g. forbidden bind mount).
+  ERROR_CODE_POLICY_VIOLATION = 6;
+  ERROR_CODE_UNSUPPORTED = 7;
+  ERROR_CODE_DOCKER_UNAVAILABLE = 8;
+  ERROR_CODE_REGISTRY_AUTH_FAILED = 9;
+  ERROR_CODE_IMAGE_PULL_FAILED = 10;
+  ERROR_CODE_GIT_FAILED = 11;
+  ERROR_CODE_BUILD_FAILED = 12;
+  ERROR_CODE_PORT_CONFLICT = 13;
+  ERROR_CODE_OUT_OF_DISK = 14;
+  ERROR_CODE_OUT_OF_MEMORY = 15;
+  ERROR_CODE_HEALTH_CHECK_FAILED = 16;
+  ERROR_CODE_TIMEOUT = 17;
+  ERROR_CODE_CANCELLED = 18;
+  ERROR_CODE_CHECKSUM_MISMATCH = 19;
+  ERROR_CODE_INTERNAL = 20;
+}
+
+// PortMapping publishes (or just declares) one container port.
+message PortMapping {
+  uint32 container_port = 1;
+  // 0 = do not publish on the host (container-internal / proxy-routed only).
+  uint32 host_port = 2;
+  // Host bind address; empty = all interfaces. Use "127.0.0.1" for local only.
+  string host_ip = 3;
+  PortProtocol protocol = 4;
+}
+
+enum MountType {
+  MOUNT_TYPE_UNSPECIFIED = 0;
+  // Named Docker volume. `source` is the volume name.
+  MOUNT_TYPE_VOLUME = 1;
+  // Host path. Subject to the agent's allowed-prefix policy; the Docker
+  // socket and agent state directories are always refused.
+  MOUNT_TYPE_BIND = 2;
+  MOUNT_TYPE_TMPFS = 3;
+}
+
+message VolumeMount {
+  MountType type = 1;
+  // Volume name or host path (empty for tmpfs).
+  string source = 2;
+  // Absolute path inside the container.
+  string target = 3;
+  bool read_only = 4;
+  int64 tmpfs_size_bytes = 5;
+}
+
+// NetworkAttachment attaches a container to a Docker network.
+message NetworkAttachment {
+  string network = 1;
+  // DNS aliases for the container on this network.
+  repeated string aliases = 2;
+  string ipv4_address = 3;
+}
+
+// ResourceLimits maps to Docker HostConfig resources. 0 = unlimited / unset.
+message ResourceLimits {
+  // Hard CPU limit in cores (1.5 = 150% of one core) -> NanoCPUs.
+  double cpu_limit_cores = 1;
+  // Soft CPU reservation in cores. Plain Docker has no CPU reservation, so the
+  // agent maps this to relative cpu_shares (cores * 1024).
+  double cpu_reservation_cores = 2;
+  int64 memory_limit_bytes = 3;
+  // Soft memory limit (MemoryReservation).
+  int64 memory_reservation_bytes = 4;
+  // Memory+swap ceiling; -1 = unlimited swap, 0 = unset.
+  int64 memory_swap_limit_bytes = 5;
+  // Max processes; 0 = unset, -1 = unlimited.
+  int64 pids_limit = 6;
+  string cpuset_cpus = 7;
+}
+
+enum RestartPolicyName {
+  RESTART_POLICY_NAME_UNSPECIFIED = 0;
+  RESTART_POLICY_NAME_NO = 1;
+  RESTART_POLICY_NAME_ALWAYS = 2;
+  RESTART_POLICY_NAME_ON_FAILURE = 3;
+  RESTART_POLICY_NAME_UNLESS_STOPPED = 4;
+}
+
+message RestartPolicy {
+  RestartPolicyName name = 1;
+  // Only meaningful for ON_FAILURE; 0 = unlimited.
+  int32 maximum_retry_count = 2;
+}

@@ -1,0 +1,79 @@
+// Agent enrollment: exchange a one-time join token + CSR for a client cert.
+// See docs/architecture/0002-agent-communication.md.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// EnrollmentService is the ONLY service reachable without a client
+// certificate. It runs over server-authenticated TLS (the agent pins the CA
+// fingerprint embedded in the install command). Every other RPC requires mTLS.
+service EnrollmentService {
+  // Enroll consumes a one-time join token, signs the agent's CSR with the
+  // internal CA and returns the client certificate. A token is single-use and
+  // short-lived; a replayed or expired token yields PERMISSION_DENIED.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+// HostFacts are the static facts about a machine, sent at enrollment and as
+// part of every DiscoveryReport.
+message HostFacts {
+  string hostname = 1;
+  // Distribution name, e.g. "Ubuntu".
+  string os_name = 2;
+  // e.g. "24.04".
+  string os_version = 3;
+  string kernel_version = 4;
+  // GOARCH-style: "amd64", "arm64".
+  string architecture = 5;
+  string cpu_model = 6;
+  uint32 cpu_cores_physical = 7;
+  uint32 cpu_cores_logical = 8;
+  int64 memory_total_bytes = 9;
+  int64 swap_total_bytes = 10;
+  // "kvm", "lxc", "docker", "none", ... (empty if unknown).
+  string virtualization = 11;
+  // Non-loopback addresses of the host, textual form.
+  repeated string ip_addresses = 12;
+  string timezone = 13;
+  google.protobuf.Timestamp boot_time = 14;
+}
+
+message EnrollRequest {
+  // One-time join token issued by the control plane.
+  // SECRET: never log
+  SecretValue join_token = 1;
+  string agent_version = 2;
+  // Wire protocol revision the agent speaks (currently 1).
+  uint32 protocol_version = 3;
+  // PEM-encoded PKCS#10 certificate signing request. The private key is
+  // generated on the host and never leaves it.
+  string csr_pem = 4;
+  HostFacts host = 5;
+  // Optional display name suggested by the operator (--name flag).
+  string requested_name = 6;
+}
+
+message EnrollResponse {
+  // Server identity assigned by the control plane (UUIDv7). The issued
+  // certificate's SAN URI is `spiffe://aethera/server/<server_id>`.
+  string server_id = 1;
+  // PEM-encoded signed client certificate (leaf first).
+  string client_certificate_pem = 2;
+  // PEM-encoded CA chain the agent must trust for the control plane.
+  string ca_chain_pem = 3;
+  // SHA-256 fingerprint (hex) of the root CA certificate, for pinning.
+  string ca_fingerprint_sha256 = 4;
+  // host:port the agent dials for AgentService (may differ from the
+  // enrollment endpoint).
+  string control_plane_endpoint = 5;
+  google.protobuf.Timestamp certificate_not_after = 6;
+  // How long before expiry the agent should call RenewCertificate.
+  google.protobuf.Duration renew_before = 7;
+}
