@@ -2,7 +2,9 @@
 // Program.cs already calls AddResources and MapResources; do not edit it. FluentValidation validators anywhere in Aethera.Api are registered
 // automatically, so no registration is needed for them.
 using Aethera.Api.Features.Resources.DomainNames;
+using Aethera.Api.Features.Resources.Organizations;
 using Aethera.Api.Features.Resources.Secrets;
+using Aethera.Api.Features.Resources.Servers;
 using Aethera.Domain;
 using Aethera.Infrastructure.Crypto;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -35,6 +37,8 @@ public static class ResourcesModule
     /// <summary>Maps organizations, projects, environments, applications, services, env vars, secrets, volumes, domains, registries, servers.</summary>
     public static IEndpointRouteBuilder MapResources(this IEndpointRouteBuilder api)
     {
+        OrganizationEndpoints.Map(api);
+        ServerEndpoints.Map(api);
         SecretEndpoints.Map(api);
         RegistryEndpoints.Map(api);
         return api;
