@@ -75,6 +75,8 @@ public sealed class JobWorkerHost : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (AetheraHost.IsOpenApiGeneration) return; // build-time OpenAPI generation: no queue to serve
+
         if (_options.WorkerCount <= 0)
         {
             _logger.LogInformation("Job workers are disabled (Aethera:Jobs:WorkerCount = 0)");

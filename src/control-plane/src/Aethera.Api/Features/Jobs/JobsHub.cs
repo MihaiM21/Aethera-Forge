@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Channels;
 using Aethera.Api.Security;
 using Aethera.Domain;
+using Aethera.Infrastructure;
 using Aethera.Infrastructure.Jobs;
 using Aethera.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
@@ -112,6 +113,8 @@ public sealed class JobEventRelay(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        if (AetheraHost.IsOpenApiGeneration) return Task.CompletedTask; // build-time OpenAPI generation: no Redis, no hub clients
+
         _pump = Task.Run(() => PumpAsync(_stopping.Token), CancellationToken.None);
         // Do not hold up start-up on Redis: connect and subscribe in the background, and keep trying while it is unreachable.
         _ = Task.Run(async () =>

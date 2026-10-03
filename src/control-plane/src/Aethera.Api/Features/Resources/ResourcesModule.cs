@@ -8,6 +8,7 @@ using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Servers;
 using Aethera.Api.Features.Resources.Workloads;
 using Aethera.Domain;
+using Aethera.Infrastructure;
 using Aethera.Infrastructure.Crypto;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -61,7 +62,7 @@ internal sealed class SecretProtectorStartupCheck(IServiceProvider services) : I
     {
         // The build-time OpenAPI generator (Microsoft.Extensions.ApiDescription.Server) starts the application without any configuration;
         // it never touches secrets, so it must not need a master key.
-        if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider") return Task.CompletedTask;
+        if (AetheraHost.IsOpenApiGeneration) return Task.CompletedTask;
 
         _ = services.GetRequiredService<ISecretProtector>();
         return Task.CompletedTask;

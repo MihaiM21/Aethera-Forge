@@ -88,6 +88,8 @@ public sealed class LogIngestor : BackgroundService, ILogSinkFactory
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (AetheraHost.IsOpenApiGeneration) return; // build-time OpenAPI generation: nothing writes logs
+
         try { _ = _dataSource; }
         catch (InvalidOperationException)
         {
