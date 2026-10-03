@@ -38,6 +38,27 @@ public sealed class IdentityTests
     }
 
     [Fact]
+    public void User_ExpiredLockoutStartsAFreshFailureWindow()
+    {
+        var user = new User("a@b.c", "A");
+        var duration = TimeSpan.FromMinutes(15);
+        user.RecordFailedLogin(T0, 3, duration);
+        user.RecordFailedLogin(T0, 3, duration);
+        user.RecordFailedLogin(T0, 3, duration);
+        Assert.True(user.IsLockedOut(T0.AddMinutes(1)));
+
+        var later = T0.AddMinutes(20); // lockout over
+        user.RecordFailedLogin(later, 3, duration);
+
+        Assert.Equal(1, user.FailedLoginCount);
+        Assert.False(user.IsLockedOut(later));
+        user.RecordFailedLogin(later, 3, duration);
+        Assert.False(user.IsLockedOut(later));
+        user.RecordFailedLogin(later, 3, duration);
+        Assert.True(user.IsLockedOut(later));
+    }
+
+    [Fact]
     public void ApiToken_ActiveUntilRevokedOrExpired()
     {
         var token = new ApiToken

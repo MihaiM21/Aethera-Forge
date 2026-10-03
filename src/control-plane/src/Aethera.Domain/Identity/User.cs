@@ -47,6 +47,12 @@ public class User : SoftDeletableEntity
 
     public void RecordFailedLogin(DateTimeOffset now, int maxAttempts, TimeSpan lockoutDuration)
     {
+        // An expired lockout starts a fresh window; otherwise every later wrong password would re-lock immediately.
+        if (LockoutEndAt is { } end && end <= now)
+        {
+            FailedLoginCount = 0;
+            LockoutEndAt = null;
+        }
         FailedLoginCount++;
         if (FailedLoginCount >= maxAttempts)
             LockoutEndAt = now + lockoutDuration;

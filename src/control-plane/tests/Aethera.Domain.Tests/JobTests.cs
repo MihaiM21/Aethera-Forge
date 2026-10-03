@@ -172,6 +172,23 @@ public sealed class JobTests
         Assert.Contains(Job.WorkerLostCode, job.ErrorJson);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExpireLease_WithPendingCancel_EndsCancelled(bool resumable)
+    {
+        var job = NewJob(maxAttempts: 3);
+        job.Claim("dead-worker", T0, Lease);
+        job.RequestCancel(T0.AddSeconds(5));
+
+        Assert.False(job.ExpireLease(T0.AddSeconds(61), resumable));
+
+        Assert.Equal(JobStatus.Cancelled, job.Status);
+        Assert.Equal(T0.AddSeconds(61), job.FinishedAt);
+        Assert.Null(job.LockedBy);
+        Assert.Null(job.ErrorJson);
+    }
+
     [Fact]
     public void ExpireLease_RejectsALeaseThatIsStillValid()
     {
@@ -195,6 +212,21 @@ public sealed class BuildTests
 
         Assert.Equal(BuildStatus.Succeeded, build.Status);
         Assert.Equal(42500, build.DurationMs);
+    }
+
+    [Fact]
+    public void Start_CannotBeCalledTwiceOrAfterFinish()
+    {
+        var build = new Build { Engine = BuildEngines.Dockerfile };
+        build.Start(T0);
+        Assert.Throws<DomainRuleException>(() => build.Start(T0.AddSeconds(1)));
+
+        build.Finish(BuildStatus.Succeeded, T0.AddSeconds(5));
+        Assert.Throws<DomainRuleException>(() => build.Start(T0.AddSeconds(6)));
+        Assert.Equal(BuildStatus.Succeeded, build.Status);
+        Assert.Equal(T0, build.StartedAt);
+        Assert.Throws<DomainRuleException>(() => build.Finish(BuildStatus.Failed, T0.AddSeconds(7)));
+        Assert.Equal(BuildStatus.Succeeded, build.Status);
     }
 
     [Fact]

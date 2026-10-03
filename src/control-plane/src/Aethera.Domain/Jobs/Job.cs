@@ -126,12 +126,19 @@ public class Job : MutableEntity
 
     /// <summary>
     /// Reaper: the lease expired (worker died). Resumable jobs with attempts left go back to Queued without a new
-    /// attempt being consumed; otherwise they fail with <c>job.worker_lost</c>. Returns true when re-queued.
+    /// attempt being consumed; otherwise they fail with <c>job.worker_lost</c>. A pending cancel request ends the job Cancelled. Returns true when re-queued.
     /// </summary>
     public bool ExpireLease(DateTimeOffset now, bool resumable)
     {
         if (Status != JobStatus.Running) throw new DomainRuleException($"Cannot expire the lease of a {Status} job.");
         if (LeaseExpiresAt is { } expires && expires > now) throw new DomainRuleException("Lease has not expired.");
+        if (CancelRequested)
+        {
+            // A pending cancel wins over requeue/worker_lost: the worker is gone, so nothing is left to stop cooperatively.
+            Status = JobStatus.Cancelled;
+            Release(now);
+            return false;
+        }
         if (resumable && Attempt < MaxAttempts)
         {
             Status = JobStatus.Queued;

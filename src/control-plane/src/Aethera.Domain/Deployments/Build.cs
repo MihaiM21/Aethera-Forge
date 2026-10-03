@@ -36,6 +36,8 @@ public class Build : MutableEntity
 
     public void Start(DateTimeOffset now)
     {
+        if (StartedAt is not null || Status != BuildStatus.Running)
+            throw new DomainRuleException($"Build cannot be started again (status {Status}).");
         StartedAt = now;
         Status = BuildStatus.Running;
         UpdatedAt = now;
