@@ -90,10 +90,10 @@ public sealed class AccessMatrixTests(ResourcesFixture fixture)
         ("POST", "/secrets/{id}/reveal", OrganizationRole.Admin, SecretsWrite),
 
         ("GET", "/registries", OrganizationRole.Viewer, Read),
-        ("POST", "/registries", OrganizationRole.Admin, Write),
+        ("POST", "/registries", OrganizationRole.Admin, SecretsWrite), // also needs write: see Companion
         ("GET", "/registries/{id}", OrganizationRole.Viewer, Read),
-        ("PATCH", "/registries/{id}", OrganizationRole.Admin, Write),
-        ("DELETE", "/registries/{id}", OrganizationRole.Admin, Write),
+        ("PATCH", "/registries/{id}", OrganizationRole.Admin, SecretsWrite),
+        ("DELETE", "/registries/{id}", OrganizationRole.Admin, SecretsWrite),
         ("POST", "/registries/{id}/test", OrganizationRole.Admin, Write),
 
         ("GET", "/volumes", OrganizationRole.Viewer, Read),
@@ -175,17 +175,17 @@ public sealed class AccessMatrixTests(ResourcesFixture fixture)
             .Where(s => !Scopes_Satisfy(s, scope)).ToList();
         foreach (var other in others)
         {
-            var result = await SendAsync(tenant.Token(role, other), method, path);
+            var result = await SendAsync(tenant.Token(role, [other, .. Companion(method, path)]), method, path);
             Assert.True((HttpStatusCode.Forbidden, "auth.insufficient_scope", scope) == (result.Status, result.Code, result.RequiredScope),
                 $"token[{other}] {method} {path} -> {result.Status} {result.Code} {result.RequiredScope}");
         }
 
         Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(tenant.Token(role), method, path)).Status); // a token with no scopes
 
-        // The scope itself, a broader one, the wildcard and admin pass.
+        // The scope itself (with the companion scope some endpoints also need), a broader one, the wildcard and admin pass.
         foreach (var granted in new[] { scope, "*", Admin }.Concat(scope == Read ? [Write] : []).Concat(scope == SecretsRead ? [SecretsWrite] : []))
         {
-            var result = await SendAsync(tenant.Token(role, granted), method, path);
+            var result = await SendAsync(tenant.Token(role, [granted, .. Companion(method, path)]), method, path);
             Assert.False(Denied(result), $"token[{granted}] {method} {path} -> {result.Status} {result.Code}");
         }
 
@@ -196,6 +196,10 @@ public sealed class AccessMatrixTests(ResourcesFixture fixture)
             Assert.True((HttpStatusCode.Forbidden, "auth.forbidden") == (result.Status, result.Code), $"{method} {path} -> {result.Status} {result.Code}");
         }
     }
+
+    /// <summary>Registry changes handle a credential: a token needs <c>secrets:write</c> (the table's scope) <em>and</em> <c>write</c>.</summary>
+    private static string[] Companion(string method, string path) =>
+        method != "GET" && path.StartsWith("/registries", StringComparison.Ordinal) && !path.EndsWith("/test", StringComparison.Ordinal) ? [Write] : [];
 
     private static bool Scopes_Satisfy(string granted, string required) =>
         Aethera.Api.Security.Scopes.Satisfies(new HashSet<string> { granted }, required);

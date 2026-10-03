@@ -310,7 +310,8 @@ internal static class ServiceFactory
         {
             if (env.Generate == ServiceTemplates.Password)
             {
-                var secret = vault.Create(org, env.Key, $"Generated for service '{name}'.", SecretVault.GeneratePassword(env.Length), workloadId: service.Id);
+                var secret = vault.Create(org, env.Key, $"Generated for service '{name}'.", SecretVault.GeneratePassword(env.Length), workloadId: service.Id,
+                    purpose: SecretPurpose.ServiceGenerated);
                 service.EnvironmentVariables.Add(new EnvironmentVariable { WorkloadId = service.Id, Key = env.Key, SecretId = secret.Id, Secret = secret });
             }
             else

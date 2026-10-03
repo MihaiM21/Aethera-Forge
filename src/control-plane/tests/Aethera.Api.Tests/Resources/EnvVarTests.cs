@@ -34,7 +34,8 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         Assert.True(plain["isRuntime"]!.GetValue<bool>());
         Assert.Equal(appId, plain["workloadId"]!.GetValue<string>());
 
-        var backed = await tenant.Developer.CreateAsync(Url(appId), new { key = "DATABASE_PASSWORD", secretId = secret.Id() });
+        // DB_PASS is organization-wide: binding it needs an Administrator since WP1.6 (the Developer rules are in SecretBindingTests).
+        var backed = await tenant.Admin.CreateAsync(Url(appId), new { key = "DATABASE_PASSWORD", secretId = secret.Id() });
         Assert.True(backed["isSecret"]!.GetValue<bool>());
         Assert.Equal("********", backed["value"]!.GetValue<string>());
         Assert.Equal(secret.Id(), backed["secretId"]!.GetValue<string>());
@@ -58,7 +59,7 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         await (await tenant.Developer.PatchAsync(Url(appId, "/" + plain.Id()), new { value = "x" }, etag)).AssertProblemAsync(412, "precondition.failed");
 
         // switch a plain variable to a secret reference and back
-        var toSecret = await tenant.Developer.PatchOkAsync(Url(appId, "/" + plain.Id()), new { secretId = secret.Id() });
+        var toSecret = await tenant.Admin.PatchOkAsync(Url(appId, "/" + plain.Id()), new { secretId = secret.Id() });
         Assert.True(toSecret["isSecret"]!.GetValue<bool>());
         Assert.Equal("********", toSecret["value"]!.GetValue<string>());
         var toPlain = await tenant.Developer.PatchOkAsync(Url(appId, "/" + plain.Id()), new { value = "plain-again" });
@@ -117,7 +118,7 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         var tenant = await fixture.NewTenantAsync();
         var (serverId, envId, _, appId) = await tenant.CreateStackAsync();
         var secret = await tenant.CreateSecretAsync("TOP", "super-secret-marker");
-        await tenant.Developer.CreateAsync(Url(appId), new { key = "API_TOKEN", secretId = secret.Id() });
+        await tenant.Admin.CreateAsync(Url(appId), new { key = "API_TOKEN", secretId = secret.Id() }); // organization-wide secret: Admin
 
         var dotenv = "# config\nPORT=8080\nNAME=\"My App\"\nGREETING='hello $world'\nEMPTY=\nMULTI=\"line1\\nline2\"\nexport MODE=production # comment\nURL=postgres://u:p@h:5432/db?x=1#frag\n";
         var imported = await tenant.Developer.PostAsync(Url(appId, "/import"), new { content = dotenv });
@@ -157,7 +158,7 @@ public sealed class EnvVarTests(ResourcesFixture fixture)
         var (_, _, _, appId) = await tenant.CreateStackAsync();
         var secret = await tenant.CreateSecretAsync();
         await tenant.Developer.CreateAsync(Url(appId), new { key = "KEEP", value = "old" });
-        await tenant.Developer.CreateAsync(Url(appId), new { key = "SECRET_BACKED", secretId = secret.Id() });
+        await tenant.Admin.CreateAsync(Url(appId), new { key = "SECRET_BACKED", secretId = secret.Id() }); // organization-wide secret: Admin
 
         var content = "KEEP=new\nSECRET_BACKED=plain-attempt\nFRESH=1\n";
         var first = await (await tenant.Developer.PostAsync(Url(appId, "/import"), new { content, overwrite = false })).ReadAsync();

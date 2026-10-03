@@ -1,3 +1,4 @@
+using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Http.Errors;
 using Aethera.Domain;
 using Aethera.Infrastructure.Persistence;
@@ -106,11 +107,17 @@ public static class Lookups
             ? workload
             : throw BadReference(pointer, "application or service");
 
-    /// <summary>The secret, if it exists in the organization and may be used by the workload (scope check); otherwise 422.</summary>
+    /// <summary>
+    /// The secret, if it exists in the organization and the caller may bind it to the workload: an API token needs <c>secrets:write</c>; a managed
+    /// secret is never bindable (a generated service secret only to its own service); an organization-wide secret needs an Administrator; the
+    /// secret's scope must contain the workload. Otherwise 403 (<c>secret.binding_forbidden</c>) or 422.
+    /// </summary>
     public static async Task<Secret> RequireSecretForWorkloadAsync(
-        this AetheraDbContext db, Guid org, Guid secretId, Workload workload, string pointer, CancellationToken ct)
+        this AetheraDbContext db, ICurrentActor actor, Guid org, Guid secretId, Workload workload, string pointer, CancellationToken ct)
     {
+        ManagedSecrets.RequireTokenScope(actor);
         var secret = await db.SecretsOf(org).FirstOrDefaultAsync(s => s.Id == secretId, ct) ?? throw BadReference(pointer, "secret");
+        ManagedSecrets.EnsureMayBind(actor, secret, workload);
         var environment = workload.Environment ?? await db.Environments.FirstAsync(e => e.Id == workload.EnvironmentId, ct);
         var usable = secret.Scope switch
         {

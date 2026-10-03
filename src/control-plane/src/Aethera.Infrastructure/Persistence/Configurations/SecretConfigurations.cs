@@ -8,12 +8,16 @@ internal sealed class SecretConfiguration : IEntityTypeConfiguration<Secret>
 {
     public void Configure(EntityTypeBuilder<Secret> b)
     {
-        b.ToTable("secrets", t => t.HasCheckConstraint(
-            "ck_secrets_single_scope",
-            "num_nonnulls(project_id, environment_id, workload_id) <= 1"));
+        b.ToTable("secrets", t =>
+        {
+            t.HasCheckConstraint("ck_secrets_single_scope", "num_nonnulls(project_id, environment_id, workload_id) <= 1");
+            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated')");
+        });
         b.Ignore(x => x.Scope); // derived from the scope FKs
         b.Property(x => x.Name).HasMaxLength(200);
         b.Property(x => x.Description).HasMaxLength(500);
+        b.Property(x => x.Purpose).HasDefaultValueSql("'user'"); // 'user'; managed purposes are set by the owning resource's endpoints
+        b.Ignore(x => x.IsManaged);
         b.HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne<ProjectEnvironment>().WithMany().HasForeignKey(x => x.EnvironmentId).OnDelete(DeleteBehavior.Cascade);

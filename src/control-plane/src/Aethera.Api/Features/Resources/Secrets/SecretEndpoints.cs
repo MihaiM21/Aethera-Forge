@@ -35,10 +35,15 @@ public sealed record RotateSecretRequest
     public string? Value { get; init; }
 }
 
-/// <summary>Secret metadata. <c>value</c> is always the mask; the plaintext is never part of this shape.</summary>
+/// <summary>
+/// Secret metadata. <c>value</c> is always the mask; the plaintext is never part of this shape. A <c>managed</c> secret belongs to another
+/// resource (<c>managedBy</c>): it is listed here but cannot be changed, rotated, deleted or bound as an environment variable through the
+/// secrets API (ADR 0006). <c>purpose</c> is <c>user</c> for ordinary secrets.
+/// </summary>
 public sealed record SecretResponse(
     Guid Id, string Name, string? Description, SecretScope Scope, Guid? ProjectId, Guid? EnvironmentId, Guid? WorkloadId, int CurrentVersion,
-    string Value, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? RotatedAt);
+    string Value, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? RotatedAt, SecretPurpose Purpose, bool Managed,
+    SecretOwnerResponse? ManagedBy);
 
 public sealed record RevealSecretResponse(Guid Id, string Name, int Version, string Value);
 
@@ -46,8 +51,9 @@ public static class SecretResponses
 {
     public const string Mask = "********";
 
-    public static SecretResponse ToResponse(Secret s) => new(
-        s.Id, s.Name, s.Description, s.Scope, s.ProjectId, s.EnvironmentId, s.WorkloadId, s.CurrentVersion, Mask, s.CreatedAt, s.UpdatedAt, s.RotatedAt);
+    public static SecretResponse ToResponse(Secret s, SecretOwnerResponse? owner = null) => new(
+        s.Id, s.Name, s.Description, s.Scope, s.ProjectId, s.EnvironmentId, s.WorkloadId, s.CurrentVersion, Mask, s.CreatedAt, s.UpdatedAt, s.RotatedAt,
+        s.Purpose, s.IsManaged, owner);
 }
 
 public static class SecretRules
@@ -139,7 +145,8 @@ internal static class SecretEndpoints
 
         var context = $"projectId={projectId}&environmentId={environmentId}&workloadId={workloadId}&scope={scope}&q={q}";
         var (items, next) = await Sorts.PageAsync(query, sort, page, cursors, context, ct);
-        return TypedResults.Ok(new Page<SecretResponse>(items.Select(SecretResponses.ToResponse).ToList(), next));
+        var owners = await ManagedSecrets.OwnersAsync(db, items, ct);
+        return TypedResults.Ok(new Page<SecretResponse>(items.Select(s => SecretResponses.ToResponse(s, owners.GetValueOrDefault(s.Id))).ToList(), next));
     }
 
     private static async Task<Created<SecretResponse>> Create(
@@ -168,7 +175,7 @@ internal static class SecretEndpoints
     {
         var secret = await db.GetSecretAsync(actor.Org(), id, tracking: false, ct);
         http.SetETag(secret.RowVersion);
-        return TypedResults.Ok(SecretResponses.ToResponse(secret));
+        return TypedResults.Ok(SecretResponses.ToResponse(secret, (await ManagedSecrets.OwnersAsync(db, [secret], ct)).GetValueOrDefault(secret.Id)));
     }
 
     private static async Task<Ok<SecretResponse>> Update(
@@ -177,6 +184,7 @@ internal static class SecretEndpoints
     {
         var org = actor.Org();
         var secret = await db.GetSecretAsync(org, id, tracking: true, ct);
+        await ManagedSecrets.EnsureUserSecretAsync(db, secret, "changed", ct);
         http.CheckIfMatch(secret.RowVersion);
 
         var changed = new List<string>();
@@ -199,6 +207,7 @@ internal static class SecretEndpoints
         Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock, CancellationToken ct)
     {
         var secret = await db.GetSecretAsync(actor.Org(), id, tracking: true, ct);
+        await ManagedSecrets.EnsureUserSecretAsync(db, secret, "deleted", ct);
         http.CheckIfMatch(secret.RowVersion);
         Confirmation.Require(confirm, secret.Name);
 
@@ -217,6 +226,7 @@ internal static class SecretEndpoints
         CancellationToken ct)
     {
         var secret = await db.GetSecretAsync(actor.Org(), id, tracking: true, ct);
+        await ManagedSecrets.EnsureUserSecretAsync(db, secret, "rotated", ct);
         http.CheckIfMatch(secret.RowVersion);
         vault.AddVersion(secret, request.Value!);
         await audit.RecordAsync("secret.rotated", "secret", id, new { name = secret.Name, version = secret.CurrentVersion }, ct);

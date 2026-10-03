@@ -51,7 +51,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
             bodies.Add(await response.Content.ReadAsStringAsync());
         }
 
-        await Collect(tenant.Developer.PostAsync($"/api/v1/applications/{appId}/env-vars", new { key = "API_KEY", secretId = id }));
+        await Collect(tenant.Admin.PostAsync($"/api/v1/applications/{appId}/env-vars", new { key = "API_KEY", secretId = id })); // organization-wide: Admin
         await Collect(tenant.Developer.PatchAsync($"/api/v1/secrets/{id}", new { description = "renamed" }));
         await Collect(tenant.Developer.PostAsync($"/api/v1/secrets/{id}/rotate", new { value = Marker + "-v2" }));
         await Collect(tenant.Owner.GetAsync("/api/v1/secrets"));
@@ -258,7 +258,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var (_, _, _, appId) = await tenant.CreateStackAsync();
         var secret = await tenant.CreateSecretAsync("IN_USE");
         var url = $"/api/v1/secrets/{secret.Id()}";
-        var variable = await tenant.Developer.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
+        var variable = await tenant.Admin.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
 
         await (await tenant.Developer.DeleteAsync(url)).AssertProblemAsync(428, "confirmation.required");
         var inUse = await tenant.Developer.DeleteAsync(url + "?confirm=IN_USE");
@@ -279,7 +279,7 @@ public sealed class SecretTests(ResourcesFixture fixture)
         var tenant = await fixture.NewTenantAsync();
         var (_, _, _, appId) = await tenant.CreateStackAsync();
         var secret = await tenant.CreateSecretAsync("ORPHAN");
-        await tenant.Developer.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
+        await tenant.Admin.CreateAsync($"/api/v1/applications/{appId}/env-vars", new { key = "X", secretId = secret.Id() });
         var slug = (await tenant.Viewer.GetJsonAsync($"/api/v1/applications/{appId}"))["slug"]!.GetValue<string>();
         await tenant.Developer.DeleteAsync($"/api/v1/applications/{appId}?confirm={slug}");
         Assert.Equal(HttpStatusCode.NoContent, (await tenant.Developer.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm=ORPHAN")).StatusCode);

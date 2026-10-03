@@ -164,7 +164,7 @@ internal static class EnvVarEndpoints
         await EnsureKeyFreeAsync(db, workload.Id, key, null, ct);
 
         Secret? secret = null;
-        if (request.SecretId is { } secretId) secret = await db.RequireSecretForWorkloadAsync(org, secretId, workload, "/secretId", ct);
+        if (request.SecretId is { } secretId) secret = await db.RequireSecretForWorkloadAsync(actor, org, secretId, workload, "/secretId", ct);
         var variable = new EnvironmentVariable
         {
             WorkloadId = workload.Id, Key = key, Value = request.Value, SecretId = secret?.Id, Secret = secret,
@@ -215,7 +215,7 @@ internal static class EnvVarEndpoints
         if (secretId != variable.SecretId)
         {
             var workload = await FindWorkloadAsync(db, org, isApplication, workloadId, ct);
-            variable.Secret = secretId is { } id ? await db.RequireSecretForWorkloadAsync(org, id, workload, "/secretId", ct) : null;
+            variable.Secret = secretId is { } id ? await db.RequireSecretForWorkloadAsync(actor, org, id, workload, "/secretId", ct) : null;
             variable.SecretId = secretId;
         }
 

@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
+using Aethera.Api.Security;
 using Aethera.Domain;
 using Aethera.Infrastructure.Persistence;
 using FluentValidation;
@@ -82,12 +83,13 @@ internal static class RegistryEndpoints
         var group = api.MapGroup("/registries").WithTags("Registries");
 
         group.MapGet("/", List).WithName("listRegistries").RequireRead();
-        group.MapPost("/", Create).WithName("createRegistry").Validate<CreateRegistryRequest>().RequireAdmin();
+        // The registry password is a secret: besides Administrator and write, a token needs secrets:write (the write scope excludes secrets).
+        group.MapPost("/", Create).WithName("createRegistry").Validate<CreateRegistryRequest>().RequireAdmin().RequireScope(Scopes.SecretsWrite);
         group.MapGet("/{id:guid}", Get).WithName("getRegistry").RequireRead();
         group.MapPatch("/{id:guid}", Update).WithName("updateRegistry")
             .Accepts<UpdateRegistryRequest>("application/merge-patch+json", "application/json")
-            .ValidatePatch<UpdateRegistryRequest>().RequireAdmin();
-        group.MapDelete("/{id:guid}", Delete).WithName("deleteRegistry").RequireAdmin();
+            .ValidatePatch<UpdateRegistryRequest>().RequireAdmin().RequireScope(Scopes.SecretsWrite);
+        group.MapDelete("/{id:guid}", Delete).WithName("deleteRegistry").RequireAdmin().RequireScope(Scopes.SecretsWrite);
         group.MapPost("/{id:guid}/test", Test).WithName("testRegistry").RequireAdmin()
             .ProducesProblem(StatusCodes.Status501NotImplemented);
     }
@@ -210,7 +212,7 @@ internal static class RegistryEndpoints
     private static Secret CreateCredential(SecretVault vault, Guid org, Registry registry, string password)
     {
         var name = $"registry/{registry.Id.ToString("N")[^12..]}";
-        return vault.Create(org, name, $"Credentials of registry '{registry.Name}'.", password);
+        return vault.Create(org, name, $"Credentials of registry '{registry.Name}'.", password, purpose: SecretPurpose.RegistryCredential);
     }
 
     private static async Task EnsureNameFreeAsync(AetheraDbContext db, Guid org, string name, Guid? exceptId, CancellationToken ct)

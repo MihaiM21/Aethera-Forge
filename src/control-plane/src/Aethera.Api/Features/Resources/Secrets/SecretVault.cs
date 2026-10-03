@@ -17,11 +17,11 @@ public sealed class SecretVault(AetheraDbContext db, ISecretProtector protector,
 
     /// <summary>Adds a new secret with its first version to the context (not saved).</summary>
     public Secret Create(Guid organizationId, string name, string? description, string value, Guid? projectId = null, Guid? environmentId = null,
-        Guid? workloadId = null)
+        Guid? workloadId = null, SecretPurpose purpose = SecretPurpose.User)
     {
         var secret = new Secret
         {
-            OrganizationId = organizationId, Name = name, Description = description,
+            OrganizationId = organizationId, Name = name, Description = description, Purpose = purpose,
             ProjectId = projectId, EnvironmentId = environmentId, WorkloadId = workloadId,
         };
         db.Secrets.Add(secret);

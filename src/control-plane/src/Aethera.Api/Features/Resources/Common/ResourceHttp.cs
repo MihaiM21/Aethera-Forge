@@ -15,6 +15,8 @@ public static class ResourceProblemCodes
     public const string EnvironmentNotEmpty = "environment.not_empty";
     public const string ServerInUse = "server.in_use";
     public const string SecretInUse = "secret.in_use";
+    public const string SecretManaged = "secret.managed";
+    public const string SecretBindingForbidden = "secret.binding_forbidden";
     public const string RegistryInUse = "registry.in_use";
     public const string DomainInvalidHost = "domain.invalid_host";
     public const string Mismatch = "mismatch";
@@ -26,6 +28,9 @@ public static class ResourceHttp
     /// <summary>The caller's organization. Every query of a resource endpoint is filtered by it; other organizations' rows are 404.</summary>
     public static Guid Org(this ICurrentActor actor) =>
         actor.OrganizationId ?? throw new ApiProblemException(ApiProblems.Forbidden("The caller does not belong to an organization."));
+
+    /// <summary>True for an Administrator or the Owner (for an API token: its owning user's role). The trust-model checks use it (ADR 0006).</summary>
+    public static bool IsAdmin(this ICurrentActor actor) => actor.Role is { } role && role >= OrganizationRole.Admin;
 
     /// <summary>Viewer role and the <c>read</c> scope.</summary>
     public static TBuilder RequireRead<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>

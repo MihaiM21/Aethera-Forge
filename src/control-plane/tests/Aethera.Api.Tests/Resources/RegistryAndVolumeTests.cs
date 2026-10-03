@@ -31,12 +31,18 @@ public sealed class RegistryTests(ResourcesFixture fixture)
         var secret = Assert.Single(secrets)!;
         Assert.StartsWith("registry/", secret["name"]!.GetValue<string>());
         Assert.Equal("********", secret["value"]!.GetValue<string>());
+
+        // It is listed, flagged as managed and points at its registry (WP1.6).
+        Assert.True(secret["managed"]!.GetValue<bool>());
+        Assert.Equal("registryCredential", secret["purpose"]!.GetValue<string>());
+        Assert.Equal("registry", secret["managedBy"]!["type"]!.GetValue<string>());
+        Assert.Equal(registry.Id(), secret["managedBy"]!["id"]!.GetValue<string>());
         Assert.Equal(Password, (await (await tenant.Admin.PostAsync($"/api/v1/secrets/{secret.Id()}/reveal", null)).ReadAsync())["value"]!.GetValue<string>());
         Assert.All(await tenant.AuditAsync(), e => Assert.DoesNotContain(Password, e.MetadataJson));
         Assert.Contains(await tenant.AuditAsync(registry.Id()), e => e.Action == "registry.created");
 
-        // ...and cannot be deleted from under the registry.
-        await (await tenant.Developer.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm={secret["name"]!.GetValue<string>()}")).AssertProblemAsync(409, "secret.in_use");
+        // ...and cannot be changed or deleted from under the registry (was 409 secret.in_use before the secret had a purpose).
+        await (await tenant.Developer.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm={secret["name"]!.GetValue<string>()}")).AssertProblemAsync(409, "secret.managed");
 
         var anonymous = await tenant.Admin.CreateAsync("/api/v1/registries", new { name = "Public", url = "https://registry.example.com:5000/v2" });
         Assert.False(anonymous["hasCredentials"]!.GetValue<bool>());
@@ -138,7 +144,13 @@ public sealed class RegistryTests(ResourcesFixture fixture)
         }
 
         await (await a.Token(OrganizationRole.Admin, "read").PostAsync("/api/v1/registries", new { name = "x", url = "x.io" })).AssertProblemAsync(403, "auth.insufficient_scope");
-        Assert.Equal(HttpStatusCode.Created, (await a.Token(OrganizationRole.Admin, "write").PostAsync("/api/v1/registries", new { name = "tok", url = "x.io" })).StatusCode);
+        // Registry changes handle a credential: a token needs secrets:write on top of write (WP1.6).
+        var writeOnly = await a.Token(OrganizationRole.Admin, "write").PostAsync("/api/v1/registries", new { name = "tok", url = "x.io" });
+        await writeOnly.AssertProblemAsync(403, "auth.insufficient_scope");
+        Assert.Equal("secrets:write", (await writeOnly.ReadAsync())["requiredScope"]!.GetValue<string>());
+        await (await a.Token(OrganizationRole.Admin, "secrets:write").PostAsync("/api/v1/registries", new { name = "tok", url = "x.io" }))
+            .AssertProblemAsync(403, "auth.insufficient_scope");
+        Assert.Equal(HttpStatusCode.Created, (await a.Token(OrganizationRole.Admin, "write", "secrets:write").PostAsync("/api/v1/registries", new { name = "tok", url = "x.io" })).StatusCode);
 
         await (await b.Owner.GetAsync(url)).AssertProblemAsync(404, "registry.not_found");
         await (await b.Owner.PatchAsync(url, new { name = "x" })).AssertProblemAsync(404, "registry.not_found");

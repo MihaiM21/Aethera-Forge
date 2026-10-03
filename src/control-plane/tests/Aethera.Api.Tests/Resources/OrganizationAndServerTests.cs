@@ -234,9 +234,9 @@ public sealed class ServerTests(ResourcesFixture fixture)
         var ownSecret = await a.CreateSecretAsync();
         var created = await a.Admin.CreateAsync("/api/v1/servers", new { name = "with-key", host = "h.example.com", sshCredentialSecretId = ownSecret.Id() });
         Assert.Equal(ownSecret.Id(), created["sshCredentialSecretId"]!.GetValue<string>());
-        // A secret that a server uses cannot be deleted.
+        // A secret that a server uses is its SSH credential: managed, so /secrets cannot delete it (was secret.in_use before WP1.6).
         var secretName = ownSecret["name"]!.GetValue<string>();
-        await (await a.Developer.DeleteAsync($"/api/v1/secrets/{ownSecret.Id()}?confirm={secretName}")).AssertProblemAsync(409, "secret.in_use");
+        await (await a.Developer.DeleteAsync($"/api/v1/secrets/{ownSecret.Id()}?confirm={secretName}")).AssertProblemAsync(409, "secret.managed");
     }
 
     [RequiresDatabaseFact]

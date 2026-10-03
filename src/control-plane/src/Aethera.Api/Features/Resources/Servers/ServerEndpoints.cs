@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -200,8 +201,7 @@ internal static class ServerEndpoints
         var org = actor.Org();
         var name = request.Name!.Trim();
         await EnsureNameFreeAsync(db, org, name, null, ct);
-        if (request.SshCredentialSecretId is { } secretId && !await db.SecretsOf(org).AnyAsync(s => s.Id == secretId, ct))
-            throw Lookups.BadReference("/sshCredentialSecretId", "secret");
+        if (request.SshCredentialSecretId is { } secretId) await ManagedSecrets.ClaimForServerAsync(db, org, secretId, "/sshCredentialSecretId", ct);
 
         var server = new Server
         {
@@ -266,9 +266,10 @@ internal static class ServerEndpoints
         if (patch.Has("lifecycle") && EnumText.Parse<ServerLifecycle>(body.Lifecycle) is { } lifecycle) { server.Lifecycle = lifecycle; changed.Add("lifecycle"); }
         if (patch.Has("sshCredentialSecretId"))
         {
-            if (body.SshCredentialSecretId is { } secretId && !await db.SecretsOf(org).AnyAsync(s => s.Id == secretId, ct))
-                throw Lookups.BadReference("/sshCredentialSecretId", "secret");
+            var previous = server.SshCredentialSecretId;
+            if (body.SshCredentialSecretId is { } secretId) await ManagedSecrets.ClaimForServerAsync(db, org, secretId, "/sshCredentialSecretId", ct);
             server.SshCredentialSecretId = body.SshCredentialSecretId;
+            if (previous is { } old && old != body.SshCredentialSecretId) await ManagedSecrets.ReleaseFromServerAsync(db, old, id, ct);
             changed.Add("sshCredentialSecretId");
         }
 
@@ -296,6 +297,7 @@ internal static class ServerEndpoints
                 $"{assigned} application(s) or service(s) are assigned to this server. Move or delete them first."));
 
         server.MarkDeleted(clock.UtcNow);
+        if (server.SshCredentialSecretId is { } credential) await ManagedSecrets.ReleaseFromServerAsync(db, credential, id, ct);
         await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct);
         return TypedResults.NoContent();
     }

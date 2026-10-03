@@ -2,7 +2,7 @@
 
 PostgreSQL schema owned by `Aethera.Infrastructure` (EF Core 10 + Npgsql). The model lives in `Aethera.Domain`
 (no dependencies), the mapping in `Aethera.Infrastructure/Persistence/Configurations/*`, and the single migration
-`InitialSchema` (plus later additive migrations such as `AddJobOrganization`) in `Aethera.Infrastructure/Persistence/Migrations`. The schema follows the product spec
+`InitialSchema` (plus later additive migrations such as `AddJobOrganization` and `AddSecretPurpose`) in `Aethera.Infrastructure/Persistence/Migrations`. The schema follows the product spec
 (`docs/idea/01_AppIdea.md`) and ADR 0002 (agent communication) and ADR 0004 (jobs and deployments); where the ADRs
 named tables or columns, those names are used.
 
@@ -17,7 +17,7 @@ named tables or columns, those names are used.
 | Concurrency | Every `MutableEntity` has `RowVersion`, mapped to Postgres `xmin` (`xid`, concurrency token, no real column). The API derives ETags from it (ADR 0003). `UpdatedAt` is stamped by `AetheraDbContext.SaveChanges` on modification. Immutable rows (`audit_events`, `log_chunks`, `metric_samples`, `secret_versions`, `webhook_deliveries`, `resource_events`) have no row version. |
 | Soft delete | `deleted_at` on user, project, environment, server, workload, domain, secret, registry, git credential. A global EF query filter hides deleted rows (`IgnoreQueryFilters()` to see them). Uniqueness that must be freed by a delete is a **partial unique index** `WHERE deleted_at IS NULL` (slugs, email, hostnames, secret names). Hard deletes (purge jobs) cascade down the tree; `servers` and `organizations` are `RESTRICT`. |
 | JSON | `jsonb` only for payloads that are opaque to SQL: job payload/result/error, deployment config snapshot and last health result, step details, audit metadata, service template config, build args, idempotency response headers, settings. Anything queried, joined or constrained is relational. |
-| Secrets | No plaintext column exists anywhere. Values live in `secret_versions` (AES-256-GCM envelope: `ciphertext` incl. tag, `nonce`, `wrapped_data_key`, `wrapped_data_key_nonce`, `master_key_version`). Other tables hold a `*_secret_id` reference (SSH credential, registry password, git credential, webhook secret, env var value). References use `NO ACTION` so a secret in use cannot be deleted. |
+| Secrets | No plaintext column exists anywhere. Values live in `secret_versions` (AES-256-GCM envelope: `ciphertext` incl. tag, `nonce`, `wrapped_data_key`, `wrapped_data_key_nonce`, `master_key_version`). Other tables hold a `*_secret_id` reference (SSH credential, registry password, git credential, webhook secret, env var value). References use `NO ACTION` so a secret in use cannot be deleted. `secrets.purpose` says whether another resource owns a secret (see below and [ADR 0006](../../../docs/architecture/0006-trust-model.md)). |
 | Audit | `audit_events` is append-only: EF refuses to update/delete it and a database trigger rejects `UPDATE` (retention `DELETE`s stay possible). Actor ids are not foreign keys, a label snapshot is stored. |
 
 ## Entities
@@ -60,6 +60,8 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
   secret reference), `webhook_deliveries` (unique `(endpoint_id, delivery_id)` = idempotency).
 - `secrets` (scope = at most one of project/environment/workload, check constraint; unique name per scope among live rows, `NULLS NOT DISTINCT`),
   `secret_versions`, `registries`.
+  - **`secrets.purpose`** (`varchar(32) NOT NULL DEFAULT 'user'`, camelCase enum string, check constraint `ck_secrets_purpose`): `user`, `registryCredential`, `sshCredential`, `gitCredential`, `serviceGenerated`. Anything but `user` is *managed*: the secret belongs to the registry (`registries.password_secret_id`), server (`servers.ssh_credential_secret_id`), git credential (`git_credentials.secret_id`) or service (`secrets.workload_id`) that references it. The column is the policy flag; the owner is found through those references, not stored twice. Managed secrets cannot be changed, rotated, deleted through `/secrets` or bound as env vars; an organization-scoped `user` secret needs an Administrator to bind (ADR 0006).
+  - Migration `AddSecretPurpose` adds the column and backfills it (first match wins): registry passwords (linked from `registries.password_secret_id`, or organization-scoped and named `registry/%`), SSH credentials (`servers.ssh_credential_secret_id`), git credentials (`git_credentials.secret_id`), generated service passwords (service-scoped, description `Generated for service%`, referenced by an env var of that service). Everything else is `user`. `Down` drops the constraint and the column.
 
 **Deployments** (ADR 0004)
 - `deployments`: `number` (unique per workload), `trigger` (manual/webhook/redeploy/rollback/schedule/api), `status` (queued/inProgress/running/superseded/stopped/failed/cancelled),
