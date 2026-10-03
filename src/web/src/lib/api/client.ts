@@ -5,6 +5,13 @@ export const CSRF_HEADER = "X-CSRF-Token";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * Unsafe endpoints that are called without a session (ADR 0003 section 7: only cookie-authenticated
+ * requests carry a CSRF token). GET /auth/csrf itself needs a session, so asking for a token before
+ * signing in would fail with 401 and the sign-in would never be sent.
+ */
+const ANONYMOUS_UNSAFE_PATHS = new Set(["/auth/login", "/auth/setup"]);
+
 export type Query = Record<string, string | number | boolean | null | undefined>;
 
 export type RequestOptions = {
@@ -114,7 +121,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(opts.body);
     }
-    if (unsafe) headers[CSRF_HEADER] = await getCsrfToken();
+    if (unsafe && !(upper === "POST" && ANONYMOUS_UNSAFE_PATHS.has(path))) headers[CSRF_HEADER] = await getCsrfToken();
 
     let res: Response;
     try {

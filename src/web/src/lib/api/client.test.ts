@@ -71,6 +71,31 @@ describe("api client: CSRF", () => {
     expect(header(post, "Content-Type")).toBe("application/json");
   });
 
+  it("does not ask for a token before signing in or setting up (GET /auth/csrf needs a session)", async () => {
+    const { client, fetchMock } = setup((url) =>
+      url.endsWith("/auth/csrf") ? problem(401, { code: "auth.unauthenticated" }) : json({ ok: true }),
+    );
+
+    await client.post("/auth/login", { email: "a@b.c", password: "x" });
+    await client.post("/auth/setup", { email: "a@b.c" });
+
+    expect(fetchMock.mock.calls).toHaveLength(2);
+    for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+      expect(header(init, CSRF_HEADER)).toBeUndefined();
+    }
+  });
+
+  it("still sends a token on logout and the other session writes", async () => {
+    const { client, fetchMock } = setup((url) =>
+      url.endsWith("/auth/csrf") ? json({ token: "tok" }) : json({}),
+    );
+    await client.post("/auth/logout");
+    await client.post("/auth/password", {});
+    const writes = fetchMock.mock.calls.filter(([u]) => !String(u).endsWith("/auth/csrf")) as Array<[string, RequestInit]>;
+    expect(writes).toHaveLength(2);
+    for (const [, init] of writes) expect(header(init, CSRF_HEADER)).toBe("tok");
+  });
+
   it("shares one in-flight token request between concurrent writes", async () => {
     const { client, fetchMock } = setup((url) =>
       url.endsWith("/auth/csrf") ? json({ token: "t" }) : json({}),
