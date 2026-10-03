@@ -1,28 +1,931 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Placeholder tokens; the full design system lands in WP1.4. */
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Aethera global stylesheet.
+ *
+ * Sections 1-5 are ported from docs/design/tokens.css (the source of truth;
+ * see docs/design/tokens.md). Keep token names and values in sync with it.
+ * Local additions are marked "WP1.4:". Below the tokens: the Tailwind v4
+ * theme mapping and base styles.
+ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* =========================================================================
+ * 1. Dark theme (default)
+ * ========================================================================= */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* --- Raw palette (dark) ------------------------------------------------ */
+  --ae-bg: #0b0d0d;
+  --ae-surface: #111414;
+  --ae-raised: #161a19;
+  --ae-border: #1f2523;
+  --ae-border-strong: #2f3835;
+  --ae-text: #e6e8e6;
+  --ae-muted: #8a918d;
+  --ae-accent: #b8f26b;
+  --ae-accent-hover: #c8f78a;
+  --ae-accent-foreground: #0b0d0d;
+  /* Lime when used as TEXT / icon colour on --ae-bg|surface|raised. */
+  --ae-accent-text: #b8f26b;
+
+  /* --- shadcn/ui semantic tokens ----------------------------------------- */
+  --background: var(--ae-bg);
+  --foreground: var(--ae-text);
+
+  --card: var(--ae-surface);
+  --card-foreground: var(--ae-text);
+  --popover: var(--ae-raised);
+  --popover-foreground: var(--ae-text);
+
+  --primary: var(--ae-accent);
+  --primary-foreground: var(--ae-accent-foreground);
+  --primary-hover: var(--ae-accent-hover);
+
+  --secondary: var(--ae-raised);
+  --secondary-foreground: var(--ae-text);
+
+  --muted: var(--ae-raised);
+  --muted-foreground: var(--ae-muted);
+
+  /* shadcn "accent" = neutral hover / selected surface. */
+  --accent: #1b211f;
+  --accent-foreground: var(--ae-text);
+
+  --destructive: #ff6b6b;
+  --destructive-foreground: #0b0d0d;
+
+  --border: var(--ae-border);
+  /* Form-control border: >= 3:1 against surfaces (WCAG 1.4.11). */
+  --input: #5e6b64;
+  --ring: var(--ae-accent);
+
+  /* --- Status ------------------------------------------------------------ */
+  --success: #3fcf8e;
+  --success-foreground: #0b0d0d;
+  --warning: #f5b942;
+  --warning-foreground: #0b0d0d;
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
+  --info: #5cc8e8;
+  --info-foreground: #0b0d0d;
+
+  /* Soft tinted backgrounds for badges / banners (text stays the status colour). */
+  --success-soft: color-mix(in oklab, var(--success) 14%, var(--background));
+  --warning-soft: color-mix(in oklab, var(--warning) 14%, var(--background));
+  --danger-soft: color-mix(in oklab, var(--danger) 14%, var(--background));
+  --info-soft: color-mix(in oklab, var(--info) 14%, var(--background));
+  --primary-soft: color-mix(in oklab, var(--primary) 12%, var(--background));
+
+  /* --- Charts (shadcn exposes 1-5; Aethera defines 8) --------------------- */
+  --chart-1: #b8f26b;
+  --chart-2: #5cc8e8;
+  --chart-3: #f5b942;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+  --chart-6: #2dd4bf;
+  --chart-7: #fb923c;
+  --chart-8: #94a3b8;
+  --ae-chart-grid: rgb(255 255 255 / 0.06);
+  --ae-chart-axis: var(--ae-muted);
+
+  /* --- Sidebar (shadcn sidebar block) ------------------------------------ */
+  --sidebar: #0e1111;
+  --sidebar-foreground: var(--ae-text);
+  --sidebar-primary: var(--ae-accent);
+  --sidebar-primary-foreground: var(--ae-accent-foreground);
+  --sidebar-accent: #161a19;
+  --sidebar-accent-foreground: var(--ae-text);
+  --sidebar-border: var(--ae-border);
+  --sidebar-ring: var(--ae-accent);
+
+  /* --- Motif colours ------------------------------------------------------ */
+  --ae-grid-dot: rgb(255 255 255 / 0.07);
+  --ae-connector: #3a4440;
+  --ae-plate: #0f1212; /* the offset "plate" behind terminal cards */
+  --ae-selection: color-mix(in oklab, var(--ae-accent) 28%, transparent);
+  --ae-scrollbar-thumb: #2a3230;
+  --ae-pulse-ring: color-mix(in oklab, var(--ae-accent) 45%, transparent);
+  --ae-overlay: rgb(5 7 7 / 0.72);
+  --ae-terminal-bg: #0e1111;
+  --ae-terminal-dot: #4a5350;
 }
 
-@media (prefers-color-scheme: dark) {
+/* =========================================================================
+ * 2. Light theme
+ * ========================================================================= */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --ae-bg: #f6f7f4;
+  --ae-surface: #fbfbf9;
+  --ae-raised: #ffffff;
+  --ae-border: #dcdfd8;
+  --ae-border-strong: #c3c8c0;
+  --ae-text: #0f1412;
+  --ae-muted: #555d58;
+  /* Brand lime, darkened enough for solid fills that carry dark text. */
+  --ae-accent: #7fc41e;
+  --ae-accent-hover: #6fb015;
+  --ae-accent-foreground: #0b0d0d;
+  /* Lime as TEXT on light surfaces needs a much darker shade (6.0:1 on bg). */
+  --ae-accent-text: #3b6a07;
+
+  --background: var(--ae-bg);
+  --foreground: var(--ae-text);
+  --card: var(--ae-surface);
+  --card-foreground: var(--ae-text);
+  --popover: var(--ae-raised);
+  --popover-foreground: var(--ae-text);
+
+  --primary: var(--ae-accent);
+  --primary-foreground: var(--ae-accent-foreground);
+  --primary-hover: var(--ae-accent-hover);
+
+  --secondary: #eceee9;
+  --secondary-foreground: var(--ae-text);
+  --muted: #eceee9;
+  --muted-foreground: var(--ae-muted);
+  --accent: #e9ece5;
+  --accent-foreground: var(--ae-text);
+
+  --destructive: #c4302b;
+  --destructive-foreground: #ffffff;
+
+  --border: var(--ae-border);
+  --input: #7d8580;
+  /* Focus ring uses the dark lime so it is >= 3:1 against every surface. */
+  --ring: var(--ae-accent-text);
+
+  --success: #157a45;
+  --success-foreground: #ffffff;
+  --warning: #8a5a00;
+  --warning-foreground: #ffffff;
+  --danger: var(--destructive);
+  --danger-foreground: var(--destructive-foreground);
+  --info: #0b6f8a;
+  --info-foreground: #ffffff;
+
+  --success-soft: color-mix(in oklab, var(--success) 6%, var(--background));
+  --warning-soft: color-mix(in oklab, var(--warning) 6%, var(--background));
+  --danger-soft: color-mix(in oklab, var(--danger) 6%, var(--background));
+  --info-soft: color-mix(in oklab, var(--info) 6%, var(--background));
+  --primary-soft: color-mix(in oklab, var(--primary) 20%, var(--background));
+
+  --chart-1: #5b9b0b;
+  --chart-2: #0e86a6;
+  --chart-3: #b06f00;
+  --chart-4: #7156d6;
+  --chart-5: #c2347e;
+  --chart-6: #0f8f7d;
+  --chart-7: #c2540a;
+  --chart-8: #5f6f82;
+  --ae-chart-grid: rgb(15 20 18 / 0.08);
+  --ae-chart-axis: var(--ae-muted);
+
+  --sidebar: #f1f3ee;
+  --sidebar-foreground: var(--ae-text);
+  --sidebar-primary: var(--ae-accent);
+  --sidebar-primary-foreground: var(--ae-accent-foreground);
+  --sidebar-accent: #e6e9e2;
+  --sidebar-accent-foreground: var(--ae-text);
+  --sidebar-border: var(--ae-border);
+  --sidebar-ring: var(--ae-accent-text);
+
+  --ae-grid-dot: rgb(15 20 18 / 0.10);
+  --ae-connector: #aab1a8;
+  --ae-plate: #e9ece5;
+  --ae-selection: color-mix(in oklab, var(--ae-accent) 40%, transparent);
+  --ae-scrollbar-thumb: #c3c8c0;
+  --ae-pulse-ring: color-mix(in oklab, var(--ae-accent) 55%, transparent);
+  --ae-overlay: rgb(246 247 244 / 0.78);
+  --ae-terminal-bg: #fbfbf9;
+  --ae-terminal-dot: #b4bab2;
+}
+
+/* =========================================================================
+ * 3. Theme-independent tokens
+ * ========================================================================= */
+:root {
+  /* --- Typography --------------------------------------------------------- */
+  /* next/font (Geist) injects --font-geist-sans / --font-geist-mono. */
+  --font-sans: var(--font-geist-sans), "Geist", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular",
+    "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Size scale (app UI is dense: body = 14px; marketing/login uses 16px+). */
+  --ae-text-2xs: 0.6875rem; /* 11px mono labels, eyebrows, indices */
+  --ae-text-xs: 0.75rem; /* 12px captions, table meta */
+  --ae-text-sm: 0.8125rem; /* 13px dense UI text */
+  --ae-text-base: 0.875rem; /* 14px default body */
+  --ae-text-md: 1rem; /* 16px */
+  --ae-text-lg: 1.125rem; /* 18px */
+  --ae-text-xl: 1.25rem; /* 20px */
+  --ae-text-2xl: 1.5rem; /* 24px */
+  --ae-text-3xl: 2rem; /* 32px */
+  --ae-text-4xl: 3rem; /* 48px */
+  --ae-text-display: clamp(2.5rem, 6vw, 4.5rem); /* hero, login */
+
+  --ae-leading-tight: 1.05; /* display */
+  --ae-leading-snug: 1.2; /* headings */
+  --ae-leading-normal: 1.5; /* body */
+  --ae-leading-dense: 1.4; /* tables, logs */
+
+  --ae-tracking-display: -0.05em;
+  --ae-tracking-heading: -0.03em;
+  --ae-tracking-subheading: -0.015em;
+  --ae-tracking-body: 0;
+  --ae-tracking-eyebrow: 0.14em; /* mono uppercase labels */
+  --ae-tracking-mono-small: 0.04em;
+
+  --ae-weight-regular: 400;
+  --ae-weight-medium: 500;
+  --ae-weight-semibold: 600;
+
+  /* --- Spacing (4px base) -------------------------------------------------- */
+  --ae-space-0: 0;
+  --ae-space-px: 1px;
+  --ae-space-0-5: 0.125rem; /* 2 */
+  --ae-space-1: 0.25rem; /* 4 */
+  --ae-space-2: 0.5rem; /* 8 */
+  --ae-space-3: 0.75rem; /* 12 */
+  --ae-space-4: 1rem; /* 16 */
+  --ae-space-5: 1.25rem; /* 20 */
+  --ae-space-6: 1.5rem; /* 24 */
+  --ae-space-8: 2rem; /* 32 */
+  --ae-space-10: 2.5rem; /* 40 */
+  --ae-space-12: 3rem; /* 48 */
+  --ae-space-16: 4rem; /* 64 */
+  --ae-space-24: 6rem; /* 96 */
+
+  /* --- Radius: square. Never exceed 2px except full circles (status dots). -- */
+  --radius: 2px;
+  --ae-radius-none: 0;
+  --ae-radius-sm: 0;
+  --ae-radius-md: 1px;
+  --ae-radius-lg: 2px;
+  --ae-radius-full: 9999px; /* dots, avatars only */
+
+  /* --- Borders ------------------------------------------------------------- */
+  --ae-border-width: 1px;
+  --ae-border-width-accent: 2px; /* active rail marker, focus */
+  --ae-focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+
+  /* --- Elevation: almost none. Depth comes from borders and the offset plate. */
+  --ae-shadow-none: none;
+  --ae-shadow-popover: 0 8px 24px rgb(0 0 0 / 0.35);
+  --ae-plate-offset-x: 18px;
+  --ae-plate-offset-y: 18px;
+
+  /* --- Motion --------------------------------------------------------------- */
+  --ae-duration-instant: 80ms;
+  --ae-duration-fast: 120ms; /* hover, press */
+  --ae-duration-base: 180ms; /* menus, tabs, toggles */
+  --ae-duration-slow: 280ms; /* panels, drawers */
+  --ae-duration-boot: 420ms; /* per boot line */
+  --ae-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ae-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ae-ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ae-pulse-duration: 2s;
+
+  /* --- Motif geometry -------------------------------------------------------- */
+  --ae-grid-size: 24px;
+  --ae-grid-dot-size: 1px;
+
+  /* --- Shell layout ----------------------------------------------------------- */
+  --ae-rail-width: 48px;
+  --ae-sidebar-width: 264px;
+  --ae-sidebar-width-collapsed: 0px;
+  --ae-topbar-height: 40px;
+  --ae-statusbar-height: 24px;
+  --ae-content-max: 1160px;
+  --ae-content-padding: 24px;
+  --ae-palette-width: 560px;
+
+  /* --- z-index --------------------------------------------------------------- */
+  --ae-z-base: 0;
+  --ae-z-sticky: 10;
+  --ae-z-shell: 20;
+  --ae-z-dropdown: 40;
+  --ae-z-overlay: 50;
+  --ae-z-modal: 60;
+  --ae-z-palette: 70;
+  --ae-z-toast: 80;
+}
+
+/* =========================================================================
+ * 4. Reduced motion
+ * ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
   :root {
-    --background: #0b0d0d;
-    --foreground: #e6e8e6;
+    --ae-duration-instant: 0.01ms;
+    --ae-duration-fast: 0.01ms;
+    --ae-duration-base: 0.01ms;
+    --ae-duration-slow: 0.01ms;
+    --ae-duration-boot: 0.01ms;
+    --ae-pulse-duration: 0s;
+  }
+
+  .ae-pulse::after,
+  .ae-cursor::after,
+  .ae-boot-line {
+    animation: none !important;
   }
 }
 
+@layer components {
+/* =========================================================================
+ * 5. Motif recipes (opt-in utility classes; components compose these)
+ * ========================================================================= */
+
+::selection {
+  background: var(--ae-selection);
+  color: var(--foreground);
+}
+
+/* 5.1 Dotted grid canvas ---------------------------------------------------- */
+.ae-grid-bg {
+  background-color: var(--background);
+  background-image: radial-gradient(
+    circle at center,
+    var(--ae-grid-dot) var(--ae-grid-dot-size),
+    transparent calc(var(--ae-grid-dot-size) + 0.5px)
+  );
+  background-size: var(--ae-grid-size) var(--ae-grid-size);
+  background-position: center top;
+}
+
+/* Fade the grid out toward the edges (use on a pseudo-element / overlay). */
+.ae-grid-bg--fade {
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 40%, transparent 85%);
+  mask-image: radial-gradient(ellipse at center, #000 40%, transparent 85%);
+}
+
+/* 5.2 Eyebrow label: `── DEPLOYMENTS` --------------------------------------------- */
+.ae-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ae-space-3);
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  font-weight: var(--ae-weight-medium);
+  letter-spacing: var(--ae-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--ae-accent-text);
+}
+.ae-eyebrow::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: currentColor;
+}
+.ae-eyebrow--muted {
+  color: var(--muted-foreground);
+}
+
+/* 5.3 Headings with tight tracking; second line may be accented ----------------- */
+.ae-display {
+  font-size: var(--ae-text-display);
+  line-height: var(--ae-leading-tight);
+  letter-spacing: var(--ae-tracking-display);
+  font-weight: var(--ae-weight-medium);
+}
+.ae-accent-text {
+  color: var(--ae-accent-text);
+}
+
+/* 5.4 Terminal-window card (3 dots + `aethera://...` title + index) --------------- */
+.ae-terminal {
+  position: relative;
+  background: var(--ae-terminal-bg);
+  border: var(--ae-border-width) solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-xs);
+  isolation: isolate;
+}
+.ae-terminal::before {
+  /* the offset plate sitting behind the card */
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translate(var(--ae-plate-offset-x), var(--ae-plate-offset-y));
+  background: var(--ae-plate);
+  z-index: -1;
+}
+.ae-terminal__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--ae-space-4);
+  border-bottom: var(--ae-border-width) solid var(--border);
+  color: var(--muted-foreground);
+}
+.ae-terminal__dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.ae-terminal__dots > i {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ae-radius-full);
+  background: var(--ae-terminal-dot);
+}
+.ae-terminal__title {
+  letter-spacing: var(--ae-tracking-mono-small);
+}
+.ae-terminal__index {
+  justify-self: end;
+}
+.ae-terminal__body {
+  padding: var(--ae-space-5) var(--ae-space-4);
+  line-height: 2;
+}
+
+/* 5.5 Numbered card: `01` + title + description ---------------------------------- */
+.ae-numbered {
+  border: var(--ae-border-width) solid var(--border);
+  background: transparent;
+  padding: var(--ae-space-6);
+  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ae-space-8);
+}
+.ae-numbered__index {
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  color: var(--ae-accent-text);
+}
+/* Adjacent numbered cards share borders (collapse the double line). */
+.ae-numbered + .ae-numbered {
+  margin-left: calc(-1 * var(--ae-border-width));
+}
+
+/* 5.6 Dashed vertical pipeline connector (deployment lifecycle stepper) ----------- */
+.ae-pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ae-pipeline__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.25rem 1fr;
+  column-gap: var(--ae-space-3);
+  padding-bottom: var(--ae-space-8);
+}
+.ae-pipeline__step:last-child {
+  padding-bottom: 0;
+}
+.ae-pipeline__index {
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  color: var(--ae-accent-text);
+  padding-top: 0.2rem;
+}
+.ae-pipeline__step:not(:last-child)::after {
+  /* dashed connector, centred under the index column */
+  content: "";
+  position: absolute;
+  left: 0.55rem;
+  top: 1.6rem;
+  bottom: 0.35rem;
+  border-left: 1px dashed var(--ae-connector);
+}
+.ae-pipeline__step[data-state="failed"] .ae-pipeline__index {
+  color: var(--danger);
+}
+.ae-pipeline__step[data-state="pending"] .ae-pipeline__index,
+.ae-pipeline__step[data-state="skipped"] .ae-pipeline__index {
+  color: var(--muted-foreground);
+}
+.ae-pipeline__title {
+  font-size: var(--ae-text-md);
+  letter-spacing: var(--ae-tracking-subheading);
+}
+.ae-pipeline__meta {
+  margin-top: var(--ae-space-1);
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  color: var(--muted-foreground);
+}
+.ae-pipeline__step[data-state="active"] .ae-pipeline__title {
+  color: var(--ae-accent-text);
+}
+.ae-pipeline__step[data-state="failed"] .ae-pipeline__title {
+  color: var(--danger);
+}
+
+/* 5.7 Pulse status dot -------------------------------------------------------------- */
+.ae-pulse {
+  --ae-dot-color: var(--ae-accent);
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ae-radius-full);
+  background: var(--ae-dot-color);
+  flex: none;
+}
+.ae-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--ae-dot-color) 45%, transparent);
+  animation: ae-pulse var(--ae-pulse-duration) var(--ae-ease-out) infinite;
+}
+.ae-pulse[data-tone="success"] { --ae-dot-color: var(--success); }
+.ae-pulse[data-tone="warning"] { --ae-dot-color: var(--warning); }
+.ae-pulse[data-tone="danger"] { --ae-dot-color: var(--danger); }
+.ae-pulse[data-tone="info"] { --ae-dot-color: var(--info); }
+.ae-pulse[data-tone="idle"] { --ae-dot-color: var(--muted-foreground); }
+.ae-pulse[data-tone="idle"]::after { animation: none; }
+
+@keyframes ae-pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+/* 5.8 Boot-screen lines: `[ ok ] loading ...` then `▮ ready` --------------------------- */
+.ae-boot-line {
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-xs);
+  color: var(--foreground);
+  opacity: 0;
+  animation: ae-boot-in var(--ae-duration-base) var(--ae-ease-out) forwards;
+  animation-delay: calc(var(--i, 0) * var(--ae-duration-boot));
+}
+.ae-boot-line::before {
+  content: "[ ok ] ";
+  color: var(--ae-accent-text);
+  font-weight: var(--ae-weight-semibold);
+  white-space: pre;
+}
+.ae-boot-line[data-status="fail"]::before {
+  content: "[fail] ";
+  color: var(--danger);
+}
+.ae-boot-line[data-status="wait"]::before {
+  content: "[ .. ] ";
+  color: var(--muted-foreground);
+}
+@keyframes ae-boot-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Blinking block cursor for `▮ ready`. */
+.ae-cursor::after {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  margin-left: 0.4em;
+  vertical-align: text-bottom;
+  background: var(--ae-accent);
+  animation: ae-blink 1.1s steps(1) infinite;
+}
+@keyframes ae-blink {
+  50% { opacity: 0; }
+}
+
+/* 5.9 Keycap (shortcut hint, e.g. Ctrl+K) -------------------------------------------------- */
+.ae-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border: var(--ae-border-width) solid var(--border);
+}
+
+/* 5.10 Log viewer (mono, dense) --------------------------------------------------------------- */
+.ae-log {
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-xs);
+  line-height: var(--ae-leading-dense);
+  background: var(--ae-terminal-bg);
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ae-log [data-stream="stderr"] { color: var(--warning); }
+.ae-log .ae-log__ts { color: var(--muted-foreground); user-select: none; }
+.ae-log mark { background: var(--ae-selection); color: inherit; }
+}
+
+/* WP1.4: the token file's reduced-motion rule turns animations off but the
+   boot lines start at opacity 0, so they must be forced visible. */
+@media (prefers-reduced-motion: reduce) {
+  .ae-boot-line {
+    opacity: 1;
+  }
+  .ae-boot-block {
+    animation: none !important;
+  }
+}
+
+/* =========================================================================
+ * 6. WP1.4: Tailwind v4 theme mapping
+ * ========================================================================= */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--ae-border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  /* Lime for TEXT and ICONS (`text-lime`). Fills use `bg-primary`.
+     In light mode this is the dark lime so it keeps >= 4.5:1. */
+  --color-lime: var(--ae-accent-text);
+  --color-plate: var(--ae-plate);
+  --color-terminal: var(--ae-terminal-bg);
+
+  /* The font stacks are spelled out (not `var(--font-sans)`) to avoid a
+     self-referencing custom property. */
+  --font-sans: var(--font-geist-sans), "Geist", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace,
+    "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  /* Type scale: dense UI. `text-base` = 14px body, `text-sm` = 13px. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.5;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 3rem;
+  --text-4xl--line-height: 1.05;
+
+  --tracking-eyebrow: 0.14em;
+  --tracking-display: -0.05em;
+  --tracking-heading: -0.03em;
+  --tracking-subheading: -0.015em;
+
+  /* Square corners: never derive from --radius with calc(). */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 1px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+
+  --shadow-popover: var(--ae-shadow-popover);
+
+  --animate-ae-pulse: ae-pulse var(--ae-pulse-duration) var(--ae-ease-out) infinite;
+  --animate-ae-blink: ae-blink 1.1s steps(1) infinite;
+  --animate-ae-shimmer: ae-shimmer 1.6s linear infinite;
+
+  --ease-out-expo: var(--ae-ease-out);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+@keyframes ae-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* =========================================================================
+ * 7. WP1.4: base styles and utilities
+ * ========================================================================= */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    background: var(--background);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--ae-text-base);
+    line-height: var(--ae-leading-normal);
+    letter-spacing: var(--ae-tracking-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: var(--ae-weight-medium);
+    letter-spacing: var(--ae-tracking-subheading);
+  }
+
+  button,
+  [role="button"],
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  /* Never remove an outline without a replacement: components opt in to the
+     box-shadow ring with `focus-ring`; everything else gets this outline. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.8;
+  }
+
+  /* Thin scrollbars that match the hairline look. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ae-scrollbar-thumb) transparent;
+  }
+
+  @media (pointer: coarse) {
+    button,
+    [role="button"],
+    input,
+    select {
+      min-height: 44px;
+    }
+  }
+}
+
+@utility focus-ring {
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ae-focus-ring);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mono micro label used for table headers, indices, meta. */
+@utility mono-label {
+  font-family: var(--font-mono);
+  font-size: var(--ae-text-2xs);
+  letter-spacing: var(--ae-tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+@layer components {
+  /* tokens.css paints the card background on .ae-terminal itself, which sits
+     BELOW its z-index:-1 plate pseudo-element, so the plate covered the card
+     (obvious in light mode). Paint the background on the bar and body instead. */
+  .ae-terminal {
+    background: transparent;
+  }
+  .ae-terminal__bar,
+  .ae-terminal__body {
+    background: var(--ae-terminal-bg);
+  }
+
+  /* A failed pipeline step turns the connector below it red. */
+  .ae-pipeline__step[data-state="failed"]:not(:last-child)::after {
+    border-left-color: var(--danger);
+  }
+  .ae-pipeline__step[data-state="done"]:not(:last-child)::after {
+    border-left-color: var(--ae-accent-text);
+    opacity: 0.55;
+  }
+
+  /* Block cursor used by the boot screen `▮ ready`. */
+  .ae-boot-block {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    vertical-align: text-bottom;
+    background: var(--ae-accent);
+    animation: ae-blink 1.1s steps(1) infinite;
+  }
+
+  /* Drifting lime particles on the login screen (decorative, <= 12). */
+  .ae-particle {
+    position: absolute;
+    bottom: -4px;
+    width: 2px;
+    height: 2px;
+    background: var(--ae-accent);
+    opacity: 0;
+    animation: ae-drift var(--d, 28s) linear var(--delay, 0s) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ae-particle {
+      display: none;
+    }
+  }
+}
+
+@keyframes ae-drift {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.5;
+  }
+  90% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateY(-100vh);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
 }
