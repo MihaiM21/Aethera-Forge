@@ -1359,6 +1359,564 @@
         ],
         "x-required-scope": "admin"
       }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "List jobs",
+        "operationId": "listJobs",
+        "parameters": [
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "createdBefore",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "startedAfter",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "startedBefore",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "finishedAfter",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "finishedBefore",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfJobDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/jobs/{id}": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Get a job",
+        "operationId": "getJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/jobs/{id}/logs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Read a job's log, paged by sequence, or download it as text",
+        "description": "JSON pages by default (`fromSequence`, `limit`). With `download=true` the whole log from `fromSequence` is streamed as `text/plain`.",
+        "operationId": "getJobLogs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fromSequence",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Cancel a job",
+        "description": "A queued job is cancelled immediately; a running job is asked to stop and ends cancelled within one heartbeat.",
+        "operationId": "cancelJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Retry a failed or cancelled job",
+        "description": "Creates a new job linked to the original (`parentJobId`); the original stays as it is.",
+        "operationId": "retryJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
     }
   },
   "components": {
@@ -1553,6 +2111,219 @@
         },
         "description": "One field-level problem. Exactly one of pointer (JSON Pointer into the body) or parameter (query/path) is set."
       },
+      "JobDto": {
+        "required": [
+          "id",
+          "type",
+          "status",
+          "cancelRequested",
+          "priority",
+          "resource",
+          "queuePosition",
+          "attempt",
+          "maxAttempts",
+          "retryNo",
+          "runAfter",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "parentJobId",
+          "createdBy",
+          "error",
+          "result",
+          "links"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          },
+          "priority": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "resource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobResourceDto"
+              }
+            ]
+          },
+          "queuePosition": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "attempt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxAttempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "retryNo": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "runAfter": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "parentJobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "createdBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobErrorDto"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "links": {
+            "$ref": "#/components/schemas/JobLinksDto"
+          }
+        }
+      },
+      "JobErrorDto": {
+        "required": [
+          "code",
+          "title",
+          "detail",
+          "failedStep",
+          "retryable"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "failedStep": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "JobLinksDto": {
+        "required": [
+          "self",
+          "logs"
+        ],
+        "type": "object",
+        "properties": {
+          "self": {
+            "type": "string"
+          },
+          "logs": {
+            "type": "string"
+          }
+        }
+      },
+      "JobResourceDto": {
+        "required": [
+          "type",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "JsonElement": { },
       "LoginRequest": {
         "required": [
           "email",
@@ -1630,6 +2401,27 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ApiTokenResponse"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfJobDto": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobDto"
             }
           },
           "nextCursor": {
@@ -1953,6 +2745,9 @@
     },
     {
       "name": "ApiTokens"
+    },
+    {
+      "name": "Jobs"
     }
   ]
 }
