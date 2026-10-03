@@ -1,0 +1,52 @@
+# /etc/aethera/agent.yaml - local policy of the Aethera agent.
+#
+# Root-owned and NOT changeable by the control plane (ADR 0002). A command that
+# violates it is refused with ACK_STATUS_REJECTED_POLICY. Every key is optional;
+# unknown keys are an error (the agent refuses to start rather than guess).
+
+# Where the agent keeps its key, certificate, CA bundle, state and (later) Compose
+# projects. Also the only path the systemd unit makes writable.
+state_dir: /var/lib/aethera
+
+# Docker endpoint. Empty = $DOCKER_HOST or unix:///var/run/docker.sock.
+# Rootless Docker: unix:///run/user/<uid>/docker.sock
+docker_host: ""
+
+# Also trust the operating system's CA store for the control plane. Only enable
+# this when the control plane presents a publicly trusted certificate. The
+# default pins the Aethera CA received at enrollment.
+trust_system_roots: false
+
+# Upper bound on commands executing at once (the control plane may lower it).
+max_concurrent_commands: 8
+
+# debug | info | warn | error. WARN and above are also forwarded to the control plane.
+log_level: info
+
+# Base64 Ed25519 public key. When set, AgentSelfUpdate must carry a valid
+# signature over the binary's SHA-256 digest.
+# release_public_key: ""
+
+policy:
+  # Host directories bind mounts may live under. Default: only the state dir.
+  # The Docker socket, the agent's key/certificates/state and /etc, /root, /proc,
+  # /sys, /dev, /boot, /var/lib/docker and /var/lib/containerd are always refused,
+  # also through symlinks.
+  allowed_bind_prefixes:
+    - /var/lib/aethera
+  # Extra paths to refuse on top of the built-in list.
+  denied_sources: []
+  # Container log drivers that may be requested.
+  allowed_log_drivers: [json-file, local, none]
+  # Health-probe targets besides loopback and Docker networks: host names, IPs or
+  # CIDRs. Link-local addresses (cloud metadata) can never be probed.
+  probe_allowlist: []
+  # Options to refuse for containers created through this agent. Choose from:
+  #   run_as_root       containers without an explicit non-root user
+  #   published_ports  any published host port
+  #   privileged_ports host ports below 1024
+  #   extra_hosts      extra_hosts entries
+  #   custom_user_group any explicit container user
+  # (Privileged mode, host namespaces, devices and cap_add cannot be expressed in
+  # the protocol at all.)
+  forbidden_options: []
