@@ -1,0 +1,313 @@
+// The typed command allowlist (spec section 31). The control plane can only
+// ask the agent to do what appears in `Command.request`. There is no generic
+// "exec"/"shell" command, and adding one requires an ADR.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/build.proto";
+import "aethera/agent/v1/common.proto";
+import "aethera/agent/v1/discovery.proto";
+import "aethera/agent/v1/docker.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// Command is one unit of work sent control plane -> agent.
+message Command {
+  // Unique per dispatch attempt (UUIDv7). Results/acks/cancels reference it.
+  string command_id = 1;
+  // Stable across retries of the same logical operation (e.g. the deployment
+  // step). The agent de-duplicates on this key: re-sending a command whose key
+  // already completed returns the cached result instead of re-executing.
+  string idempotency_key = 2;
+  // Absolute deadline. The agent aborts and reports TIMED_OUT when exceeded and
+  // refuses (REJECTED_EXPIRED) commands that arrive already past it.
+  google.protobuf.Timestamp deadline = 3;
+  // Correlation: the control-plane job this command belongs to (for logs).
+  string job_id = 4;
+  // W3C traceparent for distributed tracing; may be empty.
+  string traceparent = 5;
+
+  oneof request {
+    // Containers.
+    ContainerCreate container_create = 10;
+    ContainerStart container_start = 11;
+    ContainerStop container_stop = 12;
+    ContainerRestart container_restart = 13;
+    ContainerRemove container_remove = 14;
+    ContainerInspect container_inspect = 15;
+    ContainerList container_list = 16;
+    // Images.
+    ImagePull image_pull = 20;
+    ImageList image_list = 21;
+    ImageRemove image_remove = 22;
+    ImagePrune image_prune = 23;
+    ImageInspect image_inspect = 24;
+    // Volumes.
+    VolumeCreate volume_create = 30;
+    VolumeList volume_list = 31;
+    VolumeRemove volume_remove = 32;
+    VolumePrune volume_prune = 33;
+    // Networks.
+    NetworkCreate network_create = 40;
+    NetworkList network_list = 41;
+    NetworkRemove network_remove = 42;
+    NetworkConnect network_connect = 43;
+    NetworkDisconnect network_disconnect = 44;
+    NetworkPrune network_prune = 45;
+    // Compose.
+    ComposeUp compose_up = 50;
+    ComposeDown compose_down = 51;
+    ComposePs compose_ps = 52;
+    ComposePull compose_pull = 53;
+    // Builds.
+    BuildRequest build = 60;
+    BuildDetect build_detect = 61;
+    // Logs.
+    LogStreamStart log_stream_start = 70;
+    LogStreamStop log_stream_stop = 71;
+    // Health.
+    HealthProbe health_probe = 80;
+    // Reverse proxy.
+    ProxyEnsure proxy_ensure = 90;
+    // System.
+    DiscoveryRefresh discovery_refresh = 100;
+    SystemPrune system_prune = 101;
+    AgentSelfUpdate agent_self_update = 102;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Log streaming commands
+// ---------------------------------------------------------------------------
+
+// LogStreamStart starts streaming a container's logs as LogChunk messages
+// tagged with `stream_id`. Build/deploy logs are not started this way: they are
+// emitted automatically while the corresponding command runs.
+message LogStreamStart {
+  // Chosen by the control plane; echoed in every LogChunk of this stream.
+  string stream_id = 1;
+  // Container ID or name.
+  string container = 2;
+  // Keep the stream open and deliver new lines as they appear.
+  bool follow = 3;
+  // Only lines at/after this time (unset = no lower bound).
+  google.protobuf.Timestamp since = 4;
+  // Last N lines first; 0 = default (all, bounded by the agent's cap);
+  // negative is invalid.
+  int32 tail = 5;
+  bool include_stdout = 6;
+  bool include_stderr = 7;
+}
+
+message LogStreamStop {
+  string stream_id = 1;
+}
+
+message LogStreamStartResult {
+  string stream_id = 1;
+  // Present when the container does not exist / Docker is down; the stream is
+  // then already finished.
+  bool started = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Health probes (run FROM the agent, so they see the server's network)
+// ---------------------------------------------------------------------------
+
+message HttpProbe {
+  // Absolute URL. The agent only allows targets on the host loopback, Docker
+  // networks, or hosts in its configured probe allowlist (SSRF guard).
+  string url = 1;
+  // GET (default) or HEAD.
+  string method = 2;
+  // Non-secret request headers (e.g. Host override for routed checks).
+  map<string, string> headers = 3;
+  // Accepted status codes; empty = any 2xx/3xx.
+  repeated int32 expected_status = 4;
+  // Optional substring the body must contain (first 64 KiB inspected).
+  string body_contains = 5;
+  bool follow_redirects = 6;
+  bool insecure_skip_verify = 7;
+}
+
+message TcpProbe {
+  string host = 1;
+  uint32 port = 2;
+}
+
+// Probe the Docker HEALTHCHECK of a container.
+message ContainerHealthProbe {
+  string container = 1;
+}
+
+message HealthProbe {
+  oneof target {
+    HttpProbe http = 1;
+    TcpProbe tcp = 2;
+    ContainerHealthProbe container = 3;
+  }
+  // Per-attempt timeout.
+  google.protobuf.Duration timeout = 4;
+  // Delay between attempts.
+  google.protobuf.Duration interval = 5;
+  // Total attempts before declaring failure (spec 19 "retries").
+  int32 retries = 6;
+  // Grace period before the first attempt (spec 19 "startup grace period").
+  google.protobuf.Duration start_period = 7;
+  // Consecutive successes required to report healthy.
+  int32 success_threshold = 8;
+}
+
+message HealthProbeResult {
+  bool healthy = 1;
+  int32 attempts = 2;
+  int32 http_status = 3;
+  google.protobuf.Duration latency = 4;
+  string detail = 5;
+  google.protobuf.Timestamp checked_at = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Reverse proxy
+// ---------------------------------------------------------------------------
+
+// ProxyEnsure makes the named proxy provider present, running and configured
+// on this server. The protocol is provider-agnostic: `config` is opaque to the
+// agent and produced by the control plane's IProxyProvider. For "traefik" it
+// is the static configuration YAML.
+message ProxyEnsure {
+  // Provider id: "traefik" (default), later "caddy", ...
+  string provider = 1;
+  // Image override; empty = provider default.
+  string image = 2;
+  // Version/tag to run; empty = provider default.
+  string version = 3;
+  // Provider configuration bytes.
+  bytes config = 4;
+  // Provider secrets (DNS-challenge tokens, EAB keys, ...).
+  repeated EnvVar env = 5;
+  // Docker network the proxy joins and discovers apps on.
+  string network = 6;
+  // Restart the proxy if its config hash changed.
+  bool restart_on_change = 7;
+}
+
+message ProxyEnsureResult {
+  string provider = 1;
+  string container_id = 2;
+  string version = 3;
+  bool running = 4;
+  // True when the container was created/replaced or its config rewritten.
+  bool changed = 5;
+  // SHA-256 (hex) of the applied configuration.
+  string config_sha256 = 6;
+}
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+// DiscoveryRefresh asks the agent to re-run discovery. The result carries the
+// fresh DiscoveryReport.
+message DiscoveryRefresh {}
+
+// SystemPrune is `docker system prune` with every scope opt-in. The agent
+// rejects a command where no scope flag is set. Volumes are never pruned
+// without `volumes = true` AND the control plane having obtained explicit user
+// confirmation.
+message SystemPrune {
+  bool stopped_containers = 1;
+  bool dangling_images = 2;
+  // All images not used by a container (superset of dangling_images).
+  bool unused_images = 3;
+  bool unused_networks = 4;
+  bool build_cache = 5;
+  bool volumes = 6;
+  // Only prune objects older than this.
+  google.protobuf.Duration older_than = 7;
+  // Image references that must be kept (rollback points).
+  repeated string keep_images = 8;
+}
+
+// AgentSelfUpdate replaces the agent binary. The agent downloads `url` over
+// HTTPS, verifies the SHA-256 (and the detached signature when configured),
+// atomically swaps the binary, and restarts via its service manager.
+message AgentSelfUpdate {
+  string url = 1;
+  // Hex SHA-256 of the binary.
+  string sha256 = 2;
+  string target_version = 3;
+  // Optional detached Ed25519 signature over the raw binary's SHA-256 digest.
+  bytes signature = 4;
+}
+
+message AgentSelfUpdateResult {
+  string previous_version = 1;
+  string new_version = 2;
+  // The agent will disconnect and restart shortly after sending the result.
+  bool restarting = 3;
+}
+
+// EmptyResult is the result of commands with nothing to return.
+message EmptyResult {}
+
+// ---------------------------------------------------------------------------
+// Results
+// ---------------------------------------------------------------------------
+
+enum CommandStatus {
+  COMMAND_STATUS_UNSPECIFIED = 0;
+  COMMAND_STATUS_SUCCEEDED = 1;
+  COMMAND_STATUS_FAILED = 2;
+  COMMAND_STATUS_CANCELLED = 3;
+  COMMAND_STATUS_TIMED_OUT = 4;
+}
+
+// CommandResult is the terminal report for a command; exactly one is sent per
+// accepted command. If the stream drops before the control plane receives it,
+// the control plane re-dispatches the command with the SAME idempotency_key
+// after reconnect and the agent answers from its result cache with
+// replayed = true (see ADR 0002, "Command idempotency").
+message CommandResult {
+  string command_id = 1;
+  CommandStatus status = 2;
+  // Process-style exit code where meaningful (builds, compose), else 0.
+  int32 exit_code = 3;
+  ErrorCode error_code = 4;
+  // Human-readable, already redacted. Never contains secret values.
+  string error_message = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+  // True when this is a replay of a cached result for a duplicate
+  // idempotency key rather than a fresh execution.
+  bool replayed = 8;
+
+  // Typed success payload; unset on failure unless partial data is useful.
+  oneof result {
+    EmptyResult empty = 20;
+    ContainerCreateResult container_create = 21;
+    ContainerStateResult container_state = 22;
+    ContainerInspectResult container_inspect = 23;
+    ContainerListResult container_list = 24;
+    ImagePullResult image_pull = 30;
+    ImageListResult image_list = 31;
+    ImageInspectResult image_inspect = 32;
+    PruneResult prune = 33;
+    VolumeCreateResult volume_create = 40;
+    VolumeListResult volume_list = 41;
+    NetworkCreateResult network_create = 45;
+    NetworkListResult network_list = 46;
+    ComposeResult compose = 50;
+    BuildResult build = 60;
+    BuildDetectResult build_detect = 61;
+    LogStreamStartResult log_stream_start = 70;
+    HealthProbeResult health_probe = 80;
+    ProxyEnsureResult proxy_ensure = 90;
+    DiscoveryReport discovery = 100;
+    AgentSelfUpdateResult agent_self_update = 102;
+  }
+}

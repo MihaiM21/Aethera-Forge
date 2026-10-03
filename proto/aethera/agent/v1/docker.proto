@@ -1,0 +1,458 @@
+// Typed Docker operations: containers, images, volumes, networks, compose.
+//
+// Everything here is an allowlisted, structured command. There is deliberately
+// no "run this shell string" escape hatch (spec section 31). Fields that the
+// agent maps onto Docker API calls are validated against the agent's local
+// policy before execution (bind-mount prefixes, forbidden mounts, ...).
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// ---------------------------------------------------------------------------
+// Containers
+// ---------------------------------------------------------------------------
+
+// HealthcheckSpec is a Docker (in-container) HEALTHCHECK, executed by the
+// Docker daemon inside the container. It is not a host-side command.
+message HealthcheckSpec {
+  // Docker test form: ["CMD", "curl", "-f", "http://localhost/health"],
+  // ["CMD-SHELL", "..."] or ["NONE"].
+  repeated string test = 1;
+  google.protobuf.Duration interval = 2;
+  google.protobuf.Duration timeout = 3;
+  int32 retries = 4;
+  // Startup grace period during which failures do not count.
+  google.protobuf.Duration start_period = 5;
+  google.protobuf.Duration start_interval = 6;
+}
+
+message LogConfig {
+  // "json-file" (default), "local", "none". Others are refused by policy.
+  string driver = 1;
+  map<string, string> options = 2;
+}
+
+// ContainerSpec is the full desired state of one container.
+// Intentionally absent (policy decision): privileged mode, host PID/IPC/network
+// namespaces, device mappings, arbitrary cap_add, docker.sock mounts.
+message ContainerSpec {
+  string image = 1;
+  // Container name; unique per Docker host.
+  string name = 2;
+  string hostname = 3;
+  repeated string entrypoint = 4;
+  // Overrides CMD.
+  repeated string command = 5;
+  string working_dir = 6;
+  // "uid[:gid]" or user name.
+  string user = 7;
+  repeated EnvVar env = 8;
+  map<string, string> labels = 9;
+  repeated PortMapping ports = 10;
+  repeated VolumeMount mounts = 11;
+  repeated NetworkAttachment networks = 12;
+  ResourceLimits resources = 13;
+  RestartPolicy restart_policy = 14;
+  HealthcheckSpec healthcheck = 15;
+  LogConfig log_config = 16;
+  string stop_signal = 17;
+  google.protobuf.Duration stop_timeout = 18;
+  bool read_only_root_fs = 19;
+  // Run an init process (tini) as PID 1.
+  bool init = 20;
+  repeated string cap_drop = 21;
+  repeated string extra_hosts = 22;
+}
+
+message ContainerNetworkInfo {
+  string network = 1;
+  string ip_address = 2;
+  string mac_address = 3;
+  repeated string aliases = 4;
+}
+
+// ContainerInfo is the observed state of one container.
+message ContainerInfo {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string image_id = 4;
+  ContainerState state = 5;
+  // Human status as Docker prints it ("Up 3 hours (healthy)").
+  string status = 6;
+  ContainerHealth health = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
+  int32 exit_code = 11;
+  bool oom_killed = 12;
+  uint32 restart_count = 13;
+  map<string, string> labels = 14;
+  repeated PortMapping ports = 15;
+  repeated VolumeMount mounts = 16;
+  repeated ContainerNetworkInfo networks = 17;
+  // Raw `docker inspect` JSON; only populated for ContainerInspect.
+  // Environment values are stripped by the agent before sending.
+  bytes inspect_json = 18;
+}
+
+// ContainerCreate creates (and optionally starts) a container.
+message ContainerCreate {
+  ContainerSpec spec = 1;
+  // true = "run" (create + start).
+  bool start = 2;
+  // Pull the image first if it is not present locally.
+  bool pull_if_missing = 3;
+  // Credentials for the pull, if needed.
+  RegistryAuth pull_auth = 4;
+  // If a container with the same name exists, stop+remove it first.
+  bool replace_existing = 5;
+}
+
+message ContainerCreateResult {
+  string container_id = 1;
+  string name = 2;
+  ContainerState state = 3;
+  repeated string warnings = 4;
+}
+
+// ContainerStart/Stop/Restart/Remove/Inspect address a container by ID or name.
+message ContainerStart {
+  string container = 1;
+}
+
+message ContainerStop {
+  string container = 1;
+  // Grace period before SIGKILL; zero = container's configured stop_timeout.
+  google.protobuf.Duration timeout = 2;
+}
+
+message ContainerRestart {
+  string container = 1;
+  google.protobuf.Duration timeout = 2;
+}
+
+message ContainerRemove {
+  string container = 1;
+  bool force = 2;
+  // Also remove anonymous volumes. Named volumes are never removed here.
+  bool remove_anonymous_volumes = 3;
+}
+
+message ContainerInspect {
+  string container = 1;
+  // Include the raw inspect JSON in ContainerInfo.inspect_json.
+  bool include_raw = 2;
+}
+
+message ContainerList {
+  // false = running only.
+  bool all = 1;
+  // Match containers that carry ALL of these labels ("key" or "key=value").
+  repeated string label_filters = 2;
+  string name_filter = 3;
+}
+
+// Result for start/stop/restart: the container's state afterwards.
+message ContainerStateResult {
+  ContainerInfo container = 1;
+}
+
+message ContainerInspectResult {
+  ContainerInfo container = 1;
+}
+
+message ContainerListResult {
+  repeated ContainerInfo containers = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+message ImageInfo {
+  string id = 1;
+  repeated string repo_tags = 2;
+  repeated string repo_digests = 3;
+  int64 size_bytes = 4;
+  google.protobuf.Timestamp created_at = 5;
+  map<string, string> labels = 6;
+  string architecture = 7;
+  string os = 8;
+  // Number of containers using the image (-1 = unknown).
+  int32 containers_using = 9;
+}
+
+message ImagePull {
+  // Full reference, e.g. "ghcr.io/acme/api:1.4.2" or "nginx@sha256:...".
+  string reference = 1;
+  RegistryAuth auth = 2;
+  // e.g. "linux/arm64"; empty = host platform.
+  string platform = 3;
+}
+
+message ImagePullResult {
+  string image_id = 1;
+  // Manifest digest ("sha256:...") of the pulled reference.
+  string digest = 2;
+  int64 size_bytes = 3;
+  repeated string repo_digests = 4;
+  // True when the image was already present and up to date.
+  bool already_present = 5;
+}
+
+message ImageList {
+  bool include_intermediate = 1;
+  repeated string label_filters = 2;
+  // Restrict to a repository, e.g. "aethera/api".
+  string reference_filter = 3;
+}
+
+message ImageListResult {
+  repeated ImageInfo images = 1;
+}
+
+message ImageRemove {
+  string image = 1;
+  bool force = 2;
+}
+
+message ImageInspect {
+  string image = 1;
+}
+
+message ImageInspectResult {
+  ImageInfo image = 1;
+}
+
+message ImagePrune {
+  // false = dangling only; true = every image not used by a container.
+  bool all_unused = 1;
+  // Only prune images created before now - older_than.
+  google.protobuf.Duration older_than = 2;
+  repeated string label_filters = 3;
+  // Image references that must never be pruned (rollback points).
+  repeated string keep = 4;
+}
+
+// PruneResult is shared by every prune-style command.
+message PruneResult {
+  repeated string deleted = 1;
+  int64 space_reclaimed_bytes = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Volumes
+// ---------------------------------------------------------------------------
+
+message VolumeInfo {
+  string name = 1;
+  string driver = 2;
+  string mountpoint = 3;
+  map<string, string> labels = 4;
+  google.protobuf.Timestamp created_at = 5;
+  // -1 = unknown (computing size is expensive and opt-in).
+  int64 size_bytes = 6;
+  // Number of containers referencing the volume (-1 = unknown).
+  int32 ref_count = 7;
+}
+
+message VolumeCreate {
+  string name = 1;
+  // Empty = "local".
+  string driver = 2;
+  map<string, string> driver_options = 3;
+  map<string, string> labels = 4;
+}
+
+message VolumeCreateResult {
+  VolumeInfo volume = 1;
+}
+
+message VolumeList {
+  repeated string label_filters = 1;
+  bool include_sizes = 2;
+}
+
+message VolumeListResult {
+  repeated VolumeInfo volumes = 1;
+}
+
+message VolumeRemove {
+  string name = 1;
+  bool force = 2;
+}
+
+message VolumePrune {
+  // Prune only volumes that carry all of these labels. Unlabelled volumes
+  // are NEVER pruned unless `include_unlabelled` is set (data-loss guard).
+  repeated string label_filters = 1;
+  bool include_unlabelled = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Networks
+// ---------------------------------------------------------------------------
+
+message IpamConfig {
+  string subnet = 1;
+  string gateway = 2;
+}
+
+message NetworkEndpoint {
+  string container_id = 1;
+  string container_name = 2;
+  string ipv4_address = 3;
+}
+
+message NetworkInfo {
+  string id = 1;
+  string name = 2;
+  string driver = 3;
+  string scope = 4;
+  bool internal = 5;
+  bool attachable = 6;
+  bool ipv6 = 7;
+  repeated IpamConfig ipam = 8;
+  map<string, string> labels = 9;
+  google.protobuf.Timestamp created_at = 10;
+  repeated NetworkEndpoint endpoints = 11;
+}
+
+message NetworkCreate {
+  string name = 1;
+  // Empty = "bridge".
+  string driver = 2;
+  // No outbound access / not routable from outside the host.
+  bool internal = 3;
+  bool attachable = 4;
+  bool ipv6 = 5;
+  repeated IpamConfig ipam = 6;
+  map<string, string> options = 7;
+  map<string, string> labels = 8;
+  // Succeed (returning the existing network) if it already exists.
+  bool if_not_exists = 9;
+}
+
+message NetworkCreateResult {
+  NetworkInfo network = 1;
+}
+
+message NetworkList {
+  repeated string label_filters = 1;
+}
+
+message NetworkListResult {
+  repeated NetworkInfo networks = 1;
+}
+
+message NetworkRemove {
+  // ID or name.
+  string network = 1;
+}
+
+message NetworkConnect {
+  string network = 1;
+  string container = 2;
+  repeated string aliases = 3;
+  string ipv4_address = 4;
+}
+
+message NetworkDisconnect {
+  string network = 1;
+  string container = 2;
+  bool force = 3;
+}
+
+message NetworkPrune {
+  repeated string label_filters = 1;
+  // Only prune networks created before now - older_than.
+  google.protobuf.Duration older_than = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Compose
+// ---------------------------------------------------------------------------
+
+// ComposeProject identifies a Compose project and carries its files. The agent
+// writes the files into its managed project directory
+// (/var/lib/aethera/projects/<project_name>/) and invokes `docker compose`
+// with a fixed argv; file contents are data, never interpolated into a shell.
+message ComposeProject {
+  // Compose project name (-p). [a-z0-9][a-z0-9_-]*
+  string project_name = 1;
+  // Contents of the user's compose file, kept verbatim.
+  // SENSITIVE: may contain user-embedded secrets; log length/hash only.
+  string compose_file = 2;
+  // Contents of the Aethera-generated override file (labels, networks).
+  // SENSITIVE: log length/hash only.
+  string override_file = 3;
+  // Interpolation environment (.env equivalent).
+  repeated EnvVar env = 4;
+  repeated string profiles = 5;
+  // Registry credentials available to pull/build in this project.
+  repeated RegistryAuth registry_auths = 6;
+}
+
+enum ComposePullPolicy {
+  COMPOSE_PULL_POLICY_UNSPECIFIED = 0;
+  COMPOSE_PULL_POLICY_MISSING = 1;
+  COMPOSE_PULL_POLICY_ALWAYS = 2;
+  COMPOSE_PULL_POLICY_NEVER = 3;
+}
+
+message ComposeUp {
+  ComposeProject project = 1;
+  // Restrict to these services (empty = all).
+  repeated string services = 2;
+  ComposePullPolicy pull_policy = 3;
+  bool build = 4;
+  bool force_recreate = 5;
+  bool remove_orphans = 6;
+  // Wait for services to be running/healthy (`--wait`).
+  bool wait = 7;
+  google.protobuf.Duration wait_timeout = 8;
+}
+
+message ComposeDown {
+  ComposeProject project = 1;
+  // Removes named volumes declared in the file. Destructive; the control plane
+  // requires explicit user confirmation before setting this.
+  bool remove_volumes = 2;
+  bool remove_orphans = 3;
+  google.protobuf.Duration timeout = 4;
+}
+
+message ComposePs {
+  ComposeProject project = 1;
+  bool all = 2;
+}
+
+message ComposePull {
+  ComposeProject project = 1;
+  repeated string services = 2;
+}
+
+message ComposeServiceStatus {
+  string service = 1;
+  string container_id = 2;
+  string container_name = 3;
+  string image = 4;
+  ContainerState state = 5;
+  ContainerHealth health = 6;
+  int32 exit_code = 7;
+  repeated PortMapping ports = 8;
+}
+
+// Result of ComposeUp / ComposePs (and ComposeDown, with empty services).
+message ComposeResult {
+  string project_name = 1;
+  repeated ComposeServiceStatus services = 2;
+}

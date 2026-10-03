@@ -1,0 +1,75 @@
+// Resource discovery (spec section 55): what is on this server?
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/docker.proto";
+import "aethera/agent/v1/enrollment.proto";
+import "aethera/agent/v1/metrics.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// DockerStatus is what the agent can say about the local Docker daemon. It is
+// the "Docker unavailable" axis of the failure model (spec section 44),
+// independent of whether the agent itself is connected.
+enum DockerStatus {
+  DOCKER_STATUS_UNSPECIFIED = 0;
+  DOCKER_STATUS_RUNNING = 1;
+  // Installed but the daemon is not running / socket missing.
+  DOCKER_STATUS_STOPPED = 2;
+  // Socket exists but the daemon does not answer (hung).
+  DOCKER_STATUS_UNREACHABLE = 3;
+  DOCKER_STATUS_NOT_INSTALLED = 4;
+  // The agent user cannot access the Docker socket.
+  DOCKER_STATUS_PERMISSION_DENIED = 5;
+}
+
+message ToolInfo {
+  // "git", "nixpacks", "docker-compose", "buildx", ...
+  string name = 1;
+  string version = 2;
+  string path = 3;
+}
+
+message DockerInfo {
+  DockerStatus status = 1;
+  string version = 2;
+  string api_version = 3;
+  string storage_driver = 4;
+  string cgroup_version = 5;
+  string docker_root_dir = 6;
+  string compose_version = 7;
+  string buildx_version = 8;
+  bool rootless = 9;
+  bool swarm_active = 10;
+  uint32 containers_running = 11;
+  uint32 containers_stopped = 12;
+  uint32 image_count = 13;
+  // Why status != RUNNING, when known.
+  string error = 14;
+}
+
+message NetworkInterfaceInfo {
+  string name = 1;
+  string mac_address = 2;
+  repeated string addresses = 3;
+  uint32 mtu = 4;
+  bool up = 5;
+}
+
+// DiscoveryReport is sent after Hello, on DiscoveryRefresh, and when the agent
+// detects a material change (Docker restarted, disks changed).
+message DiscoveryReport {
+  google.protobuf.Timestamp collected_at = 1;
+  HostFacts host = 2;
+  DockerInfo docker = 3;
+  repeated DiskUsage disks = 4;
+  repeated NetworkInterfaceInfo interfaces = 5;
+  repeated ContainerInfo containers = 6;
+  repeated NetworkInfo networks = 7;
+  repeated VolumeInfo volumes = 8;
+  // Other tools the agent found and may use (git, nixpacks, ...).
+  repeated ToolInfo tools = 9;
+}

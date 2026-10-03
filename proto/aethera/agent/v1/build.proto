@@ -1,0 +1,197 @@
+// Build subsystem commands (spec section 4). The agent implements one
+// IBuildEngine-style handler per BuildEngine; unknown engines are selected by
+// the free-form `engine_name` so new builders (e.g. Railpack) need no schema
+// change.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/common.proto";
+import "google/protobuf/duration.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+enum BuildEngine {
+  BUILD_ENGINE_UNSPECIFIED = 0;
+  // Build with a Dockerfile (BuildKit).
+  BUILD_ENGINE_DOCKERFILE = 1;
+  BUILD_ENGINE_NIXPACKS = 2;
+  // Build static assets, then package them behind a small web server image.
+  BUILD_ENGINE_STATIC = 3;
+  // No build: pull a prebuilt image.
+  BUILD_ENGINE_IMAGE = 4;
+}
+
+// GitCredentials are resolved by the control plane at dispatch time. The
+// non-secret `credentials_ref` identifies the stored credential for audit and
+// logging; the secret material travels only in the typed fields below.
+message GitCredentials {
+  // Opaque id of the credential record in the control plane (safe to log).
+  string credentials_ref = 1;
+  oneof material {
+    HttpsTokenCredential https_token = 2;
+    SshKeyCredential ssh_key = 3;
+  }
+}
+
+message HttpsTokenCredential {
+  string username = 1;
+  // SECRET: never log
+  SecretValue token = 2;
+}
+
+message SshKeyCredential {
+  // PEM/OpenSSH private key (deploy key).
+  // SECRET: never log
+  SecretValue private_key = 1;
+  // known_hosts lines to trust; empty = accept-new for this build only.
+  string known_hosts = 2;
+}
+
+message GitSource {
+  string url = 1;
+  // Branch, tag or full ref. Ignored when `commit` is set.
+  string ref = 2;
+  // Exact commit SHA to build; empty = tip of `ref`.
+  string commit = 3;
+  // Shallow clone depth; 0 = full history.
+  int32 depth = 4;
+  bool submodules = 5;
+  // Optional; absent for public repositories.
+  GitCredentials credentials = 6;
+}
+
+enum CacheMode {
+  CACHE_MODE_UNSPECIFIED = 0;
+  // BuildKit local cache directory managed by the agent.
+  CACHE_MODE_LOCAL = 1;
+  // Import/export cache through a registry reference.
+  CACHE_MODE_REGISTRY = 2;
+  // Inline cache embedded in the image.
+  CACHE_MODE_INLINE = 3;
+}
+
+message BuildCacheSettings {
+  bool enabled = 1;
+  CacheMode mode = 2;
+  // Registry/local references for --cache-from / --cache-to.
+  repeated string cache_from = 3;
+  string cache_to = 4;
+  // Stable key so unrelated apps never share a local cache.
+  string cache_key = 5;
+  // Force a clean build ignoring any cache.
+  bool no_cache = 6;
+  int64 max_size_bytes = 7;
+}
+
+// BuildSecret is a BuildKit `--secret id=<id>` mount; never baked into layers.
+message BuildSecret {
+  string id = 1;
+  // SECRET: never log
+  SecretValue value = 2;
+}
+
+message PushOptions {
+  // Credentials for the destination registry.
+  RegistryAuth auth = 1;
+}
+
+message BuildRequest {
+  // Control-plane build id (UUIDv7). Also the default log stream id.
+  string build_id = 1;
+  BuildEngine engine = 2;
+  // Free-form engine id for extensibility ("railpack", "buildpacks", ...).
+  // When non-empty it takes precedence over `engine`.
+  string engine_name = 3;
+
+  // Source. Exactly one of git / image_reference is required, depending on the
+  // engine (IMAGE uses image_reference).
+  GitSource git = 4;
+  string image_reference = 5;
+  // Credentials for pulling `image_reference`.
+  RegistryAuth image_pull_auth = 6;
+
+  // Directory inside the repo used as the build context ("" or "." = root).
+  string context_path = 7;
+  // Dockerfile path relative to the context.
+  string dockerfile_path = 8;
+  // Multi-stage target.
+  string target_stage = 9;
+
+  // Build-time arguments (--build-arg) and environment (nixpacks/static).
+  repeated EnvVar build_args = 10;
+  repeated EnvVar env = 11;
+  repeated BuildSecret secrets = 12;
+
+  // Engine-neutral overrides (nixpacks / static / custom engines).
+  string install_command = 13;
+  string build_command = 14;
+  string start_command = 15;
+  // Static engine: directory (relative to context) holding the built files.
+  string output_dir = 16;
+  // Static engine: serve index.html for unknown paths.
+  bool spa_fallback = 17;
+
+  BuildCacheSettings cache = 18;
+  // e.g. ["linux/amd64"]; empty = host platform. Multiple = multi-arch
+  // (requires push, since local daemons cannot hold a manifest list).
+  repeated string target_platforms = 19;
+
+  // Tags to apply, e.g. "aethera/api:0190f3c2-...". At least one required.
+  repeated string image_tags = 20;
+  map<string, string> image_labels = 21;
+
+  // Push all tags after a successful build.
+  bool push = 22;
+  PushOptions push_options = 23;
+}
+
+message BuildResult {
+  string build_id = 1;
+  string image_id = 2;
+  // Manifest digest; set after push (or from the local store if available).
+  string digest = 3;
+  repeated string tags = 4;
+  repeated string repo_digests = 5;
+  int64 size_bytes = 6;
+  google.protobuf.Duration duration = 7;
+  // Engine actually used (after auto-detection / overrides).
+  string engine_used = 8;
+  // Commit SHA that was checked out.
+  string commit_sha = 9;
+  bool pushed = 10;
+  // Platform of the resulting image, e.g. "linux/amd64".
+  string platform = 11;
+  bool cache_hit = 12;
+}
+
+// BuildDetect inspects a repository and proposes build methods (spec 4.2).
+message BuildDetect {
+  GitSource git = 1;
+  string context_path = 2;
+}
+
+message BuildCandidate {
+  BuildEngine engine = 1;
+  string engine_name = 2;
+  // 0..1, higher is more likely.
+  double confidence = 3;
+  // Why: "Dockerfile found at ./Dockerfile", "package.json with build script".
+  string reason = 4;
+  string dockerfile_path = 5;
+  string install_command = 6;
+  string build_command = 7;
+  string start_command = 8;
+  string output_dir = 9;
+  // Detected runtime hint, e.g. "node", "python", "go".
+  string language = 10;
+  // Ports discovered from EXPOSE / framework defaults.
+  repeated uint32 suggested_ports = 11;
+}
+
+message BuildDetectResult {
+  // Sorted by confidence, best first.
+  repeated BuildCandidate candidates = 1;
+  string commit_sha = 2;
+}

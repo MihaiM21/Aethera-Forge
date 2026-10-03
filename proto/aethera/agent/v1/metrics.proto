@@ -1,0 +1,79 @@
+// Periodic host and container metrics reported by the agent.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/common.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// MetricsReport is sent every Welcome.metrics_interval (default 10s). Counters
+// (bytes, packets) are cumulative since boot/container start; the control
+// plane derives rates from consecutive samples.
+message MetricsReport {
+  google.protobuf.Timestamp collected_at = 1;
+  HostMetrics host = 2;
+  repeated ContainerMetrics containers = 3;
+}
+
+message HostMetrics {
+  // Aggregate CPU utilisation across all cores, 0..100.
+  double cpu_percent = 1;
+  uint32 cpu_cores = 2;
+  double load1 = 3;
+  double load5 = 4;
+  double load15 = 5;
+  int64 memory_total_bytes = 6;
+  int64 memory_used_bytes = 7;
+  int64 memory_available_bytes = 8;
+  int64 swap_total_bytes = 9;
+  int64 swap_used_bytes = 10;
+  repeated DiskUsage disks = 11;
+  repeated NetworkInterfaceStats interfaces = 12;
+  google.protobuf.Duration uptime = 13;
+}
+
+message DiskUsage {
+  string mount_point = 1;
+  string device = 2;
+  string fs_type = 3;
+  int64 total_bytes = 4;
+  int64 used_bytes = 5;
+  int64 inodes_total = 6;
+  int64 inodes_used = 7;
+}
+
+message NetworkInterfaceStats {
+  string name = 1;
+  uint64 rx_bytes = 2;
+  uint64 tx_bytes = 3;
+  uint64 rx_packets = 4;
+  uint64 tx_packets = 5;
+  uint64 rx_errors = 6;
+  uint64 tx_errors = 7;
+}
+
+message ContainerMetrics {
+  string container_id = 1;
+  string name = 2;
+  // CPU utilisation relative to ONE core (200 = two cores busy), per Docker.
+  double cpu_percent = 3;
+  int64 memory_used_bytes = 4;
+  // 0 = no limit (host memory applies).
+  int64 memory_limit_bytes = 5;
+  uint64 net_rx_bytes = 6;
+  uint64 net_tx_bytes = 7;
+  uint64 block_read_bytes = 8;
+  uint64 block_write_bytes = 9;
+  uint32 pids = 10;
+  uint32 restart_count = 11;
+  ContainerState state = 12;
+  ContainerHealth health = 13;
+  google.protobuf.Timestamp started_at = 14;
+  // Docker labels; aethera.* labels let the control plane map a container to
+  // an application/deployment without a lookup.
+  map<string, string> labels = 15;
+}

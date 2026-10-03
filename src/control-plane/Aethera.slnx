@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aethera.Agent.Protocol/Aethera.Agent.Protocol.csproj" />
+    <Project Path="src/Aethera.Api/Aethera.Api.csproj" />
+    <Project Path="src/Aethera.Domain/Aethera.Domain.csproj" />
+    <Project Path="src/Aethera.Engine/Aethera.Engine.csproj" />
+    <Project Path="src/Aethera.Infrastructure/Aethera.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aethera.Agent.Protocol.Tests/Aethera.Agent.Protocol.Tests.csproj" />
+    <Project Path="tests/Aethera.Api.Tests/Aethera.Api.Tests.csproj" />
+    <Project Path="tests/Aethera.Domain.Tests/Aethera.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
