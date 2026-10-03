@@ -8,6 +8,8 @@
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
     <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />
+    <!-- Auth: PasswordHasher<TUser> (PBKDF2, versioned, rehash-aware) without the rest of ASP.NET Identity -->
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.12" />
     <!-- HTTP API: validation, OpenAPI document (+ build-time generation) and the Scalar reference UI -->
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
