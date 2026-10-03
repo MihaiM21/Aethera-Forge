@@ -281,7 +281,7 @@ Top-level resource families follow spec section 27. IDs in paths are UUIDv7. `{i
 
 | Resource | Endpoints | Notes |
 |---|---|---|
-| **auth** | `POST /auth/setup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/csrf`, `POST /auth/password` | no auth required for `setup`/`login` only |
+| **auth** | `GET /auth/setup` -> `{ "setupRequired": bool }` (anonymous; true while no user exists, so the UI knows whether to show first-run setup or login), `POST /auth/setup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/csrf`, `POST /auth/password` | no auth required for `GET`/`POST /auth/setup` and `POST /auth/login` only |
 | **users** | `GET/POST /users`, `GET/PATCH/DELETE /users/{id}`, `PUT /users/{id}/role` | admin only |
 | **api-tokens** | `GET/POST /api-tokens`, `GET/DELETE /api-tokens/{id}` | secret only in the POST response; `DELETE` = revoke |
 | **organizations** | `GET /organizations`, `GET/PATCH /organizations/{id}` | one default org per install in the MVP; teams/members under `/organizations/{id}/members` later |
@@ -356,3 +356,51 @@ GET  /api/v1/deployments/{deploymentId}          -> final status, failedStep, im
 - (+) Long-running operations are uniform (job + hubs) for UI, CLI and CI.
 - (-) Strictness (unknown params rejected, idempotency storage, ETags) adds some boilerplate; it is centralised in shared endpoint filters and middleware.
 - (-) Two live channels beyond REST (three hubs) must keep payloads consistent with REST; mitigated by reusing the same DTOs.
+
+## Implementation notes (WP1.0)
+
+WP1.0 built the shared plumbing; feature work packages only add endpoints. Where this section differs from the text above, this section is what the code does.
+
+### Composition
+
+- `Program.cs` is final: `AddAetheraApi` (shared), then `AddAuth` / `AddResources` / `AddJobs` (WP1.1 / 1.2 / 1.3, `Aethera.Api/Features/*/…Module.cs`), the pipeline (`UseAetheraApi`), and `MapAuth` / `MapResources` / `MapJobs` on **one** `app.MapGroup("/api/v1")`, plus `MapJobsHubs(root)` for `/hubs/*`. No work package edits `Program.cs`.
+- The `/api/v1` group is **secure by default**: it requires an authenticated caller and limits request bodies to 1 MiB. Anonymous endpoints (`GET/POST /auth/setup`, `POST /auth/login`) must say `.AllowAnonymous()`. Add `.RequireRole(AetheraPolicies.X)` and `.RequireScope(Scopes.Y)` per endpoint. Every endpoint needs `.WithName("verbNoun")` (the OpenAPI `operationId`, unique, camelCase; a test fails otherwise) and a tag per resource family (`.WithTags("Projects")`, usually on the `MapGroup("/projects")`).
+- Validators (FluentValidation) in the API assembly are registered automatically; endpoints opt in with `.Validate<TBody>()` (422, `errors[]` with JSON Pointers). Domain exceptions, `DbUpdateConcurrencyException` (409 `concurrency.conflict`) and unique violations (409 `resource.conflict`) are mapped centrally; deeper code can `throw new ApiProblemException(ApiProblems.X(...))`.
+- `GET /ready` runs every registered `IReadinessCheck` (PostgreSQL built in; WP1.3 registers Redis) and reports them by name in `checks`.
+
+### Differences and clarifications
+
+- `traceId` in error bodies **is** the `X-Request-Id` of the response (an inbound id that matches `[A-Za-z0-9._:-]{1,100}` is echoed; otherwise the W3C trace id or a new GUID is used). `traceparent` is also returned when the request has an activity.
+- Out-of-range `limit` is `400 validation.invalid_parameter` (section 2); the `limit` line in the 422 example of section 3 is illustrative only. Unknown `sort` fields are the same `400` with `parameter: "sort"`.
+- The 401 for a bad/absent credential is `auth.unauthenticated`; a handler can refine it (`auth.token_expired`, `auth.token_revoked`) by setting `HttpContext.Items["Aethera.AuthFailureCode"]`. A token missing a scope gets `403 auth.insufficient_scope` with the `requiredScope` extension; a role failure is `403 auth.forbidden` (and wins when both fail).
+- Validation errors only carry `pointer` or `parameter` (whichever applies); the other member is omitted.
+- The shared `ProblemDetails` / `ValidationProblem` / `FieldError` schemas and the `cookieAuth` / `bearerAuth` security schemes are in the OpenAPI document; each operation gets 401/403 (when authorized), 422 (when it validates) and 500 responses plus the `x-required-scope` extension. The `Idempotency-Key` / `If-Match` header parameters are not yet added to the document (no middleware implements them yet).
+- The build writes the document to `src/web/openapi/aethera.v1.json` (the generator only accepts `[A-Za-z0-9_-]` in file names, so a build target renames `aethera-v1.json`). The document name stays `v1`, so it is served at `/api/openapi/v1.json`. With `AETHERA_DOCS=false` the Scalar UI is not mapped and the JSON requires at least the Viewer role.
+- Audit: `IAuditLog` / `EfAuditLog` are the writer (actor, request id, IP from `ICurrentActor`; metadata redacted). The "every mutating request" middleware of section 7 belongs to WP1.1.
+
+### Token scopes (Phase 1)
+
+Phase 1 implements seven coarse scopes (`Aethera.Api.Security.Scopes`). The resource-level table in section 7 is the longer-term vocabulary; add finer scopes there only with an ADR amendment. Scopes only narrow a token below its owner's role (effective permission = scope AND role); browser sessions are bound by role only, so `RequireScope` is ignored for them.
+
+| Scope | Grants |
+|---|---|
+| `read` | all reads except secrets |
+| `write` | create/update/delete resources except secrets and servers; implies `read` |
+| `deploy` | deploy, redeploy, rollback, restart, start, stop; cancel/retry jobs |
+| `secrets:read` | list secrets (masked) |
+| `secrets:write` | create/rotate/delete/reveal secrets; implies `secrets:read` |
+| `servers:write` | servers CRUD, join tokens, agent install, prune |
+| `admin` | users, roles, others' tokens, settings, audit log; satisfies every scope (as does `*`) |
+
+### Claim types (`Aethera.Api.Security.AetheraClaimTypes`)
+
+| Claim | Meaning |
+|---|---|
+| `aethera:user_id` | user id (sessions and tokens) |
+| `aethera:token_id` | API token id (token principals only) |
+| `aethera:org_id` | organization id |
+| `aethera:role` | `viewer` / `developer` / `admin` / `owner` (for tokens: the owner's role) |
+| `aethera:scope` | one claim per token scope (token principals only) |
+| `aethera:auth_method` | `session` or `token` |
+
+Authentication schemes: default `Aethera` (policy scheme) forwards to `Aethera.Session` (cookie) or `Aethera.Token` (`Authorization: Bearer`, or `access_token` under `/hubs`). `AetheraPrincipal.Create` builds principals with exactly these claims.

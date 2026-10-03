@@ -9,6 +9,7 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP0.3 Protocol code generation (Go via buf, C# via Grpc.Tools, CI `proto` job)
 
 ## Phase 1 — Control plane core + UI shell
+- [x] WP1.0 Shared API seams (module stubs, abstractions, errors/validation/pagination, authorization, OpenAPI, test support)
 - [ ] WP1.1 Auth & access
 - [ ] WP1.2 Resource API
 - [ ] WP1.3 Job system
