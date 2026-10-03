@@ -4,6 +4,7 @@ using Aethera.Api.Features.Jobs;
 using Aethera.Api.Features.Resources;
 using Aethera.Api.Http;
 using Aethera.Api.OpenApi;
+using Aethera.Api.Web;
 using Aethera.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +31,7 @@ api.MapResources();            // WP1.2
 api.MapJobs();                 // WP1.3
 api.MapContributors();         // test/extension seam
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root
+app.UseAetheraStaticWeb();     // ADR 0005: the Next.js export, for every path no endpoint claimed
 
 app.Run();
 
