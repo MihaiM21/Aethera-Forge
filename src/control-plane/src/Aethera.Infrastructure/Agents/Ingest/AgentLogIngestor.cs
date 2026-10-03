@@ -22,7 +22,12 @@ public sealed class AgentLogIngestor(
 {
     private readonly AgentGatewayOptions _options = options.Value;
 
-    public static string AgentStreamId(Guid serverId, string processId) => $"agent:{serverId:D}:{processId}";
+    /// <summary>The persisted stream of an agent process's own logs; the process id comes from the agent, so it is reduced to a short safe token.</summary>
+    public static string AgentStreamId(Guid serverId, string processId)
+    {
+        var safe = new string(processId.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.').Take(64).ToArray());
+        return $"agent:{serverId:D}:{(safe.Length == 0 ? "unknown" : safe)}";
+    }
 
     public async Task HandleChunkAsync(AgentSession session, ServerAgentState state, P.LogChunk chunk, CancellationToken cancellationToken)
     {
@@ -63,10 +68,23 @@ public sealed class AgentLogIngestor(
         text = state.Redact(text);
         var timestamp = chunk.Timestamp is { } ts && ts.Seconds > 0 ? ts.ToDateTimeOffset() : clock.UtcNow;
 
+        // Size cap per stream: one marker where the log is cut, nothing after it (still acknowledged, so the agent does not stall).
+        if (state.StreamBytes.GetValueOrDefault(persistedStream) >= _options.LogMaxBytesPerStream)
+        {
+            if (!state.TruncatedStreams.TryAdd(persistedStream, 0))
+            {
+                GrantCredit(session, chunk);
+                return;
+            }
+
+            text = "... log truncated ...\n";
+        }
+
         // Durable first, acknowledgement second.
         var inserted = await InsertAsync(persistedStream, sequence, timestamp, (short)chunk.Source, (short)(chunk.Stream == P.LogStream.Stderr ? 2 : 1), text, cancellationToken);
         if (inserted)
         {
+            state.StreamBytes.AddOrUpdate(persistedStream, text.Length, (_, used) => used + text.Length);
             var line = new LogLine(sequence, timestamp, chunk.Stream == P.LogStream.Stderr ? LogStream.Stderr : LogStream.Stdout, (LogSource)(short)chunk.Source, text);
             await bus.PublishAsync(LiveChannels.Logs(persistedStream), new LogBusMessage(persistedStream, line, null).ToJson());
             foreach (var pending in state.Pending.Values)

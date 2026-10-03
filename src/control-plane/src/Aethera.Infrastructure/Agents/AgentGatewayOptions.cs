@@ -61,6 +61,9 @@ public sealed class AgentGatewayOptions
 
     public long LogInitialWindowBytes { get; set; } = 256 * 1024;
 
+    /// <summary>Stored bytes per log stream; beyond it one "log truncated" marker is written and the rest is dropped (still acknowledged).</summary>
+    public long LogMaxBytesPerStream { get; set; } = 50L * 1024 * 1024;
+
     /// <summary>Oldest agent version still accepted; older agents (and, above 0.0.0, unparseable ones such as "dev") get <c>Disconnect(UPGRADE_REQUIRED)</c>. The default accepts every agent.</summary>
     public string MinAgentVersion { get; set; } = "0.0.0";
 

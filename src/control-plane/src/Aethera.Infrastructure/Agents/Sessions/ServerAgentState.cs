@@ -139,6 +139,11 @@ public sealed class ServerAgentState(Guid serverId)
     /// <summary>Added to the agent's chunk sequence when a re-delivered command restarted a stream that already has stored chunks.</summary>
     public ConcurrentDictionary<string, long> SequenceOffsets { get; } = new();
 
+    /// <summary>Bytes stored per persisted log stream since this process started (the size cap), and the streams already cut.</summary>
+    public ConcurrentDictionary<string, long> StreamBytes { get; } = new();
+
+    public ConcurrentDictionary<string, byte> TruncatedStreams { get; } = new();
+
     /// <summary>Workload ids of this server (metrics/event label validation), refreshed at most once a minute.</summary>
     internal HashSet<Guid>? WorkloadIds { get; set; }
 

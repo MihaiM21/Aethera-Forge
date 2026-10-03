@@ -227,6 +227,32 @@ public sealed class LogIngestTests(GatewayFixture fixture)
     }
 
     [RequiresDatabaseFact]
+    public async Task A_stream_is_cut_with_one_marker_at_the_size_cap_and_the_rest_is_still_acknowledged()
+    {
+        var build = await StartBuildAsync(); // the cap is 600 bytes in these tests
+        await using var _ = build.Agent;
+        for (ulong i = 1; i <= 5; i++) build.Agent.Send(Chunk(build.BuildId, i, new string('x', 300), eof: i == 5));
+        var last = await build.Agent.NextAsync(m => m.LogFlowControl is { AckedSequence: 5 } ? m.LogFlowControl : null);
+        Assert.Equal(5UL, last.AckedSequence); // the agent is never left waiting
+
+        var rows = await RowsAsync($"build:{build.BuildId}");
+        Assert.Equal([1L, 2L, 3L], rows.Select(r => r.Sequence)); // two full chunks, then the marker; chunks 4 and 5 were dropped
+        Assert.Equal("... log truncated ...\n", rows[2].Data);
+        await FinishAsync(build);
+    }
+
+    [Theory]
+    [InlineData("abc-123_x.y", "abc-123_x.y")]
+    [InlineData("", "unknown")]
+    [InlineData("../../etc/passwd", "....etcpasswd")]
+    public void The_agent_log_stream_name_is_reduced_to_a_safe_token(string processId, string expected)
+    {
+        var server = Guid.NewGuid();
+        Assert.Equal($"agent:{server:D}:{expected}", Aethera.Infrastructure.Agents.Ingest.AgentLogIngestor.AgentStreamId(server, processId));
+        Assert.True(Aethera.Infrastructure.Agents.Ingest.AgentLogIngestor.AgentStreamId(server, new string('a', 500)).Length <= "agent:".Length + 36 + 1 + 64);
+    }
+
+    [RequiresDatabaseFact]
     public async Task An_oversized_chunk_is_refused()
     {
         var build = await StartBuildAsync();

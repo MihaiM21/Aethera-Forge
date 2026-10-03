@@ -140,7 +140,7 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
         var url = $"{Base(server.Id())}/join-tokens";
 
         Assert.Equal(HttpStatusCode.Forbidden, (await tenant.Developer.PostAsync(url, new { })).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await tenant.Viewer.GetAsync(url)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await tenant.Viewer.GetAsync(url)).StatusCode); // token state is not a secret; only creating and revoking is administration
         await (await tenant.Token(OrganizationRole.Admin, "write").PostAsync(url, new { })).AssertProblemAsync(403, "auth.insufficient_scope"); // write does not cover servers
         Assert.Equal(HttpStatusCode.Created, (await tenant.Token(OrganizationRole.Admin, "servers:write").PostAsync(url, new { })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await fixture.Factory.CreateAnonymousClient().PostAsync(url, new { })).StatusCode);

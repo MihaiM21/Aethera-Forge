@@ -53,6 +53,7 @@ public sealed class GatewayFixture : IAsyncLifetime
             ["Aethera:Agents:HeartbeatPersistSeconds"] = "0",
             ["Aethera:Agents:LogInitialWindowBytes"] = "200",
             ["Aethera:Agents:LogChunkMaxBytes"] = "1000",
+            ["Aethera:Agents:LogMaxBytesPerStream"] = "600",
             ["Aethera:Agents:ReachabilityFailureThreshold"] = "2",
             ["Aethera:Agents:PublicEndpoint"] = "localhost:9443",
         };

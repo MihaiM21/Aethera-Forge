@@ -60,7 +60,7 @@ internal static class AgentEndpoints
             .Produces<JoinTokenResponse>(StatusCodes.Status201Created).ProducesProblem(StatusCodes.Status404NotFound);
         servers.MapGet("/{id:guid}/join-tokens", ListJoinTokens).WithName("listServerJoinTokens")
             .WithSummary("List the join tokens of a server (never their values)")
-            .RequireAdmin(Scopes.ServersWrite).Produces<IReadOnlyList<JoinTokenSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
+            .RequireRead().Produces<IReadOnlyList<JoinTokenSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
         servers.MapDelete("/{id:guid}/join-tokens/{tokenId:guid}", RevokeJoinToken).WithName("revokeServerJoinToken")
             .WithSummary("Revoke an unused join token")
             .RequireAdmin(Scopes.ServersWrite).Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound);
