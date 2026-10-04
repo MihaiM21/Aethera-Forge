@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -23,6 +24,14 @@ import (
 	"strings"
 	"time"
 )
+
+// EmbeddedCAOID names the non-critical extension of the control plane's listener
+// certificate that carries the DER of the CA certificate. A TLS server strips a
+// self-signed root from the chain it sends, but at first contact the agent has
+// only the CA fingerprint, so the CA has to travel inside the leaf. The pin
+// keeps this safe: the embedded certificate is used only if its SHA-256 equals
+// the pin, and the leaf must still verify against it.
+var EmbeddedCAOID = asn1.ObjectIdentifier{1, 3, 6, 1, 3, 54173, 1}
 
 // SPIFFEPrefix is the SAN URI prefix of agent certificates.
 const SPIFFEPrefix = "spiffe://aethera/server/"
@@ -161,6 +170,11 @@ func verifyPinned(raw [][]byte, pin, host string, now time.Time) error {
 		}
 	}
 	if anchor == nil {
+		if c := embeddedCA(certs[0]); c != nil && Fingerprint(c.Raw) == pin {
+			anchor = c
+		}
+	}
+	if anchor == nil {
 		return errors.New("control plane CA does not match the pinned --ca-sha256 fingerprint")
 	}
 	roots := x509.NewCertPool()
@@ -178,6 +192,18 @@ func verifyPinned(raw [][]byte, pin, host string, now time.Time) error {
 	})
 	if err != nil {
 		return fmt.Errorf("control plane certificate rejected: %w", err)
+	}
+	return nil
+}
+
+// embeddedCA returns the CA certificate carried in the leaf's EmbeddedCAOID extension.
+func embeddedCA(leaf *x509.Certificate) *x509.Certificate {
+	for _, ext := range leaf.Extensions {
+		if ext.Id.Equal(EmbeddedCAOID) {
+			if c, err := x509.ParseCertificate(ext.Value); err == nil {
+				return c
+			}
+		}
 	}
 	return nil
 }
@@ -225,7 +251,10 @@ func IsTLSError(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
-	for _, s := range []string{"x509:", "tls:", "certificate", "handshake failure", "authentication handshake"} {
+	// Only real certificate problems qualify. A handshake that merely dies (EOF,
+	// connection reset: a control plane that is starting or stopping) must keep
+	// the fast reconnect backoff, not the 5 minute certificate retry.
+	for _, s := range []string{"x509:", "failed to verify certificate", "bad certificate", "certificate expired", "expired certificate", "unknown certificate", "certificate required", "certificate revoked"} {
 		if strings.Contains(msg, s) {
 			return true
 		}

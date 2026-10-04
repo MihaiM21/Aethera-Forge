@@ -200,7 +200,7 @@ func (c *Client) Run(ctx context.Context) error {
 		switch {
 		case out.tlsFailure:
 			delay = c.o.TLSRetry
-			c.log.Error("TLS/certificate error: certificate expired or untrusted - re-enroll if this persists", "retry_in", delay.String())
+			c.log.Error("TLS/certificate error: certificate expired or untrusted - re-enroll if this persists", "error", errText(out.err), "retry_in", delay.String())
 		case out.disconnect != nil:
 			if out.disconnect.GetReason() == agentv1.DisconnectReason_DISCONNECT_REASON_UPGRADE_REQUIRED {
 				c.o.Handler.OnUpgradeRequired(out.disconnect)
