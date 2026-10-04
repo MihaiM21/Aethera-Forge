@@ -13,6 +13,7 @@ namespace Aethera.Api.Tests.Ssh;
 /// key and password authentication, port forwarding, streaming, and the quoting of every hostile string through a real shell. Skipped
 /// unless <c>AETHERA_TEST_SSH</c> points at the container.
 /// </summary>
+[Collection("sshd")]
 public sealed class SshdIntegrationTests
 {
     private static readonly SshNetConnector Connector = new();

@@ -303,6 +303,7 @@ public sealed class SshBootstrapTests : IAsyncLifetime
 /// The whole bootstrap against a real sshd with a real shell and the real install script (<c>Ssh/sshd</c>): the stand-in agent records how it
 /// was invoked, so the test sees that the token arrived on stdin and nowhere else.
 /// </summary>
+[Collection("sshd")]
 public sealed class SshBootstrapSshdTests : IAsyncLifetime
 {
     private const string StubAgent = """

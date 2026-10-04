@@ -13,6 +13,7 @@ namespace Aethera.Api.Tests.Ssh;
 /// stand-in records its argv, env-file and stdin. This is where the secret-handling scripts (private temp directory, env-file, stdin logins,
 /// cleanup) and the argv templates meet a real <c>sh</c>.
 /// </summary>
+[Collection("sshd")]
 public sealed class SshTransportSshdTests : IAsyncLifetime
 {
     private SshTestHost? _host;

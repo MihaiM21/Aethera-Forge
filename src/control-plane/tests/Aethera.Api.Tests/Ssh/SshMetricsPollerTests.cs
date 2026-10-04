@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 namespace Aethera.Api.Tests.Ssh;
 
 /// <summary>Metrics polling over SSH: the same samples an agent would send, "degraded: polling over SSH" state, and who gets polled.</summary>
+[Collection("sshd")]
 public sealed class SshMetricsPollerTests : IAsyncLifetime
 {
     private SshTestHost? _host;
