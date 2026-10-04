@@ -92,13 +92,15 @@ public sealed class SshConnectionPool(
     /// <param name="countChannel">False for long-lived follow streams, which must not starve ordinary commands of channel slots.</param>
     public async Task<SshLease> AcquireAsync(Guid serverId, CancellationToken cancellationToken, bool countChannel = true)
     {
-        var access = await accessProvider.GetAsync(serverId, cancellationToken)
-            ?? throw new ServerTransportException(SshErrors.NoCredential, "The server has no SSH credential.");
         var entry = _entries.GetOrAdd(serverId, _ => new Entry { Channels = new SemaphoreSlim(Math.Max(1, _options.MaxConcurrentChannelsPerServer)) });
+        SshServerAccess access;
 
         await entry.ConnectGate.WaitAsync(cancellationToken);
         try
         {
+            // Read inside the gate: a caller that waited behind the first connect must see the host key that connect just pinned.
+            access = await accessProvider.GetAsync(serverId, cancellationToken)
+                ?? throw new ServerTransportException(SshErrors.NoCredential, "The server has no SSH credential.");
             if (entry.BlockedOn is not null)
             {
                 if (entry.BlockedOn == access.PinnedFingerprint) throw HostKeyBlocked(); // the pin did not change since: still waiting for the user
@@ -151,7 +153,8 @@ public sealed class SshConnectionPool(
             timeout.CancelAfter(TimeSpan.FromSeconds(_options.ConnectTimeoutSeconds + 5));
             var settings = new SshConnectionSettings(TimeSpan.FromSeconds(_options.ConnectTimeoutSeconds), TimeSpan.FromSeconds(_options.KeepAliveSeconds));
             var connection = await connector.ConnectAsync(access.Target, access.Auth, access.PinnedFingerprint, settings, timeout.Token);
-            if (access.PinnedFingerprint is null) await hostKeys.PinOnFirstUseAsync(serverId, connection.HostKey, cancellationToken);
+            if (access.PinnedFingerprint is null && await hostKeys.PinOnFirstUseAsync(serverId, connection.HostKey, cancellationToken))
+                entry.Key = (access with { PinnedFingerprint = connection.HostKey.Fingerprint }).ConnectionKey; // the pin we just stored must not look like a change
             entry.Connection = connection;
             entry.FailedAt = null;
             entry.FailureReason = null;

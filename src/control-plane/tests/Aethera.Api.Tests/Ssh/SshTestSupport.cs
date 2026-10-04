@@ -202,6 +202,7 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
 public sealed class SshTestHost : IAsyncDisposable
 {
     private TestDatabase? _database;
+    private LogIngestor? _logIngestor;
 
     public ServiceProvider Services { get; private set; } = null!;
 
@@ -246,6 +247,8 @@ public sealed class SshTestHost : IAsyncDisposable
         services.AddAetheraJobSystem(configuration);
         services.AddAetheraAgents(configuration);
         host.Services = services.BuildServiceProvider();
+        host._logIngestor = host.Services.GetRequiredService<LogIngestor>(); // the hosted services are not started here: log sinks need the ingestor
+        await host._logIngestor.StartAsync(CancellationToken.None);
         return host;
     }
 
@@ -287,6 +290,7 @@ public sealed class SshTestHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_logIngestor is not null) await _logIngestor.StopAsync(CancellationToken.None);
         if (Services is not null) await Services.DisposeAsync();
         if (_database is not null) await _database.DisposeAsync();
     }
