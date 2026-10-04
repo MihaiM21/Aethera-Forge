@@ -345,3 +345,9 @@ flowchart LR
 - (-) A hand-written job runner is code we own (claiming, leases, reaper); mitigated by integration tests against the real Postgres (kill-worker, double-claim, lock contention, cancel races) written with the job system (WP1.3).
 - (-) Holding one connection per running job adds pool pressure; bounded by worker concurrency (default 4) and sized into the Npgsql pool settings.
 - (-) LowDowntime only covers routed HTTP apps with a proxy network; other workloads use Recreate (documented).
+
+## Appendix: server maintenance jobs (WP2.2)
+
+- `server.prune` (lock key `server:<id>:maintenance`, `max_attempts = 3`): `POST /servers/{id}/maintenance/prune` with explicit scopes (stopped containers, dangling/unused images, unused networks, build cache, volumes, `olderThanHours`). The handler sends `SystemPrune` through `IServerTransportResolver`; images that are rollback points of deployments on the server are always passed as `keep`. `volumes` deletes data and needs `?confirm=<server name>`. An unavailable agent is a transient failure (`server.agent_unavailable`, retried with backoff), a full disk is `server.out_of_disk`, a missing Docker daemon `docker.unavailable`.
+- `server.discovery_refresh` (same lock key): asks the agent to re-run discovery; the returned report is stored like a pushed one.
+- Idempotency keys are `<job_id>:prune:<retry_no>` and `<job_id>:discovery:<retry_no>`.

@@ -1685,6 +1685,66 @@
         "x-required-scope": "read"
       }
     },
+    "/api/v1/agent/ca": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "The internal CA certificate and fingerprint agents pin",
+        "operationId": "getAgentCa",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCaResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -8406,10 +8466,2296 @@
         ],
         "x-required-scope": "deploy"
       }
+    },
+    "/api/v1/servers/{id}/join-tokens": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Create a one-time join token and the install command for a server",
+        "description": "The token is shown once and only its hash is stored. Default lifetime 1 hour, maximum 24 hours. Consumed by `EnrollmentService/Enroll`.",
+        "operationId": "createServerJoinToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJoinTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinTokenResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      },
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "List the join tokens of a server (never their values)",
+        "operationId": "listServerJoinTokens",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JoinTokenSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/join-tokens/{tokenId}": {
+      "delete": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Revoke an unused join token",
+        "operationId": "revokeServerJoinToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tokenId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/agent/reset": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Reset the agent: revoke its certificates, close its stream and invalidate unused join tokens",
+        "description": "Destructive for the agent's access: it must re-enroll with a new join token. Needs `?confirm=<server name>`.",
+        "operationId": "resetServerAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/status": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Server health as separate axes: server, agent, Docker, application",
+        "operationId": "getServerStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerHealthResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/events": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Recent status transitions and lifecycle events of a server, newest first",
+        "operationId": "listServerEvents",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceEventResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/metrics/latest": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "The most recent host and container samples",
+        "operationId": "getServerLatestMetrics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestMetricsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/metrics": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "A metric time series",
+        "description": "`resolution` is `auto` (default), `raw`, `fiveMinutes` or `oneHour`. `containerId` selects a container instead of the host. At most `maxPoints` (default 500, maximum 2000) are returned.",
+        "operationId": "getServerMetrics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "resolution",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "containerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxPoints",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricSeriesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/discovery": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Discovered host facts and the last full discovery report (spec section 55)",
+        "operationId": "getServerDiscovery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/docker/containers": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Containers on the server (live, through the agent)",
+        "operationId": "listServerContainers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DockerContainer"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/docker/images": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Images on the server (live, through the agent)",
+        "operationId": "listServerImages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DockerImage"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/docker/volumes": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Volumes on the server (live, through the agent)",
+        "operationId": "listServerVolumes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DockerVolume"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/docker/networks": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Networks on the server (live, through the agent)",
+        "operationId": "listServerNetworks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DockerNetwork"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/{id}/maintenance/prune": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Prune unused Docker objects on the server (a job)",
+        "description": "Enqueues `server.prune`. Rollback-point images are always kept. `volumes` deletes data and needs `?confirm=<server name>`.",
+        "operationId": "pruneServer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PruneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/maintenance/refresh-discovery": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Ask the agent to re-run resource discovery (a job)",
+        "operationId": "refreshServerDiscovery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/ssh": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Add a server that Aethera reaches over SSH, optionally installing the agent",
+        "description": "Stores the private key or password as an encrypted secret that belongs to the server (it is never returned). With `installAgent` (default) a `server.install_agent` job is enqueued. A supplied `hostKeyFingerprint` is pinned before the first connection; otherwise the first key is pinned (trust on first use).",
+        "operationId": "addSshServer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSshServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddSshServerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/ssh/host-key": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Read the SSH host key a host presents (nothing is authenticated or stored)",
+        "description": "Lets the user compare the fingerprint with the one shown by the provider before trusting it. Pass it back as `hostKeyFingerprint` when adding the server.",
+        "operationId": "scanSshHostKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanHostKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostKeyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/install-agent": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Install and enrol the agent over SSH (a job)",
+        "description": "Enqueues `server.install_agent`: verifies the host key, puts the agent binary on the host and checks its SHA-256, writes the systemd unit and `agent.yaml`, enrols with a fresh join token passed on standard input, starts the service and waits for the agent's session. The job log shows each step.",
+        "operationId": "installServerAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "SSH endpoint, host key pin, fallback switch and polling state of a server",
+        "operationId": "getServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "patch": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Turn the SSH fallback for a server on or off",
+        "operationId": "updateServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/merge-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSshRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh/host-key/confirm": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Trust the host key a server presented after it changed",
+        "description": "Connections to the server stay blocked (`ssh.host_key_changed`) until an Administrator confirms the new fingerprint, which must be the one in `hostKey.pending`.",
+        "operationId": "confirmServerSshHostKey",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmHostKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh/test": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Open an SSH connection to the server and report what it answers",
+        "operationId": "testServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshTestResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddSshServerRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sshPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sshUser": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "privateKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "passphrase": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxConcurrentBuilds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "installAgent": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "hostKeyFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AddSshServerResponse": {
+        "required": [
+          "server",
+          "installJob"
+        ],
+        "type": "object",
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/ServerResponse"
+          },
+          "installJob": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDto"
+              }
+            ]
+          }
+        }
+      },
+      "AgentCaResponse": {
+        "required": [
+          "certificatePem",
+          "fingerprintSha256",
+          "notBefore",
+          "notAfter",
+          "endpoint"
+        ],
+        "type": "object",
+        "properties": {
+          "certificatePem": {
+            "type": "string"
+          },
+          "fingerprintSha256": {
+            "type": "string"
+          },
+          "notBefore": {
+            "format": "date-time"
+          },
+          "notAfter": {
+            "format": "date-time"
+          },
+          "endpoint": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentSessionResponse": {
+        "required": [
+          "sessionId",
+          "agentVersion",
+          "connectedAt",
+          "rttMilliseconds",
+          "clockSkewSeconds",
+          "capabilities"
+        ],
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "agentVersion": {
+            "type": "string"
+          },
+          "connectedAt": {
+            "format": "date-time"
+          },
+          "rttMilliseconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "clockSkewSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "AgentStatus": {
         "enum": [
           "unknown",
@@ -8700,6 +11046,94 @@
           }
         }
       },
+      "ApplicationSummaryResponse": {
+        "required": [
+          "total",
+          "unavailable",
+          "healthy",
+          "unknown"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "unavailable": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "healthy": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "unknown": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AxisHealth": {
+        "enum": [
+          "unknown",
+          "available",
+          "unavailable",
+          "notInstalled"
+        ]
+      },
+      "AxisResponse": {
+        "required": [
+          "axis",
+          "health",
+          "blockedBy",
+          "since",
+          "stale",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/components/schemas/AxisHealth"
+          },
+          "blockedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "since": {
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "BuildConfigRequest": {
         "type": "object",
         "properties": {
@@ -8907,6 +11341,137 @@
             ]
           }
         }
+      },
+      "ConfirmHostKeyRequest": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ContainerHealthState": {
+        "enum": [
+          "unspecified",
+          "none",
+          "starting",
+          "healthy",
+          "unhealthy"
+        ]
+      },
+      "ContainerMetricResponse": {
+        "required": [
+          "containerId",
+          "workloadId",
+          "timestamp",
+          "cpuPercent",
+          "memoryUsedBytes",
+          "memoryLimitBytes",
+          "netRxBytes",
+          "netTxBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "containerId": {
+            "type": "string"
+          },
+          "workloadId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "timestamp": {
+            "format": "date-time"
+          },
+          "cpuPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryUsedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "memoryLimitBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "netRxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "netTxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ContainerNetworkInfo": {
+        "required": [
+          "network",
+          "ipAddress",
+          "macAddress",
+          "aliases"
+        ],
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string"
+          },
+          "ipAddress": {
+            "type": "string"
+          },
+          "macAddress": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ContainerRunState": {
+        "enum": [
+          "unspecified",
+          "created",
+          "running",
+          "paused",
+          "restarting",
+          "removing",
+          "exited",
+          "dead"
+        ]
       },
       "CreateApiTokenRequest": {
         "type": "object",
@@ -9125,6 +11690,20 @@
               "null",
               "boolean"
             ]
+          }
+        }
+      },
+      "CreateJoinTokenRequest": {
+        "type": "object",
+        "properties": {
+          "ttlMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -9578,6 +12157,157 @@
           "stopped"
         ]
       },
+      "DiscoveryInfo": {
+        "required": [
+          "collectedAt",
+          "host",
+          "docker",
+          "disks",
+          "interfaces",
+          "containers",
+          "networks",
+          "volumes",
+          "tools"
+        ],
+        "type": "object",
+        "properties": {
+          "collectedAt": {
+            "format": "date-time"
+          },
+          "host": {
+            "$ref": "#/components/schemas/HostFactsInfo"
+          },
+          "docker": {
+            "$ref": "#/components/schemas/DockerDaemonInfo"
+          },
+          "disks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiskInfo"
+            }
+          },
+          "interfaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkInterfaceInfo"
+            }
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DockerContainer"
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DockerNetwork"
+            }
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DockerVolume"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolInfo"
+            }
+          }
+        }
+      },
+      "DiscoveryResponse": {
+        "required": [
+          "serverId",
+          "facts",
+          "report",
+          "storedAt",
+          "stale"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/ServerFactsResponse"
+          },
+          "report": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DiscoveryInfo"
+              }
+            ]
+          },
+          "storedAt": {
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DiskInfo": {
+        "required": [
+          "mountPoint",
+          "device",
+          "fsType",
+          "totalBytes",
+          "usedBytes",
+          "inodesTotal",
+          "inodesUsed"
+        ],
+        "type": "object",
+        "properties": {
+          "mountPoint": {
+            "type": "string"
+          },
+          "device": {
+            "type": "string"
+          },
+          "fsType": {
+            "type": "string"
+          },
+          "totalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "usedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "inodesTotal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "inodesUsed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "DnsCheckResponse": {
         "required": [
           "domainId",
@@ -9629,6 +12359,310 @@
           "error"
         ]
       },
+      "DockerContainer": {
+        "required": [
+          "id",
+          "name",
+          "image",
+          "imageId",
+          "state",
+          "status",
+          "health",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "exitCode",
+          "oomKilled",
+          "restartCount",
+          "labels",
+          "ports",
+          "mounts",
+          "networks",
+          "inspectJson"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "imageId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ContainerRunState"
+          },
+          "status": {
+            "type": "string"
+          },
+          "health": {
+            "$ref": "#/components/schemas/ContainerHealthState"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "exitCode": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "oomKilled": {
+            "type": "boolean"
+          },
+          "restartCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortMappingSpec"
+            }
+          },
+          "mounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolumeMountSpec"
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContainerNetworkInfo"
+            }
+          },
+          "inspectJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DockerDaemonInfo": {
+        "required": [
+          "status",
+          "version",
+          "apiVersion",
+          "storageDriver",
+          "cgroupVersion",
+          "dockerRootDir",
+          "composeVersion",
+          "buildxVersion",
+          "rootless",
+          "swarmActive",
+          "containersRunning",
+          "containersStopped",
+          "imageCount",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DockerStatus"
+          },
+          "version": {
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "storageDriver": {
+            "type": "string"
+          },
+          "cgroupVersion": {
+            "type": "string"
+          },
+          "dockerRootDir": {
+            "type": "string"
+          },
+          "composeVersion": {
+            "type": "string"
+          },
+          "buildxVersion": {
+            "type": "string"
+          },
+          "rootless": {
+            "type": "boolean"
+          },
+          "swarmActive": {
+            "type": "boolean"
+          },
+          "containersRunning": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "containersStopped": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "imageCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "DockerImage": {
+        "required": [
+          "id",
+          "repoTags",
+          "repoDigests",
+          "sizeBytes",
+          "createdAt",
+          "labels",
+          "architecture",
+          "os",
+          "containersUsing"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repoTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repoDigests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "architecture": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "containersUsing": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DockerNetwork": {
+        "required": [
+          "id",
+          "name",
+          "driver",
+          "scope",
+          "internal",
+          "attachable",
+          "ipv6",
+          "ipam",
+          "labels",
+          "createdAt",
+          "endpoints"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "internal": {
+            "type": "boolean"
+          },
+          "attachable": {
+            "type": "boolean"
+          },
+          "ipv6": {
+            "type": "boolean"
+          },
+          "ipam": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IpamEntry"
+            }
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkEndpointInfo"
+            }
+          }
+        }
+      },
       "DockerStatus": {
         "enum": [
           "unknown",
@@ -9651,6 +12685,54 @@
           },
           "changedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "DockerVolume": {
+        "required": [
+          "name",
+          "driver",
+          "mountpoint",
+          "labels",
+          "createdAt",
+          "sizeBytes",
+          "refCount"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "driver": {
+            "type": "string"
+          },
+          "mountpoint": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "refCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -10122,6 +13204,107 @@
           "container"
         ]
       },
+      "HostFactsInfo": {
+        "required": [
+          "hostname",
+          "osName",
+          "osVersion",
+          "kernelVersion",
+          "architecture",
+          "cpuModel",
+          "cpuCoresPhysical",
+          "cpuCoresLogical",
+          "memoryTotalBytes",
+          "swapTotalBytes",
+          "virtualization",
+          "ipAddresses",
+          "timezone",
+          "bootTime"
+        ],
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "osName": {
+            "type": "string"
+          },
+          "osVersion": {
+            "type": "string"
+          },
+          "kernelVersion": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string"
+          },
+          "cpuModel": {
+            "type": "string"
+          },
+          "cpuCoresPhysical": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cpuCoresLogical": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "memoryTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "swapTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "virtualization": {
+            "type": "string"
+          },
+          "ipAddresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "bootTime": {
+            "format": "date-time"
+          }
+        }
+      },
+      "HostKeyResponse": {
+        "required": [
+          "algorithm",
+          "fingerprint"
+        ],
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        }
+      },
       "ImagePullPolicy": {
         "enum": [
           "ifNotPresent",
@@ -10240,6 +13423,32 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "InstallAgentRequest": {
+        "type": "object",
+        "properties": {
+          "hostKeyFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "IpamEntry": {
+        "required": [
+          "subnet",
+          "gateway"
+        ],
+        "type": "object",
+        "properties": {
+          "subnet": {
+            "type": "string"
+          },
+          "gateway": {
+            "type": "string"
           }
         }
       },
@@ -10455,10 +13664,125 @@
           "cancelled"
         ]
       },
+      "JoinTokenResponse": {
+        "required": [
+          "id",
+          "serverId",
+          "token",
+          "expiresAt",
+          "endpoint",
+          "caFingerprintSha256",
+          "installCommand"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "caFingerprintSha256": {
+            "type": "string"
+          },
+          "installCommand": {
+            "type": "string"
+          }
+        }
+      },
+      "JoinTokenSummary": {
+        "required": [
+          "id",
+          "state",
+          "createdAt",
+          "expiresAt",
+          "usedAt",
+          "revokedAt",
+          "createdByUserId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "format": "date-time"
+          },
+          "usedAt": {
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "format": "date-time"
+          },
+          "createdByUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "JsonElement": { },
       "JsonNode": { },
       "JsonObject": {
         "type": "object"
+      },
+      "LatestMetricsResponse": {
+        "required": [
+          "serverId",
+          "host",
+          "containers",
+          "observedAt",
+          "stale"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "host": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetricPointResponse"
+              }
+            ]
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContainerMetricResponse"
+            }
+          },
+          "observedAt": {
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        }
       },
       "LoginRequest": {
         "required": [
@@ -10495,6 +13819,236 @@
           },
           "role": {
             "$ref": "#/components/schemas/OrganizationRole"
+          }
+        }
+      },
+      "MetricPointResponse": {
+        "required": [
+          "timestamp",
+          "cpuPercent",
+          "memoryUsedBytes",
+          "memoryTotalBytes",
+          "diskUsedBytes",
+          "diskTotalBytes",
+          "netRxBytes",
+          "netTxBytes",
+          "netRxBytesPerSecond",
+          "netTxBytesPerSecond",
+          "load1",
+          "load5",
+          "load15"
+        ],
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "format": "date-time"
+          },
+          "cpuPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryUsedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "memoryTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskUsedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "netRxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "netTxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "netRxBytesPerSecond": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "netTxBytesPerSecond": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "load1": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "load5": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "load15": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "MetricSeriesResponse": {
+        "required": [
+          "serverId",
+          "resolution",
+          "from",
+          "to",
+          "containerId",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "from": {
+            "format": "date-time"
+          },
+          "to": {
+            "format": "date-time"
+          },
+          "containerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricPointResponse"
+            }
+          }
+        }
+      },
+      "MountKind": {
+        "enum": [
+          "volume",
+          "bind",
+          "tmpfs"
+        ]
+      },
+      "NetworkEndpointInfo": {
+        "required": [
+          "containerId",
+          "containerName",
+          "ipv4Address"
+        ],
+        "type": "object",
+        "properties": {
+          "containerId": {
+            "type": "string"
+          },
+          "containerName": {
+            "type": "string"
+          },
+          "ipv4Address": {
+            "type": "string"
+          }
+        }
+      },
+      "NetworkInterfaceInfo": {
+        "required": [
+          "name",
+          "macAddress",
+          "addresses",
+          "mtu",
+          "up"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "macAddress": {
+            "type": "string"
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mtu": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "up": {
+            "type": "boolean"
           }
         }
       },
@@ -10799,11 +14353,72 @@
           }
         }
       },
+      "PendingHostKeyResponse": {
+        "required": [
+          "algorithm",
+          "fingerprint",
+          "seenAt"
+        ],
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "seenAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PortMappingSpec": {
+        "required": [
+          "containerPort"
+        ],
+        "type": "object",
+        "properties": {
+          "containerPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "hostPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 0
+          },
+          "hostIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/PortProtocolKind"
+          }
+        }
+      },
       "PortProtocol": {
         "enum": [
           "tcp",
           "udp"
         ]
+      },
+      "PortProtocolKind": {
+        "enum": [
+          "tcp",
+          "udp",
+          "sctp"
+        ],
+        "default": "tcp"
       },
       "PortRequest": {
         "type": "object",
@@ -11119,6 +14734,38 @@
           }
         }
       },
+      "PruneRequest": {
+        "type": "object",
+        "properties": {
+          "stoppedContainers": {
+            "type": "boolean"
+          },
+          "danglingImages": {
+            "type": "boolean"
+          },
+          "unusedImages": {
+            "type": "boolean"
+          },
+          "unusedNetworks": {
+            "type": "boolean"
+          },
+          "buildCache": {
+            "type": "boolean"
+          },
+          "volumes": {
+            "type": "boolean"
+          },
+          "olderThanHours": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ReachabilityStatus": {
         "enum": [
           "unknown",
@@ -11190,6 +14837,54 @@
             "format": "date-time"
           },
           "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ResourceEventResponse": {
+        "required": [
+          "id",
+          "kind",
+          "axis",
+          "oldValue",
+          "newValue",
+          "detail",
+          "occurredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "axis": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "oldValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "newValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "occurredAt": {
             "format": "date-time"
           }
         }
@@ -11425,6 +15120,26 @@
           }
         }
       },
+      "ScanHostKeyRequest": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "port": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "SecretOwnerResponse": {
         "required": [
           "type",
@@ -11559,6 +15274,143 @@
           "environment",
           "workload"
         ]
+      },
+      "ServerFactsResponse": {
+        "required": [
+          "os",
+          "osVersion",
+          "kernel",
+          "architecture",
+          "cpuModel",
+          "cpuCores",
+          "memoryBytes",
+          "diskBytes",
+          "dockerVersion",
+          "discoveredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "os": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "osVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "kernel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "architecture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cpuModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cpuCores": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "memoryBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "dockerVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "discoveredAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ServerHealthResponse": {
+        "required": [
+          "serverId",
+          "server",
+          "agent",
+          "docker",
+          "application",
+          "firstFailingLayer",
+          "applications",
+          "session",
+          "observedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "server": {
+            "$ref": "#/components/schemas/AxisResponse"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AxisResponse"
+          },
+          "docker": {
+            "$ref": "#/components/schemas/AxisResponse"
+          },
+          "application": {
+            "$ref": "#/components/schemas/AxisResponse"
+          },
+          "firstFailingLayer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "applications": {
+            "$ref": "#/components/schemas/ApplicationSummaryResponse"
+          },
+          "session": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentSessionResponse"
+              }
+            ]
+          },
+          "observedAt": {
+            "format": "date-time"
+          }
+        }
       },
       "ServerLifecycle": {
         "enum": [
@@ -12240,6 +16092,199 @@
           }
         }
       },
+      "SshHostKeyStateResponse": {
+        "required": [
+          "state",
+          "pinnedFingerprint",
+          "pending"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "pinnedFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingHostKeyResponse"
+              }
+            ]
+          }
+        }
+      },
+      "SshPollingResponse": {
+        "required": [
+          "since",
+          "lastSuccessAt",
+          "lastAttemptAt",
+          "lastError"
+        ],
+        "type": "object",
+        "properties": {
+          "since": {
+            "format": "date-time"
+          },
+          "lastSuccessAt": {
+            "format": "date-time"
+          },
+          "lastAttemptAt": {
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SshStateResponse": {
+        "required": [
+          "serverId",
+          "hasCredential",
+          "host",
+          "port",
+          "user",
+          "hostKey",
+          "allowSshFallback",
+          "mode",
+          "degraded",
+          "degradedReason",
+          "polling",
+          "observedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hasCredential": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "user": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hostKey": {
+            "$ref": "#/components/schemas/SshHostKeyStateResponse"
+          },
+          "allowSshFallback": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "degraded": {
+            "type": "boolean"
+          },
+          "degradedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "polling": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SshPollingResponse"
+              }
+            ]
+          },
+          "observedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "SshTestResponse": {
+        "required": [
+          "connected",
+          "hostKey",
+          "os",
+          "architecture",
+          "dockerVersion",
+          "latencyMilliseconds"
+        ],
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "hostKey": {
+            "$ref": "#/components/schemas/HostKeyResponse"
+          },
+          "os": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "architecture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dockerVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "latencyMilliseconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ToolInfo": {
+        "required": [
+          "name",
+          "version",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateApplicationRequest": {
         "type": "object",
         "properties": {
@@ -12644,6 +16689,17 @@
           }
         }
       },
+      "UpdateSshRequest": {
+        "type": "object",
+        "properties": {
+          "allowSshFallback": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "UpdateUserRequest": {
         "type": "object",
         "properties": {
@@ -12838,6 +16894,38 @@
         },
         "additionalProperties": { },
         "description": "RFC 9457 problem with field-level errors (422, and 400 for invalid parameters)."
+      },
+      "VolumeMountSpec": {
+        "required": [
+          "type",
+          "source",
+          "target"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/MountKind"
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean",
+            "default": false
+          },
+          "tmpfsSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64",
+            "default": 0
+          }
+        }
       },
       "VolumeResponse": {
         "required": [

@@ -2,6 +2,8 @@
 # Aethera end-to-end smoke test (Phase 1): builds the web export, runs the real API against a real
 # PostgreSQL (and Redis), drives the REST API with curl, then drives the UI with headless Chromium.
 #
+# Phase 2 (a real Go agent in a container against this API): deploy/agent-e2e.sh, see tests/e2e/README.md.
+#
 #   bash deploy/smoke.sh
 #
 # Environment (all optional):

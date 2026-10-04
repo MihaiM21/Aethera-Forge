@@ -157,7 +157,7 @@ public sealed partial class JobObservabilityTests(JobsApiFixture fixture) : ICla
         Assert.Equal(HttpStatusCode.Unauthorized, (await alt.CreateClient().GetAsync("/metrics")).StatusCode);
         Assert.Contains("aethera_job_workers", await ScrapeAsync(alt.CreateClient(), "other-token"));
         var openApi = await fixture.Factory.CreateClient().GetStringAsync("/api/openapi/v1.json");
-        Assert.DoesNotContain("/metrics", openApi);
+        Assert.DoesNotContain("\"/metrics\"", openApi); // the Prometheus endpoint itself (server metrics live under /api/v1/servers/{id}/metrics)
     }
 
     [RequiresDatabaseFact]

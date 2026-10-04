@@ -83,6 +83,8 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
 
 **Cross-cutting**: `audit_events`, `resource_events` (status transitions and lifecycle events like `restarted`), `idempotency_records` (ADR 0003, composite key principal + key, 24 h),
 `settings` (key -> jsonb), `metric_samples` (`(server_id, resolution, timestamp)` index plus a partial per-container index; no partitioning yet).
+- `metric_samples.resolution` is `raw` (agent samples every 10 s, kept 24 h), `fiveMinutes` (kept 14 days) or `oneHour` (kept 365 days); a background pass rolls rows up and deletes them (gauges averaged, network counters keep their maximum; see ADR 0002, appendix). Host rows have a null `container_id`.
+- `settings` keys under `agent.` belong to the agent gateway: `agent.discovery.<serverId>` holds the server's last full discovery report (JSON). A settings UI must not list them.
 
 ## Why a single `workloads` table (TPH) instead of TPT
 

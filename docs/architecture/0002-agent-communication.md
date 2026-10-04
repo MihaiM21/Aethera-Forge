@@ -334,3 +334,75 @@ With only `SshTransport`, "agent" is `not installed` (a fourth value next to con
 - (-) We operate a small PKI (CA, renewal, revocation). Mitigated by keeping it internal, simple (single CA, DB-backed revocation) and fully automatic.
 - (-) Two transports to maintain; the SSH fallback is deliberately limited and capability-flagged so it cannot silently diverge.
 - (-) Single active API instance in the MVP (in-memory session registry); horizontal scale-out needs a shared registry, tracked as future work.
+
+## Appendix: control-plane implementation (WP2.2)
+
+This appendix records how the gateway implements the decisions above, where it chose, and what it added. Code: `Aethera.Domain/Transport` (abstractions and typed commands), `Aethera.Infrastructure/Agents` (CA, enrollment, sessions, ingestion, dispatch, status, retention), `Aethera.Api/Features/Agents` (gRPC services, Kestrel setup, REST endpoints).
+
+### Layout and seams
+
+- **Domain mirror.** `IServerTransport`, the 35 command records (one per `Command.request` arm), their results and the discovery types live in `Aethera.Domain.Transport`; the engine depends on nothing else. `CommandMapper` (Infrastructure) is the only place that converts to and from `Aethera.Agent.V1`; a test pins that every command is mapped, every protocol arm is covered and the numeric enum values stay equal by name.
+- **Sessions.** `AgentSessionRegistry` (server id to state, in memory) holds the live `AgentSession`, the commands still awaiting an answer (they belong to the server, not to a stream), stream aliases and subscribers. One API instance in the MVP, as designed; the registry class is the seam for a Redis-backed one.
+- **Transport resolution.** `ServerTransportResolver` orders the registered `IServerTransport`s by `TransportKind` (agent first), skips unavailable ones, lets the SSH transport stand in only when `ISshFallbackPolicy` allows, and fails with `transport.unsupported` on a capability gap. **WP2.3 adds `SshTransport` by registering another `IServerTransport` (Kind = Ssh) and, optionally, replacing `ISshFallbackPolicy`; nothing in the resolver changes.**
+- **Testing.** `FakeServerTransport` (in `Aethera.Testing`) scripts results per command type for engine tests; `FakeAgent` in `Aethera.Api.Tests` plays the agent side of the stream.
+
+### Listener
+
+- `Aethera:Agents:GrpcPort` (default 9443) is a second Kestrel endpoint: HTTP/2, **TLS 1.3 only**, `ClientCertificateMode.AllowCertificate`, validation callback = the Aethera CA only (chain, `clientAuth`, validity, SAN identity, in-memory revoked serials). An invalid certificate fails the handshake; a missing one is allowed and decided by the interceptor.
+- Because Kestrel ignores `ASPNETCORE_URLS` once an endpoint is configured in code, the setup re-binds the API's own addresses (`urls`, else `HTTP_PORTS`/`HTTPS_PORTS`, else `http://localhost:5000`).
+- A path-based middleware keeps the listeners apart: `/aethera.agent.v1.*` is served only on the gateway port, and nothing else is served there. A join token therefore cannot be sent to the plain-HTTP API listener (the request is a 404).
+- The listener's own certificate (EKU serverAuth, SAN = host of `PublicEndpoint` plus loopback) is issued by the CA on the first handshake and replaced after two thirds of its life (60 of 90 days) without a restart. It is not persisted: a restart issues a new one, which agents accept because they pin the CA, not the leaf.
+- `AgentAuthInterceptor` is the authoritative check: the certificate serial must exist in `agent_certificates`, not be revoked, be inside its validity and belong to the server named in the SAN, and the server must exist. Revocation therefore takes effect for every new call at once, on every instance; the in-memory list (refreshed every 30 s) only makes the handshake fail early.
+
+### Enrollment
+
+- The CSR is validated **before** the join token is consumed (signature = proof of possession, EC P-256/P-384 or RSA >= 3072, <= 8 KiB); its validity says nothing about the token, so this is no oracle, and a malformed CSR does not burn a token.
+- Token consumption and certificate issuance share one transaction. Unknown, expired, revoked, used and malformed tokens return the same `PERMISSION_DENIED` message. `Enroll` is limited to 10 attempts per minute per source IP, counting every attempt.
+- Renewal keeps the old certificate valid until the agent reconnects with the new one; the session handler then revokes every certificate of that server issued before it (`superseded by renewal`).
+- `POST /servers` still returns only the server; the install command comes from `POST /servers/{id}/join-tokens` (the UI calls both). The command is `curl -fsSL <script> | sudo bash -s -- --token ... --endpoint ... --ca-sha256 ...`; the script URL is `Aethera:Agents:InstallScriptUrl`, else `<API origin>/install-agent.sh`.
+
+### Stream handling
+
+- The reader acknowledges and routes; an ordered worker does the database work, so a slow insert never delays an ack, and a `CommandResult` is processed after the log chunks that precede it.
+- Heartbeat watchdog: no message for `HeartbeatMissLimit x HeartbeatSeconds` (3 x 15 s = 45 s) closes the stream with `HEARTBEAT_TIMEOUT`; an idle stream is pinged after `PingSeconds`. Only the **current** session may mark the agent unavailable, so a superseded stream ending does not flap the status.
+- Reconciliation after `Hello`: pending commands the agent lists as running keep being awaited; the others are re-sent with the same idempotency key under a new `command_id` (log sequence numbers of such a fresh execution are offset past what is already stored). Commands already sent on the new session are skipped, which closes the race between a `Hello` and a command dispatched right after `Welcome`.
+- Log ingest: build/deploy/agent chunks go to `log_chunks` with `ON CONFLICT DO NOTHING` and are acknowledged (`LogFlowControl`) only afterwards, about every half window and at end of stream. A chunk whose stream the control plane did not register (command id, build id, `LogStreamId`) is dropped and never acknowledged; agent logs are stored as `agent:<serverId>:<processId>` (sequences restart with the process). Container follow chunks are fanned out only and acknowledged right after; a stream nobody listens to is paused (`window_bytes = 0`) once. Known secrets of the running commands are masked again on ingest.
+- Unsolicited events are de-duplicated by `event_id` (4096 remembered per server) and written as `resource_events` for the server and, when the `aethera.application.id`/`service.id` label names a workload **of that server**, for the workload.
+
+### Failure model and status
+
+`ServerStatusMachine` (pure) derives the four server-observable axes from the stored columns and attributes the problem to the first failing layer (`server`, `agent`, `docker`, `application`); layers below it are `unknown` with `blockedBy` and `stale` set. The control-plane axis stays client-side. Stored transitions go to `resource_events` (`status.changed`). Reachability is probed by TCP connect every 30 s only for servers without an agent session, against `reachability_probe_port` or the SSH port of a server with SSH credentials; two consecutive failures are needed to report `unreachable`, one success flips back.
+
+### Metrics retention
+
+Raw samples (10 s) are kept 24 h, 5-minute averages 14 days, hourly averages 365 days (`Aethera:Agents:Metrics:RawHours|FiveMinuteDays|HourlyDays`, pass every `IntervalSeconds`, default 300). One statement per roll-up (`WITH moved AS (DELETE ... RETURNING *) INSERT ... SELECT ... GROUP BY date_bin(...)`) inside a transaction guarded by an advisory lock; the cut-off is aligned to the bucket so a bucket is never split. Gauges are averaged, cumulative network counters keep their maximum; the API derives per-second rates between consecutive points.
+
+### Discovery storage
+
+The last full `DiscoveryReport` (without raw `inspect_json`) is kept as JSON in `settings` under `agent.discovery.<serverId>`; the discovered facts also update the `servers` columns. No migration was added; the `agent.` key prefix is reserved for the gateway and a settings UI should not list it.
+
+### Audit
+
+Every dispatched command writes `agent.command` (command name, command id, idempotency key under the name `idempotency`, job id, outcome, error code, duration; **no payload**); `Aethera:Agents:AuditReadOnlyCommands=false` skips list/inspect/probe commands. Enrollment, connect, protocol violations, certificate renewal, token creation/revocation, agent reset and prune requests are audited too. The audit redactor masks metadata keys that contain `key`, which is why the idempotency key is stored as `idempotency`.
+
+### Configuration (`Aethera:Agents`)
+
+`Enabled` (false by default only under the `Testing` environment), `GrpcPort`, `GrpcBindAddress`, `PublicEndpoint`, `InstallScriptUrl`, `CaName`, `AgentCertificateDays`, `RenewBeforeDays`, `ServerCertificateDays`, `JoinTokenDefaultMinutes`, `EnrollRateLimitPermits`/`EnrollRateLimitWindowSeconds`, `HeartbeatSeconds`, `MetricsSeconds`, `DiscoverySeconds`, `MaxConcurrentCommands`, `LogChunkMaxBytes`, `LogInitialWindowBytes`, `MinAgentVersion` (default `0.0.0`: everything accepted), `MinProtocolVersion`, `HeartbeatMissLimit`, `PingSeconds`, `HelloTimeoutSeconds`, `AckTimeoutSeconds`, `CancelWaitSeconds`, `DeadlineGraceSeconds`, `AuditReadOnlyCommands`, `HeartbeatPersistSeconds`, `ReachabilityProbeSeconds`, `ReachabilityFailureThreshold`, `ReachabilityConnectTimeoutSeconds`, `Metrics:*`.
+
+
+## Appendix: SSH transport implementation (WP2.3)
+
+Code: `Aethera.Infrastructure/Ssh` (transport, pool, host keys, Docker CLI mapping, parsers, poller, bootstrap), `Aethera.Api/Features/Agents/Ssh` (endpoints). No migration: per-server SSH state lives in `settings` under the reserved `ssh.` prefix (`ssh.fallback.<id>`, `ssh.hostkey.pending.<id>`, `ssh.polling.<id>`); the pinned fingerprint uses the existing `servers.ssh_host_key_fingerprint`.
+
+- **Credential.** An organization-scoped managed secret (`purpose = sshCredential`). The value is a PEM private key, a JSON object `{"privateKey","passphrase","password"}`, or a plain password. Decrypted only by `SshAccessProvider`; `SshAuth` prints as `[secret]`, and the login credential is also masked in all command output.
+- **Connection.** SSH.NET, one multiplexed connection per server with keep-alive, `MaxConcurrentChannelsPerServer` (default 4) command channels, idle close, a short back-off after a failed connect. Follow-streams do not use a channel slot. A connection is replaced when the endpoint, credential version or pinned key changes.
+- **Host keys.** TOFU: the first key is pinned; a different key blocks the server (`ssh.host_key_changed`, 409), is recorded as pending and only an Administrator confirming exactly that fingerprint (`POST /servers/{id}/ssh/host-key/confirm`) unblocks it. A blocked server is not available to the resolver.
+- **Docker CLI.** Fixed templates (`DockerCommands`), validators (`SshValidators`), POSIX single-quote quoting (`ShellQuote`). Secrets (env, registry passwords, secret build args) travel over stdin into a `0600` file or a throw-away `DOCKER_CONFIG` inside a private temp directory removed on exit; never in argv. Bind mounts follow the agent's default policy (`/var/lib/aethera` only).
+- **Not supported over SSH** (`transport.unsupported`, hint "Enable the agent on this server or use a build server"): Nixpacks/static builds, private or non-https git, secret build mounts, push, multi-platform, build detection, proxy ensure, agent self-update, log-stream commands (logs use `StreamLogsAsync`). Container events are not pushed.
+- **Uploads** use an exec channel with stdin (`umask 077`, rename into place) instead of the SFTP subsystem: one connection, no sftp-server needed, no permission window.
+- **Polling.** `SshMetricsPoller` every `MetricsPollSeconds` (30) for servers with SSH credentials, no agent session and the fallback allowed: one read-only script (`/proc/stat` twice, `meminfo`, `loadavg`, `df -P`, `docker stats`, `docker ps`), converted to a `MetricsReport` and ingested by `AgentMetricsIngestor`; it also feeds the Docker and reachability axes. `GET /servers/{id}/ssh` reports `mode = sshPolling` / `degraded`.
+- **Bootstrap.** Job `server.install_agent`: host key check, binary onto the host with SHA-256 verified on the host (`Aethera:Ssh:Agent:Binaries:linux-amd64|linux-arm64:{Url,Sha256|LocalPath}`), systemd unit and `agent.yaml` (embedded copies of `deploy/agent`, a test guards drift), a root install script that enrols as `aethera-agent` with the join token on stdin, start, wait for the session (`BootstrapSessionWaitSeconds`). An unused token is revoked on failure.
+
+### Configuration (`Aethera:Ssh`)
+
+`Enabled`, `ConnectTimeoutSeconds`, `KeepAliveSeconds`, `MaxConcurrentChannelsPerServer`, `IdleDisconnectSeconds`, `ConnectFailureBackoffSeconds`, `AccessCacheSeconds`, `MetricsPollSeconds`, `MetricsPollTimeoutSeconds`, `MetricsPollParallelism`, `ProjectsDirectory`, `AllowedBindPrefixes`, `AllowInsecureAgentDownload`, `BootstrapSessionWaitSeconds`, `BootstrapJoinTokenMinutes`, `Agent:Binaries:<linux-amd64|linux-arm64>:{Url,Sha256,LocalPath}`, `Agent:Version`. `Aethera:Agents:PublicEndpoint` must not be loopback for an install.

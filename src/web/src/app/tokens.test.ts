@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 // Parses the ported tokens in globals.css and asserts the WCAG pairs promised
 // in docs/design/tokens.md section 2.5. Re-run whenever a colour token changes.
-const css = readFileSync(path.resolve(import.meta.dirname, "globals.css"), "utf8");
+const css = readFileSync(path.resolve(import.meta.dirname, "globals.css"), "utf8").replace(/\r\n/g, "\n");
 
 function block(selectorStart: string): Record<string, string> {
   const start = css.indexOf(selectorStart);

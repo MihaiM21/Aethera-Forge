@@ -7,6 +7,8 @@ import {
   LogOutIcon,
   MoonIcon,
   PanelLeftIcon,
+  PlusIcon,
+  ServerIcon,
   SunIcon,
 } from "lucide-react";
 import {
@@ -21,6 +23,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { useTheme } from "@/components/theme/theme-provider";
 import { useAuth } from "@/lib/auth/auth-context";
+import { usePaletteServers } from "@/lib/servers/use-palette-servers";
 import { NAV_ITEMS } from "./nav-items";
 
 /** Case-insensitive substring match; `>` prefix is handled by the caller. */
@@ -44,6 +47,7 @@ export function CommandPalette({
   const { toggle, resolved } = useTheme();
   const { logout } = useAuth();
   const [search, setSearch] = React.useState("");
+  const servers = usePaletteServers(open);
 
   const actionsOnly = search.startsWith(">");
 
@@ -94,7 +98,36 @@ export function CommandPalette({
             })}
           </CommandGroup>
         )}
+        {!actionsOnly && servers.length > 0 && (
+          <CommandGroup heading="Servers">
+            {servers.map((s) => (
+              <CommandItem
+                key={s.id}
+                value={`server ${s.name}`}
+                keywords={[s.host, ...s.roles, "machine", "host"]}
+                // Detail ids are not pre-rendered: use a document navigation (ADR 0005).
+                onSelect={() => run(() => {
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ADR 0005: detail ids are not pre-rendered, so a document navigation is required
+                  window.location.href = `/servers/${encodeURIComponent(s.id)}`;
+                })
+              }
+              >
+                <ServerIcon aria-hidden="true" />
+                <span>{s.name}</span>
+                <CommandShortcut className="font-mono">{s.host}</CommandShortcut>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
         <CommandGroup heading="Actions">
+          <CommandItem
+            value="action add server"
+            keywords={["new server", "connect", "install agent", "join"]}
+            onSelect={() => run(() => router.push("/servers/new"))}
+          >
+            <PlusIcon aria-hidden="true" />
+            <span>Add server</span>
+          </CommandItem>
           <CommandItem
             value="action toggle theme"
             keywords={["dark", "light", "appearance"]}
