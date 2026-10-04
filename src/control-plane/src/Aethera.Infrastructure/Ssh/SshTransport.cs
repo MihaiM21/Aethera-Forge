@@ -73,8 +73,8 @@ public sealed class SshTransport(
             try
             {
                 result = command is DiscoveryRefreshCommand
-                    ? await DiscoverAsync(serverId, lease, new SshCommandRunner(lease.Connection, _policy, prober, Emit, time), timeout.Token)
-                    : await new SshCommandRunner(lease.Connection, _policy, prober, Emit, time).RunAsync(command, timeout.Token);
+                    ? await DiscoverAsync(serverId, lease, new SshCommandRunner(lease.Connection, _policy, prober, Emit, time, lease.Access.Auth.SecretValues()), timeout.Token)
+                    : await new SshCommandRunner(lease.Connection, _policy, prober, Emit, time, lease.Access.Auth.SecretValues()).RunAsync(command, timeout.Token);
             }
             catch (Exception ex) when (IsConnectionLoss(ex))
             {

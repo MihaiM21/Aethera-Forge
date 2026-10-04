@@ -14,8 +14,10 @@ namespace Aethera.Infrastructure.Ssh;
 /// with <c>transport.unsupported</c> and the hint to use the agent.
 /// </summary>
 public sealed class SshCommandRunner(
-    ISshConnection connection, SshDockerPolicy policy, SshHealthProber prober, Action<string, bool> emit, TimeProvider time)
+    ISshConnection connection, SshDockerPolicy policy, SshHealthProber prober, Action<string, bool> emit, TimeProvider time, IEnumerable<string>? credentialSecrets = null)
 {
+    private readonly string[] _credentialSecrets = credentialSecrets?.ToArray() ?? [];
+
     private const int InspectBatch = 40;
     private const int MaxProjectFileBytes = 1024 * 1024;
 
@@ -77,6 +79,7 @@ public sealed class SshCommandRunner(
     {
         var redactor = new SecretRedactor();
         foreach (var secret in command.Secrets ?? []) redactor.Register(secret);
+        foreach (var secret in _credentialSecrets) redactor.Register(secret); // a host that echoes the login credential must not get it into an outcome or log
         var options = new RemoteExecOptions
         {
             OnLine = stream ? line => emit(redactor.Redact(line.Text), line.IsStderr) : null,

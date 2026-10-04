@@ -99,8 +99,15 @@ public sealed class SshConnectionPool(
         try
         {
             // Read inside the gate: a caller that waited behind the first connect must see the host key that connect just pinned.
-            access = await accessProvider.GetAsync(serverId, cancellationToken)
-                ?? throw new ServerTransportException(SshErrors.NoCredential, "The server has no SSH credential.");
+            try
+            {
+                access = await accessProvider.GetAsync(serverId, cancellationToken)
+                    ?? throw new ServerTransportException(SshErrors.NoCredential, "The server has no SSH credential.");
+            }
+            catch (SshConnectException ex)
+            {
+                throw new ServerTransportException(SshErrors.AuthFailed, ex.Message); // the stored credential cannot be used (undecryptable)
+            }
             if (entry.BlockedOn is not null)
             {
                 if (entry.BlockedOn == access.PinnedFingerprint) throw HostKeyBlocked(); // the pin did not change since: still waiting for the user

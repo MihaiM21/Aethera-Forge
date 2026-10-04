@@ -24,6 +24,9 @@ public sealed record SshAuth
 
     public string Kind => PrivateKey is not null ? "key" : "password";
 
+    /// <summary>Every secret value this credential consists of, so any output that echoes one of them can be masked.</summary>
+    public IEnumerable<string> SecretValues() => new[] { Password, PrivateKey, Passphrase }.Where(v => !string.IsNullOrEmpty(v))!;
+
     public override string ToString() => $"SshAuth({Kind}: [secret])";
 
     private bool PrintMembers(System.Text.StringBuilder builder)

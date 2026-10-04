@@ -89,6 +89,7 @@ public sealed partial class SshBootstrapService(
         await log("Connecting over SSH");
         using var lease = await pool.AcquireAsync(serverId, cancellationToken);
         var connection = lease.Connection;
+        foreach (var secret in lease.Access.Auth.SecretValues()) redactor.Register(secret);
         await log($"Host key {connection.HostKey.Algorithm} {connection.HostKey.Fingerprint} is pinned for this server");
 
         async Task<RemoteResult> Run(RemoteCommand command, bool stream = false, TimeSpan? timeout = null)
