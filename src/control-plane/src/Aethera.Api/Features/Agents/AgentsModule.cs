@@ -64,5 +64,10 @@ public static class AgentsModule
     }
 
     /// <summary>Maps the REST additions to <c>/servers</c> (join tokens, status, metrics, discovery, Docker inventory, maintenance) into the <c>/api/v1</c> group.</summary>
-    public static IEndpointRouteBuilder MapAgents(this IEndpointRouteBuilder api) => AgentEndpoints.Map(api);
+    public static IEndpointRouteBuilder MapAgents(this IEndpointRouteBuilder api)
+    {
+        AgentEndpoints.Map(api);
+        Ssh.SshEndpoints.Map(api); // WP2.3: add by SSH, install agent, host key pin, fallback switch
+        return api;
+    }
 }

@@ -38,6 +38,10 @@ internal static class AgentProblems
         TransportErrors.AckTimeout => new ApiProblem(StatusCodes.Status504GatewayTimeout, TransportErrors.AckTimeout, ex.Message),
         TransportErrors.Unsupported => new ApiProblem(StatusCodes.Status422UnprocessableEntity, TransportErrors.Unsupported, ex.Message),
         TransportErrors.CommandRejected => new ApiProblem(StatusCodes.Status422UnprocessableEntity, TransportErrors.CommandRejected, ex.Message),
+        // SSH transport (WP2.3): a changed host key needs a person (409); refused credentials are not an API authentication failure (422, never 401).
+        Aethera.Infrastructure.Ssh.SshErrors.HostKeyChanged => new ApiProblem(StatusCodes.Status409Conflict, Aethera.Infrastructure.Ssh.SshErrors.HostKeyChanged, ex.Message),
+        Aethera.Infrastructure.Ssh.SshErrors.AuthFailed => new ApiProblem(StatusCodes.Status422UnprocessableEntity, Aethera.Infrastructure.Ssh.SshErrors.AuthFailed, ex.Message),
+        Aethera.Infrastructure.Ssh.SshErrors.NoCredential => new ApiProblem(StatusCodes.Status422UnprocessableEntity, Aethera.Infrastructure.Ssh.SshErrors.NoCredential, ex.Message),
         _ => new ApiProblem(StatusCodes.Status502BadGateway, ex.Code, ex.Message),
     };
 

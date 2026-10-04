@@ -10,6 +10,7 @@ using Aethera.Infrastructure.Agents.Protocol;
 using Aethera.Infrastructure.Agents.Sessions;
 using Aethera.Infrastructure.Agents.Status;
 using Aethera.Infrastructure.Agents.Transport;
+using Aethera.Infrastructure.Ssh;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -37,6 +38,8 @@ public static class AgentsServiceCollectionExtensions
             section.Bind(options);
             if (section["Enabled"] is null && environment.IsEnvironment("Testing")) options.Enabled = false;
         });
+
+        services.AddAetheraSsh(configuration); // WP2.3: registered first so its ISshFallbackPolicy wins over the default below
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IClock, SystemClock>();

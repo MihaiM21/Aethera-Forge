@@ -19,7 +19,7 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 ## Phase 2 — Servers & agent
 - [ ] WP2.1 Go agent
 - [x] WP2.2 Agent gateway (.NET)
-- [ ] WP2.3 SSH transport
+- [x] WP2.3 SSH transport
 - [ ] WP2.4 UI servers
 
 ## Phase 3 — Build & deploy engine
