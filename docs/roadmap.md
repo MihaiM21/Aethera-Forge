@@ -17,10 +17,11 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP1.5 Integration & hardening (hub Origin check, job tenancy, static UI hosting, readiness, forwarded headers, CI with Postgres/Redis, `deploy/smoke.sh`)
 
 ## Phase 2 — Servers & agent
-- [ ] WP2.1 Go agent
+- [x] WP2.1 Go agent
 - [x] WP2.2 Agent gateway (.NET)
 - [x] WP2.3 SSH transport
-- [ ] WP2.4 UI servers
+- [x] WP2.4 UI servers
+- [x] WP2.5 Agent <-> gateway end-to-end (`deploy/agent-e2e.sh`, interop fixes)
 
 ## Phase 3 — Build & deploy engine
 - [ ] WP3.1 Build engines
