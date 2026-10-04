@@ -20,6 +20,9 @@ public sealed class GatewayServerCertificate(IInternalCa ca, IOptions<AgentGatew
     private X509Certificate2? _current;
     private DateTimeOffset _renewAt;
 
+    /// <summary>The CA certificate sent after the leaf.</summary>
+    public X509Certificate2Collection Chain => [X509Certificate2.CreateFromPem(ca.GetPublicInfoAsync().GetAwaiter().GetResult().CertificatePem)];
+
     public X509Certificate2 Current
     {
         get
@@ -82,6 +85,7 @@ public sealed class AgentGatewayKestrelSetup(
                 https.CheckCertificateRevocation = false; // the control plane is the only verifier: revocation is a serial lookup
                 https.ClientCertificateValidation = ca.IsTrustedClientCertificate;
                 https.ServerCertificateSelector = (_, _) => serverCertificate.Current;
+                https.ServerCertificateChain = serverCertificate.Chain; // leaf + CA are sent, so a client that has not pinned yet can still build the chain
             });
         });
     }

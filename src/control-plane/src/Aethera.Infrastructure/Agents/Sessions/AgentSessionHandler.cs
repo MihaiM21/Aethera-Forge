@@ -314,7 +314,7 @@ public sealed class AgentSessionHandler(
             // Resume log streams the agent still serves from our last durable sequence.
             foreach (var streamId in hello.ActiveLogStreamIds)
             {
-                var acked = await logs.LastDurableSequenceAsync(state, streamId, cancellationToken);
+                var acked = await logs.LastDurableSequenceAsync(session, state, streamId, cancellationToken);
                 session.Send(new P.ControlMessage { LogFlowControl = new P.LogFlowControl { StreamId = streamId, AckedSequence = (ulong)acked, WindowBytes = (ulong)_options.LogInitialWindowBytes } });
             }
 

@@ -132,9 +132,11 @@ public sealed class AgentLogIngestor(
     /// <summary>
     /// The highest sequence of the agent's stream that is durably stored (0 = none), for the resume <c>LogFlowControl</c> after a reconnect.
     /// </summary>
-    public async Task<long> LastDurableSequenceAsync(ServerAgentState state, string agentStreamId, CancellationToken cancellationToken)
+    public async Task<long> LastDurableSequenceAsync(AgentSession session, ServerAgentState state, string agentStreamId, CancellationToken cancellationToken)
     {
-        var candidates = state.StreamAliases.TryGetValue(agentStreamId, out var alias)
+        var candidates = agentStreamId == "agent" // the always-present stream of the agent's own logs
+            ? new[] { AgentStreamId(session.ServerId, session.Hello.ProcessId) }
+            : state.StreamAliases.TryGetValue(agentStreamId, out var alias)
             ? new[] { alias }
             : new[] { $"build:{agentStreamId}", $"deploy:{agentStreamId}" };
         var offset = state.SequenceOffsets.GetValueOrDefault(agentStreamId);

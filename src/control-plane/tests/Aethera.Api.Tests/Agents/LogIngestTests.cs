@@ -253,6 +253,27 @@ public sealed class LogIngestTests(GatewayFixture fixture)
     }
 
     [RequiresDatabaseFact]
+    public async Task The_agents_own_log_stream_is_resumed_from_the_last_stored_sequence()
+    {
+        var (_, serverId) = await fixture.SeedServerAsync();
+        var first = FakeAgent.Start(fixture, serverId, h => h.ProcessId = "proc-1");
+        await using var _ = first;
+        await first.ExpectWelcomeAsync();
+        first.Send(Chunk("agent", 1, "warn one\n", source: ProtoLogSource.Agent));
+        first.Send(Chunk("agent", 2, "warn two\n", source: ProtoLogSource.Agent));
+        var stream = $"agent:{serverId:D}:proc-1";
+        await GatewayFixture.EventuallyAsync(async () => (await RowsAsync(stream)).Count == 2, "agent log chunks stored");
+        first.Drop();
+        await first.Run.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await using var second = FakeAgent.Start(fixture, serverId, h => { h.ProcessId = "proc-1"; h.ActiveLogStreamIds.Add("agent"); });
+        await second.ExpectWelcomeAsync();
+        var resume = await second.NextAsync(m => m.LogFlowControl);
+        Assert.Equal("agent", resume.StreamId);
+        Assert.Equal(2UL, resume.AckedSequence);
+    }
+
+    [RequiresDatabaseFact]
     public async Task An_oversized_chunk_is_refused()
     {
         var build = await StartBuildAsync();
