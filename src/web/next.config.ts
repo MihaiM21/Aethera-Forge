@@ -7,7 +7,7 @@ const apiOrigin = process.env.AETHERA_API_ORIGIN ?? "http://localhost:5033";
  * Routes that have a `[id]` detail page, exported once as `<root>/_.html`.
  * Keep in sync with docs/architecture/0005-web-routing.md.
  */
-const DETAIL_ROOTS = ["projects"];
+const DETAIL_ROOTS = ["projects", "servers"];
 
 const nextConfig: NextConfig = {
   // Static export: the .NET API serves the generated `out/` directory.
