@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Aethera.Api.Tests;
@@ -12,7 +13,7 @@ public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
     [Fact]
     public async Task Health_ReturnsOkStatus()
     {
-        using var client = factory.CreateClient();
+        using var client = factory.WithWebHostBuilder(b => b.UseEnvironment("Testing")).CreateClient();
 
         var response = await client.GetAsync("/health");
 
