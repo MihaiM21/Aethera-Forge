@@ -18,5 +18,6 @@ public static class FailureCodes
     public const string ContainerFailed = "container.failed";
     public const string NetworkFailed = "network.failed";
     public const string HealthTimeout = "health.timeout";
+    public const string ImageMissing = "image.missing";
     public const string UnknownStrategy = "strategy.unknown";
 }

@@ -23,7 +23,8 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
         Task Save(CancellationToken c) => save(deployment, c);
         try
         {
-            if (!_strategies.TryGetValue(deployment.Strategy, out var strategy))
+            var strategyName = plan.Compose is not null ? ComposeStrategy.StrategyName : deployment.Strategy;
+            if (!_strategies.TryGetValue(strategyName, out var strategy))
                 throw new DeploymentFailure(DeploymentStep.Source, FailureCodes.UnknownStrategy, $"Unknown deployment strategy '{deployment.Strategy}'.");
 
             var image = await PrepareImageAsync(deployment, plan, Save, ct);
@@ -61,6 +62,14 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
     {
         var run = new DeploymentRun(d, plan, "", transport, clock, save);
 
+        if (plan.Compose is not null)
+        {
+            d.SkipStep(DeploymentStep.Source, clock.UtcNow);
+            d.SkipStep(DeploymentStep.Build, clock.UtcNow);
+            d.SkipStep(DeploymentStep.Image, clock.UtcNow);
+            return "";
+        }
+
         if (plan.Build is { } spec)
         {
             d.BeginStep(DeploymentStep.Source, clock.UtcNow);
@@ -86,6 +95,22 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
         d.SkipStep(DeploymentStep.Source, clock.UtcNow);
         d.SkipStep(DeploymentStep.Build, clock.UtcNow);
         d.BeginStep(DeploymentStep.Image, clock.UtcNow);
+        if (plan.LocalImage)
+        {
+            try
+            {
+                await run.ExecuteAsync<ImageInspectCommand, DockerImage>(
+                    new ImageInspectCommand(reference), "image.inspect", DeploymentStep.Image, FailureCodes.ImageMissing, ct);
+            }
+            catch (DeploymentFailure f) when (f.Code == FailureCodes.ImageMissing)
+            {
+                throw new DeploymentFailure(DeploymentStep.Image, FailureCodes.ImageMissing,
+                    $"The image {reference} is no longer on the server (it was pruned); this deployment can no longer be rolled back to.", f);
+            }
+            d.CompleteStep(DeploymentStep.Image, clock.UtcNow);
+            await save(ct);
+            return reference;
+        }
         var pulled = await run.ExecuteAsync<ImagePullCommand, ImagePulled>(
             new ImagePullCommand(reference, plan.PullAuth), "image.pull", DeploymentStep.Image, FailureCodes.ImagePullFailed, ct);
         d.ImageDigest = pulled.Digest;

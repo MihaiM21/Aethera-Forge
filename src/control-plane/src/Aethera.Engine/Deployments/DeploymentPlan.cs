@@ -18,8 +18,16 @@ public sealed class DeploymentPlan
 
     public RegistryCredentials? PullAuth { get; init; }
 
+    /// <summary>The image only exists on the server (rollbacks): it is checked, not pulled, and a missing image fails with <c>image.missing</c>.</summary>
+    public bool LocalImage { get; init; }
+
+    /// <summary>Set for compose applications; they bypass the build and image steps and use the compose strategy.</summary>
+    public ComposeProjectSpec? Compose { get; init; }
+
+    public TimeSpan ComposeWaitTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
     /// <summary>Container to run; <see cref="ContainerSpec.Image"/> is replaced with the built or pulled image.</summary>
-    public required ContainerSpec Container { get; init; }
+    public ContainerSpec Container { get; init; } = new("", "");
 
     /// <summary>Probe that must succeed before the deployment is considered live. Null = none.</summary>
     public ProbeTarget? Health { get; init; }

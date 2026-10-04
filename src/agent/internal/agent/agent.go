@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"net"
 	"path/filepath"
 	"context"
 	"crypto/tls"
@@ -162,6 +163,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	a.pol = policy.New(cfg)
 	a.pol.SetSubnets(a.dockerSubnets)
+	a.pol.SetLookup(a.resolveProbeHost)
 	a.ring = events.NewRing(0, 0, a.o.Now)
 	a.conv = events.NewConverter()
 
@@ -413,4 +415,21 @@ func (a *Agent) renew(ctx context.Context, why string) {
 	}
 	a.identity.Store(id)
 	a.client.Reload() // reconnect with the new certificate
+}
+
+// resolveProbeHost lets health probes address a container by name: the control plane probes the container it just started, and
+// container names do not resolve on the host. Anything else goes through the normal resolver (and the SSRF policy afterwards).
+func (a *Agent) resolveProbeHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if info, err := a.o.Docker.ContainerInspect(ctx, host, false); err == nil {
+		var out []netip.Addr
+		for _, n := range info.GetNetworks() {
+			if ip, perr := netip.ParseAddr(n.GetIpAddress()); perr == nil {
+				out = append(out, ip)
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }
