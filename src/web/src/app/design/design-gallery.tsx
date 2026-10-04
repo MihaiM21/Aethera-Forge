@@ -16,6 +16,11 @@ import { EmptyState } from "@/components/aethera/empty-state";
 import { Eyebrow } from "@/components/aethera/eyebrow";
 import { NumberedCard, NumberedCardGrid } from "@/components/aethera/numbered-card";
 import { PipelineSteps, type PipelineStep } from "@/components/aethera/pipeline-steps";
+import { LineChart } from "@/components/aethera/line-chart";
+import { Stepper } from "@/components/aethera/stepper";
+import { UsageBar } from "@/components/aethera/usage-bar";
+import { AxisCard } from "@/components/servers/overview-tab";
+import { AxisBadge } from "@/components/servers/status-badges";
 import { StatusDot } from "@/components/aethera/status-dot";
 import { TerminalCard } from "@/components/aethera/terminal-card";
 import { StatusBarView } from "@/components/shell/status-bar";
@@ -87,6 +92,11 @@ const PIPELINE: PipelineStep[] = [
   { title: "Network", meta: "proxy route", state: "skipped" },
   { title: "Running", state: "pending" },
 ];
+
+const CHART_SAMPLE = {
+  cpu: Array.from({ length: 40 }, (_, t) => ({ t, v: 30 + 25 * Math.sin(t / 4) + (t % 7) * 2 })),
+  mem: Array.from({ length: 40 }, (_, t) => ({ t, v: 45 + t * 0.4 })),
+};
 
 function Section({
   index,
@@ -528,6 +538,64 @@ function Gallery() {
           <StatusBarView status={{ state: "reconnecting", servers: null, jobsRunning: null }} className="border-t" />
           <StatusBarView status={{ state: "unavailable", servers: null, jobsRunning: null }} className="border-t" />
         </div>
+      </Section>
+
+      <Section index="10" title="Servers">
+        <div className="flex flex-col gap-1.5">
+          <Eyebrow muted>Status axes (separate badges, never one &quot;online&quot;)</Eyebrow>
+          <Row>
+            <AxisBadge title="Server" text="reachable" tone="success" />
+            <AxisBadge title="Agent" text="connected" tone="success" />
+            <AxisBadge title="Docker" text="running" tone="success" />
+            <AxisBadge title="Apps" text="2/3 healthy" tone="danger" />
+          </Row>
+          <Row>
+            <AxisBadge title="Server" text="unreachable" tone="danger" />
+            <AxisBadge title="Agent" text="unknown" tone="idle" hint="blocked by server" />
+            <AxisBadge title="Docker" text="unknown" tone="idle" hint="blocked by server" />
+            <AxisBadge title="Apps" text="none" tone="idle" />
+          </Row>
+        </div>
+        <div className="grid items-start gap-4 sm:grid-cols-2">
+          <AxisCard
+            index="02"
+            view={{
+              key: "agent",
+              title: "Agent",
+              text: "unknown",
+              tone: "idle",
+              blockedBy: "blocked by server",
+              stale: "stale since 12m ago",
+              detail: "No agent session exists.",
+              health: "unknown",
+            }}
+          />
+          <div className="grid gap-2 border border-border bg-card p-4">
+            <UsageBar label="CPU" value={37} />
+            <UsageBar label="RAM" value={78} detail="6.2 GiB / 8 GiB" />
+            <UsageBar label="Disk" value={93} />
+            <UsageBar label="Net" value={null} />
+          </div>
+        </div>
+        <Stepper
+          aria-label="Wizard stepper"
+          current={1}
+          steps={[
+            { title: "Details", description: "name, host, roles" },
+            { title: "Connect", description: "install the agent" },
+            { title: "Done", description: "server is online" },
+          ]}
+        />
+        <LineChart
+          title="CPU · sample"
+          yMax={100}
+          formatY={(v) => `${v.toFixed(0)}%`}
+          formatX={(t) => `${t}m`}
+          series={[
+            { key: "cpu", label: "cpu", color: "var(--chart-1)", points: CHART_SAMPLE.cpu },
+            { key: "mem", label: "mem", color: "var(--chart-2)", points: CHART_SAMPLE.mem },
+          ]}
+        />
       </Section>
     </div>
   );
