@@ -45,7 +45,7 @@ export function createServersApi(client: ApiClient) {
   return {
     list: (q: ListServersQuery = {}, o: Signal = {}) =>
       client.get<ServerPage>("/servers", {
-        query: { Limit: q.limit, Cursor: q.cursor, sort: q.sort, lifecycle: q.lifecycle, transport: q.transport, q: q.q },
+        query: { limit: q.limit, cursor: q.cursor, sort: q.sort, lifecycle: q.lifecycle, transport: q.transport, q: q.q },
         signal: o.signal,
       }),
     get: (id: string, o: Signal = {}) => client.get<Server>(base(id), o),

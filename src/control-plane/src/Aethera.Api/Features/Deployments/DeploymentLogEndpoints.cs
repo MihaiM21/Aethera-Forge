@@ -99,8 +99,14 @@ internal static class DeploymentLogEndpoints
         string? streamId = chosen == "build"
             ? deployment.BuildId is { } buildId ? BuildStreams.StreamId(buildId) : null
             : deployment.JobId is { } jobId ? JobStreams.StreamId(jobId) : null;
+        // A stream has ended when what writes to it has finished, not when the deployment changed state: the deployment is Running before the
+        // job writes its closing lines, and a client that stopped there would miss them.
         var terminal = deployment.Status is DeploymentStatus.Running or DeploymentStatus.Superseded or DeploymentStatus.Stopped or DeploymentStatus.Failed or DeploymentStatus.Cancelled;
         if (streamId is null) return Results.Ok(new DeploymentLogPageDto(chosen, "", [], fromSequence ?? 0, false, terminal, sources));
+        var writerFinished = chosen == "build"
+            ? deployment.BuildId is { } bid && await db.Builds.AsNoTracking().Where(b => b.Id == bid).Select(b => b.Status != BuildStatus.Running).FirstOrDefaultAsync(ct)
+            : deployment.JobId is { } jid && await db.Jobs.AsNoTracking().Where(j => j.Id == jid)
+                .Select(j => j.Status == JobStatus.Succeeded || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled).FirstOrDefaultAsync(ct);
 
         var from = fromSequence ?? 0;
         if (download == true)
@@ -117,7 +123,7 @@ internal static class DeploymentLogEndpoints
         var hasMore = lines.Count > take;
         var items = hasMore ? lines.Take(take).ToList() : lines;
         var next = items.Count > 0 ? items[^1].Sequence + 1 : from;
-        return Results.Ok(new DeploymentLogPageDto(chosen, streamId, items, next, hasMore, terminal && !hasMore, sources));
+        return Results.Ok(new DeploymentLogPageDto(chosen, streamId, items, next, hasMore, writerFinished && !hasMore, sources));
     }
 
     private static async Task<IResult> RuntimeLogs(

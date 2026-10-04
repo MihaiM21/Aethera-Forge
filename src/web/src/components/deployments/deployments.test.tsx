@@ -33,6 +33,13 @@ describe("pipeline", () => {
     expect(screen.getByRole("group", { name: "Build failure details" })).toHaveTextContent("missing script: build");
   });
 
+  it("prints no duration for a skipped step but does for a finished one", () => {
+    const d = makeDeployment({ steps: [makeStep("build", "skipped"), makeStep("image", "succeeded")] });
+    const steps = pipelineSteps(d);
+    expect(steps[1].meta).toBeUndefined();
+    expect(steps[2].meta).toContain("aethera/web:d-1");
+  });
+
   it("marks skipped steps and a running step", () => {
     const d = makeDeployment({ status: "inProgress", steps: [makeStep("source", "skipped"), makeStep("build", "skipped"), makeStep("image", "running")] });
     const steps = pipelineSteps(d);

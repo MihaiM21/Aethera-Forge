@@ -11,9 +11,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
+	"github.com/mihaim21/aethera-forge/agent/internal/build"
+	"github.com/mihaim21/aethera-forge/agent/internal/compose"
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
 	"github.com/mihaim21/aethera-forge/agent/internal/docker"
 	"github.com/mihaim21/aethera-forge/agent/internal/docker/dockertest"
+	"github.com/mihaim21/aethera-forge/agent/internal/proxy"
 )
 
 func newDeps() (*Deps, *dockertest.Fake) {
@@ -303,3 +306,36 @@ func TestRegisterOffersOnlyImplementedCommands(t *testing.T) {
 type nopSender struct{}
 
 func (nopSender) Control(*agentv1.AgentMessage) bool { return true }
+
+func TestPhase3CapabilitiesUseTheProtocolNames(t *testing.T) {
+	d, _ := newDeps()
+	d.Builder, d.Compose, d.Proxy = &build.Service{}, &compose.Service{}, &proxy.Manager{}
+	d.LookPath = func(string) (string, error) { return "", errors.New("not installed") }
+	got := strings.Join(d.Capabilities(), " ")
+	for _, want := range []string{"build.dockerfile", "compose.v2", "proxy.traefik"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("capability %s is not advertised: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "build.nixpacks") {
+		t.Errorf("nixpacks advertised without the CLI: %s", got)
+	}
+
+	d.LookPath = func(file string) (string, error) { return "/usr/local/bin/" + file, nil }
+	if got := strings.Join(d.Capabilities(), " "); !strings.Contains(got, "build.nixpacks") {
+		t.Errorf("nixpacks not advertised although the CLI is installed: %s", got)
+	}
+
+	// Every handler is registered under a capability that is advertised, or the dispatcher would refuse its own commands.
+	disp := dispatch.New(dispatch.Config{Sender: nopSender{}, Capabilities: d.Capabilities()})
+	Register(disp, d)
+	advertised := map[string]bool{}
+	for _, c := range d.Capabilities() {
+		advertised[c] = true
+	}
+	for _, c := range []string{CapBuilds, CapCompose, CapProxy} {
+		if !advertised[c] {
+			t.Errorf("handlers use %s but it is not advertised", c)
+		}
+	}
+}

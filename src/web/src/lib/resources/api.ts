@@ -54,7 +54,7 @@ export type SecretsQuery = ListQuery & { projectId?: string; environmentId?: str
 export type AuditQuery = { limit?: number; cursor?: string; action?: string; resourceType?: string; resourceId?: string; actorType?: string; from?: string; to?: string };
 
 const enc = encodeURIComponent;
-const paged = (q: ListQuery) => ({ Limit: q.limit, Cursor: q.cursor, sort: q.sort, q: q.q });
+const paged = (q: ListQuery) => ({ limit: q.limit, cursor: q.cursor, sort: q.sort, q: q.q });
 
 /**
  * Typed wrapper over the project, application, deployment, service and ops endpoints. Paths follow the OpenAPI
@@ -92,7 +92,7 @@ export function createResourcesApi(client: ApiClient) {
       lifecycle: (id: string, action: "start" | "stop" | "restart") => client.post<Job>(`${workload("applications", id)}/${action}`),
       deployments: (id: string, q: { limit?: number; cursor?: string; status?: string } = {}, o: Signal = {}) =>
         client.get<Page<Deployment>>(`${workload("applications", id)}/deployments`, {
-          query: { Limit: q.limit, Cursor: q.cursor, status: q.status },
+          query: { limit: q.limit, cursor: q.cursor, status: q.status },
           signal: o.signal,
         }),
       logs: (id: string, q: { tail?: number; since?: string } = {}, o: Signal = {}) =>
@@ -101,13 +101,13 @@ export function createResourcesApi(client: ApiClient) {
       setWebhook: (id: string, body: WebhookSetupRequest) => client.put<Webhook>(`${workload("applications", id)}/webhook`, body),
       removeWebhook: (id: string) => client.delete<void>(`${workload("applications", id)}/webhook`),
       webhookDeliveries: (id: string, o: Signal = {}) =>
-        client.get<Page<WebhookDelivery>>(`${workload("applications", id)}/webhook/deliveries`, { query: { Limit: 20 }, signal: o.signal }),
+        client.get<Page<WebhookDelivery>>(`${workload("applications", id)}/webhook/deliveries`, { query: { limit: 20 }, signal: o.signal }),
     },
 
     deployments: {
       list: (q: DeploymentsQuery = {}, o: Signal = {}) =>
         client.get<Page<DeploymentListItem>>("/deployments", {
-          query: { Limit: q.limit, Cursor: q.cursor, sort: q.sort, status: q.status, applicationId: q.applicationId, serverId: q.serverId, trigger: q.trigger },
+          query: { limit: q.limit, cursor: q.cursor, sort: q.sort, status: q.status, applicationId: q.applicationId, serverId: q.serverId, trigger: q.trigger },
           signal: o.signal,
         }),
       get: (id: string, o: Signal = {}) => client.get<Deployment>(`/deployments/${enc(id)}`, o),
@@ -120,7 +120,7 @@ export function createResourcesApi(client: ApiClient) {
 
     envVars: {
       list: (kind: "applications" | "services", id: string, o: Signal = {}) =>
-        client.get<Page<EnvVar>>(`${workload(kind, id)}/env-vars`, { query: { Limit: 200, sort: "key" }, signal: o.signal }),
+        client.get<Page<EnvVar>>(`${workload(kind, id)}/env-vars`, { query: { limit: 200, sort: "key" }, signal: o.signal }),
       create: (kind: "applications" | "services", id: string, body: CreateEnvVarRequest) => client.post<EnvVar>(`${workload(kind, id)}/env-vars`, body),
       update: (kind: "applications" | "services", id: string, envId: string, body: Partial<CreateEnvVarRequest>) =>
         client.patch<EnvVar>(`${workload(kind, id)}/env-vars/${enc(envId)}`, body),
@@ -131,7 +131,7 @@ export function createResourcesApi(client: ApiClient) {
 
     volumes: {
       list: (kind: "applications" | "services", id: string, o: Signal = {}) =>
-        client.get<Page<Volume>>(`${workload(kind, id)}/volumes`, { query: { Limit: 100 }, signal: o.signal }),
+        client.get<Page<Volume>>(`${workload(kind, id)}/volumes`, { query: { limit: 100 }, signal: o.signal }),
       create: (kind: "applications" | "services", id: string, body: CreateVolumeRequest) => client.post<Volume>(`${workload(kind, id)}/volumes`, body),
       remove: (id: string) => client.delete<void>(`/volumes/${enc(id)}`),
     },
@@ -162,7 +162,7 @@ export function createResourcesApi(client: ApiClient) {
       deploy: (id: string) => client.post<Deployment>(`${workload("services", id)}/deployments`, {}),
       lifecycle: (id: string, action: "start" | "stop" | "restart") => client.post<Job>(`${workload("services", id)}/${action}`),
       deployments: (id: string, o: Signal = {}) =>
-        client.get<Page<Deployment>>(`${workload("services", id)}/deployments`, { query: { Limit: 30 }, signal: o.signal }),
+        client.get<Page<Deployment>>(`${workload("services", id)}/deployments`, { query: { limit: 30 }, signal: o.signal }),
       logs: (id: string, q: { tail?: number; since?: string } = {}, o: Signal = {}) =>
         client.get<RuntimeLogs>(`${workload("services", id)}/logs`, { query: { tail: q.tail, since: q.since }, signal: o.signal }),
     },
@@ -216,14 +216,14 @@ export function createResourcesApi(client: ApiClient) {
     audit: {
       list: (q: AuditQuery = {}, o: Signal = {}) =>
         client.get<Page<AuditEvent>>("/audit-log", {
-          query: { Limit: q.limit, Cursor: q.cursor, action: q.action, resourceType: q.resourceType, resourceId: q.resourceId, actorType: q.actorType, from: q.from, to: q.to },
+          query: { limit: q.limit, cursor: q.cursor, action: q.action, resourceType: q.resourceType, resourceId: q.resourceId, actorType: q.actorType, from: q.from, to: q.to },
           signal: o.signal,
         }),
     },
 
     jobs: {
       list: (q: { limit?: number; status?: string; type?: string } = {}, o: Signal = {}) =>
-        client.get<Page<Job>>("/jobs", { query: { Limit: q.limit, status: q.status, type: q.type }, signal: o.signal }),
+        client.get<Page<Job>>("/jobs", { query: { limit: q.limit, status: q.status, type: q.type }, signal: o.signal }),
       cancel: (id: string) => client.post<Job>(`/jobs/${enc(id)}/cancel`),
     },
 

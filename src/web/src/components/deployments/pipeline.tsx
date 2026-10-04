@@ -28,7 +28,8 @@ function stepMeta(d: Deployment, s: DeploymentStepDto | undefined, step: (typeof
   if (step === "container" && d.strategy) parts.push(d.strategy);
   const start = toDate(s?.startedAt);
   const end = toDate(s?.finishedAt);
-  if (start && end) parts.push(formatDuration(end.getTime() - start.getTime()));
+  // A skipped step took no time worth printing.
+  if (start && end && s?.status !== "skipped") parts.push(formatDuration(end.getTime() - start.getTime()));
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 

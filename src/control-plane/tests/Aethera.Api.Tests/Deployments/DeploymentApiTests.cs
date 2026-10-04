@@ -531,4 +531,26 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
         var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Last();
         Assert.Equal(["server", "/data", "--console-address", ":9001"], create.Spec.Command);
     }
+
+    [RequiresDatabaseFact]
+    public async Task A_log_stream_ends_when_its_job_finishes_not_when_the_deployment_turns_running()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        // The deployment is Running, but the job that narrates it is still writing: the stream must stay open.
+        var slow = await (await t.Admin.PostAsync("/api/v1/jobs/echo", new { lines = new[] { "closing line" }, delayMs = 2500 })).ReadAsync();
+        var jobId = Guid.Parse(slow.Id());
+        await WithDbAsync(async db => await db.Deployments.Where(d => d.Id == Guid.Parse(queued.Id())).ExecuteUpdateAsync(u => u.SetProperty(d => d.JobId, jobId)));
+
+        var open = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy");
+        Assert.False(open["ended"]!.GetValue<bool>(), "the job is still running");
+
+        await GatewayFixture.EventuallyAsync(async () =>
+            (await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy"))["ended"]!.GetValue<bool>(), "the stream to end with its job", timeoutMs: 15000);
+        var done = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy");
+        Assert.Contains(done["items"]!.AsArray(), l => l!["text"]!.GetValue<string>().Contains("closing line"));
+    }
 }

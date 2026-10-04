@@ -226,7 +226,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                     {(project?.environments ?? []).map((x) => (
                       <option key={x.id} value={x.id}>
                         {x.name}
-                        {x.isProduction ? " (production)" : ""}
+                        {x.isProduction && !/prod/i.test(x.name) ? " (production)" : ""}
                       </option>
                     ))}
                   </NativeSelect>
