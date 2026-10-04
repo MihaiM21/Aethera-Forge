@@ -54,7 +54,8 @@ internal static class SshEndpoints
             .RequireRead().Produces<SshStateResponse>().ProducesProblem(StatusCodes.Status404NotFound);
         servers.MapPatch("/{id:guid}/ssh", UpdateState).WithName("updateServerSsh")
             .WithSummary("Turn the SSH fallback for a server on or off")
-            .Validate<UpdateSshRequest>().RequireAdmin(Scopes.ServersWrite)
+            .Accepts<UpdateSshRequest>("application/merge-patch+json", "application/json")
+            .ValidatePatch<UpdateSshRequest>().RequireAdmin(Scopes.ServersWrite)
             .Produces<SshStateResponse>().ProducesProblem(StatusCodes.Status404NotFound);
         servers.MapPost("/{id:guid}/ssh/host-key/confirm", ConfirmHostKey).WithName("confirmServerSshHostKey")
             .WithSummary("Trust the host key a server presented after it changed")
@@ -174,11 +175,11 @@ internal static class SshEndpoints
     }
 
     private static async Task<Ok<SshStateResponse>> UpdateState(
-        Guid id, UpdateSshRequest request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, SshSettingsStore settings, SshHostKeyService hostKeys,
+        Guid id, PatchRequest<UpdateSshRequest> patch, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, SshSettingsStore settings, SshHostKeyService hostKeys,
         AgentSessionRegistry registry, CancellationToken ct)
     {
         var server = await db.GetServerAsync(actor.Org(), id, tracking: false, ct);
-        if (request.AllowSshFallback is { } allow)
+        if (patch.Has("allowSshFallback") && patch.Body.AllowSshFallback is { } allow)
         {
             await settings.SetAsync(SshSettingsStore.FallbackKey(id), new SshFallbackSetting(allow), ct);
             await audit.RecordAsync("server.ssh_fallback_changed", "server", id, new { allowSshFallback = allow }, ct);

@@ -10263,6 +10263,11 @@
         ],
         "requestBody": {
           "content": {
+            "application/merge-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSshRequest"
+              }
+            },
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateSshRequest"
