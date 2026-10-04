@@ -110,6 +110,28 @@ public static class OperationalEndpoints
             })
             .WithName("GetReady").AllowAnonymous();
 
+        // The agent installer the join-token command points at (deploy/install-agent.sh, embedded at build time). A script, not API: it
+        // holds no secrets (the token is an argument) and must be fetchable by a server that has no account.
+        root.MapGet(InstallAgentScript.Path, () => Results.Text(InstallAgentScript.Content, "text/x-shellscript; charset=utf-8"))
+            .WithName("GetInstallAgentScript").AllowAnonymous().ExcludeFromDescription();
+
         return root;
+    }
+}
+
+/// <summary>The embedded <c>deploy/install-agent.sh</c>.</summary>
+internal static class InstallAgentScript
+{
+    public const string Path = "/install-agent.sh";
+
+    public static string Content { get; } = Load();
+
+    private static string Load()
+    {
+        using var stream = typeof(InstallAgentScript).Assembly.GetManifestResourceStream("install-agent.sh")
+            ?? throw new InvalidOperationException("install-agent.sh is not embedded in the Aethera.Api assembly.");
+        using var reader = new StreamReader(stream);
+        // Scripts are checked out with CRLF on Windows; bash would choke on the carriage returns.
+        return reader.ReadToEnd().Replace("\r\n", "\n");
     }
 }

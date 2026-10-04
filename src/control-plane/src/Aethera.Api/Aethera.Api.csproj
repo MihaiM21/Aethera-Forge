@@ -40,6 +40,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Features\Resources\Services\Templates\*.yaml" />
+    <!-- Served at /install-agent.sh; the repository's deploy/ folder is the single source (the Dockerfile copies it into the build). -->
+    <EmbeddedResource Include="..\..\..\..\deploy\install-agent.sh" LogicalName="install-agent.sh" />
   </ItemGroup>
 
 </Project>

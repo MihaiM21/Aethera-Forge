@@ -1,0 +1,105 @@
+# Aethera production stack: control plane (API + web UI), PostgreSQL, Redis and, with --profile agent, an agent for this machine.
+# Written next to its .env by install.sh; to run it by hand:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+#
+# Traefik: Aethera deploys and configures its own Traefik (container "aethera-traefik", ports 80/443) through the agent as soon as
+# a server has a domain. This file only puts the control plane on that proxy's network and labels it, so setting AETHERA_DOMAIN makes
+# the UI available on https://<domain> without a second proxy that would fight over ports 80 and 443.
+name: aethera
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aethera
+      POSTGRES_PASSWORD: ${AETHERA_DB_PASSWORD:?set by install.sh}
+      POSTGRES_DB: aethera
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aethera -d aethera"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  aethera:
+    image: ${AETHERA_IMAGE:-ghcr.io/mihaim21/aethera-forge/control-plane}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      ConnectionStrings__Aethera: Host=postgres;Port=5432;Database=aethera;Username=aethera;Password=${AETHERA_DB_PASSWORD}
+      ConnectionStrings__Redis: redis:6379
+      # What agents dial and what the gRPC server certificate names: a hostname or IP slave servers can reach.
+      Aethera__Agents__PublicEndpoint: ${AETHERA_PUBLIC_HOST:?set by install.sh}:${AETHERA_GRPC_PORT:-9443}
+      # AES-256 key (base64, 32 bytes) that encrypts secrets and the internal CA key. Losing it makes stored secrets unreadable.
+      AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:?set by install.sh}
+      Aethera__Updates__Repository: ${AETHERA_UPDATE_REPOSITORY:-MihaiM21/aethera-forge}
+    ports:
+      - "${AETHERA_HTTP_PORT:-8080}:8080"
+      - "${AETHERA_GRPC_PORT:-9443}:9443"
+    volumes:
+      - aethera_data:/data
+    networks:
+      - default
+      - aethera-proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: aethera-proxy
+      traefik.http.routers.aethera-http.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
+      traefik.http.routers.aethera-http.entrypoints: web
+      traefik.http.routers.aethera-http.service: aethera
+      traefik.http.routers.aethera-https.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
+      traefik.http.routers.aethera-https.entrypoints: websecure
+      traefik.http.routers.aethera-https.service: aethera
+      traefik.http.routers.aethera-https.tls: "true"
+      traefik.http.routers.aethera-https.tls.certresolver: letsencrypt
+      traefik.http.services.aethera.loadbalancer.server.port: "8080"
+    healthcheck:
+      # The aspnet image has no curl: a raw HTTP request over bash's /dev/tcp.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # An agent for this machine (--profile agent). install.sh enrolls it for you; the three values come from Servers > Add server.
+  agent:
+    profiles: ["agent"]
+    image: ${AETHERA_AGENT_IMAGE:-ghcr.io/mihaim21/aethera-forge/agent}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      AETHERA_ENDPOINT: ${AETHERA_AGENT_ENDPOINT:-127.0.0.1:9443}
+      AETHERA_CA_SHA256: ${AETHERA_CA_SHA256:-}
+      AETHERA_JOIN_TOKEN: ${AETHERA_JOIN_TOKEN:-}
+      AETHERA_AGENT_NAME: ${AETHERA_AGENT_NAME:-local}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside: bind mounts the agent creates are resolved by the host's Docker daemon.
+      - /var/lib/aethera:/var/lib/aethera
+
+networks:
+  # The network Aethera's proxy and every routed application join. The agent reuses it when it exists.
+  aethera-proxy:
+    name: aethera-proxy
+
+volumes:
+  pgdata:
+  redisdata:
+  aethera_data:

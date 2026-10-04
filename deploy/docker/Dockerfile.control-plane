@@ -11,11 +11,19 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
 WORKDIR /src
 COPY proto/ proto/
 COPY src/control-plane/ src/control-plane/
+# Embedded into the API and served at /install-agent.sh.
+COPY deploy/install-agent.sh deploy/install-agent.sh
+ARG VERSION=0.0.0-dev
 # The OpenAPI document is generated at build time into src/web/openapi (committed); skip it here.
 RUN dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -o /app \
-    -p:OpenApiGenerateDocuments=false
+    -p:OpenApiGenerateDocuments=false -p:Version=${VERSION} -p:InformationalVersion=${VERSION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG VERSION=0.0.0-dev
+LABEL org.opencontainers.image.title="Aethera control plane" \
+      org.opencontainers.image.source="https://github.com/MihaiM21/aethera-forge" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
 COPY --from=api /app ./
 COPY --from=web /src/web/out ./wwwroot

@@ -1,0 +1,137 @@
+name: Release
+
+# Push a tag like v0.1.0 (or v0.2.0-rc.1 for a pre-release). Builds and pushes the GHCR images (linux/amd64 + linux/arm64), builds the
+# static agent binaries and publishes a GitHub release with everything install.sh and install-agent.sh download:
+#   aethera-agent-linux-{amd64,arm64}, SHA256SUMS, install.sh, install-agent.sh, docker-compose.prod.yml
+# Run it by hand (workflow_dispatch) to rehearse a release: images are built but not pushed and nothing is published.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            version="0.0.0-rehearsal.${GITHUB_RUN_NUMBER}"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "not a semantic version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          [[ "$version" == *-* ]] && echo "prerelease=true" >> "$GITHUB_OUTPUT" || echo "prerelease=false" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: control-plane
+            dockerfile: deploy/docker/Dockerfile.control-plane
+          - name: agent
+            dockerfile: deploy/docker/Dockerfile.agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: needs.version.outputs.publish == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Lower-case: GHCR refuses upper-case repository names.
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.version }},enable=${{ needs.version.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.prerelease == 'false' && needs.version.outputs.publish == 'true' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.version.outputs.publish == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  release:
+    needs: [version, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/agent/go.mod
+          cache-dependency-path: src/agent/go.mod
+      - name: Agent binaries
+        working-directory: src/agent
+        run: make cross VERSION=${{ needs.version.outputs.version }}
+      - name: Assemble the release assets
+        run: |
+          mkdir -p release
+          cp src/agent/dist/aethera-agent-linux-amd64 src/agent/dist/aethera-agent-linux-arm64 release/
+          cp deploy/install.sh deploy/install-agent.sh release/
+          cp deploy/docker-compose.prod.yml release/
+          # The compose file defaults to :latest; a release pins its own version so a fresh install matches what was tested.
+          sed -i 's/AETHERA_VERSION:-latest/AETHERA_VERSION:-${{ needs.version.outputs.version }}/g' release/docker-compose.prod.yml
+          (cd release && sha256sum aethera-agent-linux-amd64 aethera-agent-linux-arm64 install.sh install-agent.sh docker-compose.prod.yml > SHA256SUMS)
+          cat release/SHA256SUMS
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version='${{ needs.version.outputs.version }}'
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "Release $version. See CHANGELOG.md." > release-notes.md; fi
+          cat release-notes.md
+      - name: Publish
+        if: needs.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=()
+          [ '${{ needs.version.outputs.prerelease }}' = true ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" release/* --title "Aethera ${GITHUB_REF_NAME}" --notes-file release-notes.md "${flags[@]}"
+      - name: Keep the assets of a rehearsal
+        if: needs.version.outputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-rehearsal
+          path: release/
