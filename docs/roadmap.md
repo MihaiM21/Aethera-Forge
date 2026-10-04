@@ -30,10 +30,10 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP3.4 Git integration (details and known limits: `docs/architecture/0007-build-and-deploy.md`)
 
 ## Phase 4 — Product UI & services
-- [ ] WP4.1 App flows
-- [ ] WP4.2 Deployments UI
-- [ ] WP4.3 Service templates
-- [ ] WP4.4 Dashboard & ops pages
+- [x] WP4.1 App flows
+- [x] WP4.2 Deployments UI
+- [x] WP4.3 Service templates
+- [x] WP4.4 Dashboard & ops pages (details, API additions and known limits: `docs/architecture/0008-product-ui.md`; verified by `E2E_PHASES=ui bash deploy/agent-e2e.sh`)
 
 ## Phase 5 — Ship it (MVP)
 - [ ] WP5.1 Packaging (Dockerfile, compose, install.sh, release workflow)

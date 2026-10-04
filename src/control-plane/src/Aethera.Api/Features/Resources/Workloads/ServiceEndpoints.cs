@@ -298,12 +298,15 @@ internal static class ServiceFactory
         string? description, string? version, string? imageOverride, JsonObject? config)
     {
         var chosen = ServiceTemplates.Version(template, version);
+        config ??= new JsonObject();
+        if (template.Command is { Count: > 0 } && !config.ContainsKey("command"))
+            config["command"] = new JsonArray(template.Command.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray());
         var service = new Service
         {
             EnvironmentId = environment.Id, ServerId = server.Id, Name = name, Slug = slug, Description = description,
             TemplateKey = template.Key, TemplateVersion = imageOverride is null ? chosen?.Version : version,
             Image = imageOverride ?? chosen?.Image ?? template.DefaultImage,
-            ConfigJson = (config ?? new JsonObject()).ToJsonString(),
+            ConfigJson = config.ToJsonString(),
         };
         service.Environment = environment;
 

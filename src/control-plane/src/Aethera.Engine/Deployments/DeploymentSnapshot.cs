@@ -62,7 +62,7 @@ public sealed record BuildSnapshot(
     string Engine, string Context, string? DockerfilePath, string? InstallCommand, string? BuildCommand, string? StartCommand,
     string? OutputDirectory, bool CacheEnabled, string? TargetPlatform);
 
-public sealed record ImageSnapshot(string Image, string Tag, ImagePullPolicy PullPolicy, Guid? RegistryId);
+public sealed record ImageSnapshot(string Image, string Tag, ImagePullPolicy PullPolicy, Guid? RegistryId, IReadOnlyList<string>? Command = null);
 
 /// <summary>For compose applications. <see cref="Content"/> is the compose file read from the repository or inline at start time.</summary>
 public sealed record ComposeSnapshot(string Content, string? RoutedService);

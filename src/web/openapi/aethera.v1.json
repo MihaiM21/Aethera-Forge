@@ -1745,6 +1745,341 @@
         "x-required-scope": "read"
       }
     },
+    "/api/v1/applications/{id}/logs": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Tail the running containers of an application",
+        "description": "A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.",
+        "operationId": "getApplicationLogs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLogsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/services/{id}/logs": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Tail the running containers of a service",
+        "description": "A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.",
+        "operationId": "getServiceLogs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLogsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/audit-log": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "List audit events (administrators)",
+        "description": "Filters: `action` (exact, or a prefix ending in `*`), `resourceType`, `resourceId`, `actorType`, `from`, `to`. Newest first.",
+        "operationId": "listAuditLog",
+        "parameters": [
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "actorType",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AuditActorType"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfAuditEventDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -10577,7 +10912,7 @@
         "tags": [
           "Deployments"
         ],
-        "operationId": "listDeployments",
+        "operationId": "listApplicationDeployments",
         "parameters": [
           {
             "name": "id",
@@ -11050,6 +11385,484 @@
         "x-required-scope": "deploy"
       }
     },
+    "/api/v1/services/{id}/deployments": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "listServiceDeployments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfDeploymentDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "deployService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeployRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/services/{id}/redeploy": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "redeployService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/services/{id}/stop": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "stopService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/services/{id}/start": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "startService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/services/{id}/restart": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "operationId": "restartService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
     "/api/v1/deployments/{id}": {
       "get": {
         "tags": [
@@ -11198,6 +12011,245 @@
           }
         ],
         "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/deployments": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "List deployments of all applications, newest first",
+        "operationId": "listAllDeployments",
+        "parameters": [
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "serverId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "trigger",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentTrigger"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfDeploymentListItemDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/deployments/{id}/logs": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Read the build or pipeline log of a deployment, paged by sequence, or download it as text",
+        "description": "`source` is `build` (default when the deployment built an image) or `deploy`. Live lines come from the `/hubs/logs` stream named in `streamId`.",
+        "operationId": "getDeploymentLogs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromSequence",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
       }
     },
     "/api/v1/applications/{id}/webhook": {
@@ -12469,6 +13521,108 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "AuditActorType": {
+        "enum": [
+          "system",
+          "user",
+          "apiToken",
+          "agent"
+        ]
+      },
+      "AuditEventDto": {
+        "required": [
+          "id",
+          "actorType",
+          "actorUserId",
+          "actorApiTokenId",
+          "actorLabel",
+          "action",
+          "resourceType",
+          "resourceId",
+          "resourceName",
+          "metadata",
+          "ipAddress",
+          "requestId",
+          "occurredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorType": {
+            "$ref": "#/components/schemas/AuditActorType"
+          },
+          "actorUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "actorApiTokenId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "actorLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "resourceName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "ipAddress": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "occurredAt": {
+            "format": "date-time"
           }
         }
       },
@@ -13878,6 +15032,30 @@
             "items": {
               "$ref": "#/components/schemas/DeploymentStepDto"
             }
+          }
+        }
+      },
+      "DeploymentListItemDto": {
+        "required": [
+          "deployment",
+          "applicationName",
+          "applicationSlug",
+          "serverId"
+        ],
+        "type": "object",
+        "properties": {
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentDto"
+          },
+          "applicationName": {
+            "type": "string"
+          },
+          "applicationSlug": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -15977,6 +17155,27 @@
           }
         }
       },
+      "PageOfAuditEventDto": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PageOfDeploymentDto": {
         "required": [
           "items",
@@ -15988,6 +17187,27 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeploymentDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageOfDeploymentListItemDto": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentListItemDto"
             }
           },
           "nextCursor": {
@@ -16964,6 +18184,68 @@
           }
         }
       },
+      "RuntimeLogContainerDto": {
+        "required": [
+          "container",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RuntimeLogLineDto": {
+        "required": [
+          "container",
+          "timestamp",
+          "stream",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeLogsDto": {
+        "required": [
+          "containers",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLogContainerDto"
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLogLineDto"
+            }
+          }
+        }
+      },
       "RuntimeRequest": {
         "type": "object",
         "properties": {
@@ -17807,6 +19089,15 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ServiceTemplateEnvVar"
+            }
+          },
+          "command": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -19111,6 +20402,12 @@
       "name": "Servers"
     },
     {
+      "name": "Deployments"
+    },
+    {
+      "name": "Audit"
+    },
+    {
       "name": "Applications"
     },
     {
@@ -19130,9 +20427,6 @@
     },
     {
       "name": "Jobs"
-    },
-    {
-      "name": "Deployments"
     },
     {
       "name": "Webhooks"

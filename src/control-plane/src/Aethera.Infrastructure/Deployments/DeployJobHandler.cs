@@ -36,7 +36,7 @@ public sealed class DeployJobHandler : IJobHandler
         if (deployment.IsTerminal || deployment.Status == DeploymentStatus.Running) return; // already finished (redelivery)
         deployment.JobId ??= context.JobId;
 
-        var app = await LoadApplicationAsync(db, deployment.WorkloadId, cancellationToken)
+        var app = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
         var previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
 
@@ -194,17 +194,29 @@ public sealed class DeployJobHandler : IJobHandler
         }
     }
 
-    internal static Task<Application?> LoadApplicationAsync(AetheraDbContext db, Guid id, CancellationToken ct) =>
-        db.Applications
-            .Include(a => a.GitSource).Include(a => a.BuildConfig).Include(a => a.ImageSource).Include(a => a.ComposeSource)
-            .Include(a => a.Ports).Include(a => a.Volumes).Include(a => a.Domains)
-            .Include(a => a.EnvironmentVariables).ThenInclude(e => e.Secret)
-            .Include(a => a.Networks).ThenInclude(n => n.Network)
+    /// <summary>Loads an application or a service with everything the snapshot reads.</summary>
+    internal static async Task<Workload?> LoadWorkloadAsync(AetheraDbContext db, Guid id, CancellationToken ct)
+    {
+        var workload = await db.Workloads
+            .Include(w => w.Ports).Include(w => w.Volumes).Include(w => w.Domains)
+            .Include(w => w.EnvironmentVariables).ThenInclude(e => e.Secret)
+            .Include(w => w.Networks).ThenInclude(n => n.Network)
             .AsSplitQuery()
-            .FirstOrDefaultAsync(a => a.Id == id, ct);
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (workload is Application app)
+        {
+            var entry = db.Entry(app);
+            await entry.Reference(a => a.GitSource).LoadAsync(ct);
+            await entry.Reference(a => a.BuildConfig).LoadAsync(ct);
+            await entry.Reference(a => a.ImageSource).LoadAsync(ct);
+            await entry.Reference(a => a.ComposeSource).LoadAsync(ct);
+        }
+
+        return workload;
+    }
 
     private static async Task<DeploymentSnapshot> FreezeAsync(
-        AetheraDbContext db, IClock clock, Deployment deployment, Application app, Deployment? rollbackTarget, CancellationToken ct)
+        AetheraDbContext db, IClock clock, Deployment deployment, Workload app, Deployment? rollbackTarget, CancellationToken ct)
     {
         if (deployment.Status == DeploymentStatus.InProgress && DeploymentSnapshot.TryFromJson(deployment.ConfigSnapshotJson, out var resumed))
             return resumed!; // resumed after a crash: keep the original snapshot
@@ -227,7 +239,7 @@ public sealed class DeployJobHandler : IJobHandler
     }
 
     private static async Task PromoteAsync(
-        AetheraDbContext db, IServiceProvider sp, IClock clock, Application app, Deployment deployment, Deployment? previous, CancellationToken ct)
+        AetheraDbContext db, IServiceProvider sp, IClock clock, Workload app, Deployment deployment, Deployment? previous, CancellationToken ct)
     {
         var now = clock.UtcNow;
 
@@ -253,7 +265,7 @@ public sealed class DeployJobHandler : IJobHandler
         await CleanupImagesAsync(db, sp, app, deployment, ct);
     }
 
-    private static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Application app, Deployment? previous, string reason, bool failed)
+    private static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
     {
         var now = clock.UtcNow;
         await ConcurrencySupport.SaveWithRetryAsync(db, () =>
@@ -273,7 +285,7 @@ public sealed class DeployJobHandler : IJobHandler
     }
 
     /// <summary>Removes images beyond the rollback retention. Best effort: a failure here never fails the deployment.</summary>
-    private static async Task CleanupImagesAsync(AetheraDbContext db, IServiceProvider sp, Application app, Deployment deployment, CancellationToken ct)
+    private static async Task CleanupImagesAsync(AetheraDbContext db, IServiceProvider sp, Workload app, Deployment deployment, CancellationToken ct)
     {
         try
         {

@@ -73,3 +73,42 @@ public sealed class JobLogStreamAuthorizer(IServiceScopeFactory scopes) : ILogSt
         });
     }
 }
+
+/// <summary>The log stream id of a build (<c>build:&lt;buildId&gt;</c>): the agent's stream for the build output of a deployment.</summary>
+public static class BuildStreams
+{
+    public const string Prefix = "build:";
+
+    public static string StreamId(Guid buildId) => Prefix + buildId.ToString("D");
+
+    public static bool TryParse(string streamId, out Guid buildId)
+    {
+        buildId = default;
+        return streamId.StartsWith(Prefix, StringComparison.Ordinal) && Guid.TryParse(streamId.AsSpan(Prefix.Length), out buildId);
+    }
+}
+
+/// <summary>Authorizes <c>build:&lt;id&gt;</c> streams: the build must belong to a deployment of the caller's organization.</summary>
+public sealed class BuildLogStreamAuthorizer(IServiceScopeFactory scopes) : ILogStreamAuthorizer
+{
+    public bool Handles(string streamId) => BuildStreams.TryParse(streamId, out _);
+
+    public async Task<LogStreamAccess> AuthorizeAsync(string streamId, Guid organizationId, CancellationToken cancellationToken)
+    {
+        if (!BuildStreams.TryParse(streamId, out var buildId)) return LogStreamAccess.Denied;
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
+        var status = await db.Builds.AsNoTracking()
+            .Where(b => b.Id == buildId && b.Deployment.Workload.Environment.Project.OrganizationId == organizationId)
+            .Select(b => (BuildStatus?)b.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (status is null) return LogStreamAccess.Denied;
+        return new LogStreamAccess(true, status switch
+        {
+            BuildStatus.Succeeded => "succeeded",
+            BuildStatus.Failed => "failed",
+            BuildStatus.Cancelled => "cancelled",
+            _ => null,
+        });
+    }
+}

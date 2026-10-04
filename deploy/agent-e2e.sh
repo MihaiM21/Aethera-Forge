@@ -16,7 +16,7 @@
 #   SKIP_AGENT_BUILD=1 Reuse src/agent/dist/aethera-agent-linux-<arch> instead of building it with golang:1.24 (module cache volume aethera-gomod)
 #   SKIP_API_BUILD=1   Do not run dotnet build
 #   E2E_DOCKER=dind|none   dind (default): the agent talks to a Docker-in-Docker daemon. none: no Docker for the agent at all.
-#   E2E_PHASES         Space separated subset of: main renew upgrade restart (default: all)
+#   E2E_PHASES         Space separated subset of: main renew upgrade restart ui (default: all but ui; ui = the Phase 4 browser run, see deploy/ui-e2e-phase.sh)
 #   E2E_KEEP=1         Leave containers/volumes/work dir in place on exit (the next run removes leftovers anyway)
 #
 # Prints "[ ok ] ..." lines and exits non-zero on the first failure (with the tail of the API and agent logs).
@@ -266,8 +266,11 @@ agent_setup() {
 
 agent_docker() { # agent_docker NAME ARGS...: docker run flags shared by enroll and run
   local name="$1"; shift
-  local args=(--label "$LABEL" "${HOST_FLAGS[@]}"
-    -v "$(hostpath "$AGENT_BIN"):/usr/local/bin/aethera-agent:ro" -v "$(hostpath "$WORK/$name.yaml"):/etc/aethera/agent.yaml:ro"
+  local args=(--label "$LABEL")
+  # AGENT_NETWORK (phase ui): share the Docker daemon's network namespace, as an agent installed on the host does, so health probes
+  # reach the containers' bridge addresses. Host mappings then belong to the daemon's container.
+  if [[ -n "${AGENT_NETWORK:-}" ]]; then args+=(--network "$AGENT_NETWORK"); else args+=("${HOST_FLAGS[@]}"); fi
+  args+=(-v "$(hostpath "$AGENT_BIN"):/usr/local/bin/aethera-agent:ro" -v "$(hostpath "$WORK/$name.yaml"):/etc/aethera/agent.yaml:ro"
     -v "$PREFIX-$name-state:/var/lib/aethera")
   [[ "$DOCKER_MODE" == dind ]] && args+=(-v "$SOCK_VOL:/var/run/dind")
   printf '%s\0' "${args[@]}"
@@ -610,6 +613,7 @@ for p in $PHASES; do
     renew) phase_renew ;;
     upgrade) phase_upgrade ;;
     restart) phase_restart ;;
+    ui) source "$ROOT/deploy/ui-e2e-phase.sh"; phase_ui ;;
     *) fail "unknown phase $p" ;;
   esac
 done

@@ -54,6 +54,8 @@ type Deps struct {
 	Builder *build.Service
 	Compose *compose.Service
 	Proxy   *proxy.Manager
+	// LookPath finds host tools (nixpacks); exec.LookPath when nil.
+	LookPath func(file string) (string, error)
 
 	streams sync.Map // stream_id -> context.CancelFunc
 }

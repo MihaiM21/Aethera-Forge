@@ -329,6 +329,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/applications/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tail the running containers of an application
+         * @description A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.
+         */
+        get: operations["getApplicationLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tail the running containers of a service
+         * @description A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.
+         */
+        get: operations["getServiceLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events (administrators)
+         * @description Filters: `action` (exact, or a prefix ending in `*`), `resourceType`, `resourceId`, `actorType`, `from`, `to`. Newest first.
+         */
+        get: operations["listAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -1349,6 +1409,331 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/applications/{id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listApplicationDeployments"];
+        put?: never;
+        post: operations["deployApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["redeployApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["stopApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restartApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listServiceDeployments"];
+        put?: never;
+        post: operations["deployService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["redeployService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["stopService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restartService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployments/{id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rollbackToDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List deployments of all applications, newest first */
+        get: operations["listAllDeployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/deployments/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the build or pipeline log of a deployment, paged by sequence, or download it as text
+         * @description `source` is `build` (default when the deployment built an image) or `deploy`. Live lines come from the `/hubs/logs` stream named in `streamId`.
+         */
+        get: operations["getDeploymentLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWebhook"];
+        put: operations["setupWebhook"];
+        post?: never;
+        delete: operations["deleteWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/webhook/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/build-detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["detectBuildMethod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/proxy/ensure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ensureServerProxy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listGitCredentials"];
+        put?: never;
+        post: operations["createGitCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git-credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getGitCredential"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteGitCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1482,6 +1867,28 @@ export interface components {
             unknown: number | string;
         };
         /** @enum {unknown} */
+        AuditActorType: "system" | "user" | "apiToken" | "agent";
+        AuditEventDto: {
+            /** Format: uuid */
+            id: string;
+            actorType: components["schemas"]["AuditActorType"];
+            /** Format: uuid */
+            actorUserId: null | string;
+            /** Format: uuid */
+            actorApiTokenId: null | string;
+            actorLabel: null | string;
+            action: string;
+            resourceType: null | string;
+            /** Format: uuid */
+            resourceId: null | string;
+            resourceName: null | string;
+            metadata: null | components["schemas"]["JsonElement"];
+            ipAddress: null | string;
+            requestId: null | string;
+            /** Format: date-time */
+            occurredAt: unknown;
+        };
+        /** @enum {unknown} */
         AxisHealth: "unknown" | "available" | "unavailable" | "notInstalled";
         AxisResponse: {
             axis: string;
@@ -1491,6 +1898,19 @@ export interface components {
             since: unknown;
             stale: boolean;
             detail: null | string;
+        };
+        BuildCandidateDto: {
+            engine: string;
+            /** Format: double */
+            confidence: number | string;
+            reason: string;
+            dockerfilePath: null | string;
+            installCommand: null | string;
+            buildCommand: null | string;
+            startCommand: null | string;
+            outputDirectory: null | string;
+            language: string;
+            suggestedPorts: (number | string)[];
         };
         BuildConfigRequest: {
             engine?: null | string;
@@ -1519,6 +1939,17 @@ export interface components {
             buildArgs: components["schemas"]["JsonObject"];
             cacheEnabled: boolean;
             targetPlatform: null | string;
+        };
+        BuildDetectRequest: {
+            repositoryUrl: string;
+            branch?: null | string;
+            contextPath?: null | string;
+            /** Format: uuid */
+            gitCredentialId?: null | string;
+        };
+        BuildDetectResponse: {
+            candidates: components["schemas"]["BuildCandidateDto"][];
+            commitSha: string;
         };
         /** @enum {unknown} */
         CertificateStatus: "none" | "pending" | "issued" | "failed" | "expired";
@@ -1608,6 +2039,14 @@ export interface components {
             slug?: null | string;
             description?: null | string;
             isProduction?: null | boolean;
+        };
+        CreateGitCredentialRequest: {
+            name?: null | string;
+            kind?: null | string;
+            provider?: null | string;
+            username?: null | string;
+            value?: null | string;
+            publicKey?: null | string;
         };
         CreateJoinTokenRequest: {
             /** Format: int32 */
@@ -1714,6 +2153,68 @@ export interface components {
         CsrfTokenResponse: {
             token: string;
         };
+        DeployRequest: {
+            reason?: null | string;
+        };
+        DeploymentDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: int32 */
+            number: number | string;
+            status: components["schemas"]["DeploymentStatus"];
+            trigger: components["schemas"]["DeploymentTrigger"];
+            strategy: string;
+            currentStep: null | components["schemas"]["DeploymentStep"];
+            failedStep: null | components["schemas"]["DeploymentStep"];
+            failureCode: null | string;
+            failureReason: null | string;
+            ref: null | string;
+            commitSha: null | string;
+            commitMessage: null | string;
+            commitAuthor: null | string;
+            imageRef: null | string;
+            imageDigest: null | string;
+            isRollbackPoint: boolean;
+            canRollbackTo: boolean;
+            /** Format: uuid */
+            rollbackOfDeploymentId: null | string;
+            /** Format: uuid */
+            jobId: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            startedAt: unknown;
+            /** Format: date-time */
+            finishedAt: unknown;
+            /** Format: int64 */
+            durationMs: null | number | string;
+            steps: null | components["schemas"]["DeploymentStepDto"][];
+        };
+        DeploymentListItemDto: {
+            deployment: components["schemas"]["DeploymentDto"];
+            applicationName: string;
+            applicationSlug: string;
+            /** Format: uuid */
+            serverId: string;
+        };
+        /** @enum {unknown} */
+        DeploymentStatus: "queued" | "inProgress" | "running" | "superseded" | "stopped" | "failed" | "cancelled";
+        /** @enum {unknown} */
+        DeploymentStep: "source" | "build" | "image" | "targetServer" | "container" | "network" | "domain" | "healthCheck" | "running" | null;
+        DeploymentStepDto: {
+            step: components["schemas"]["DeploymentStep"];
+            status: components["schemas"]["StepStatus"];
+            /** Format: date-time */
+            startedAt: unknown;
+            /** Format: date-time */
+            finishedAt: unknown;
+            errorCode: null | string;
+            errorMessage: null | string;
+        };
+        /** @enum {unknown} */
+        DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api";
         /** @enum {unknown} */
         DesiredState: "running" | "stopped";
         DiscoveryInfo: {
@@ -1937,6 +2438,21 @@ export interface components {
             /** @description Short stable validator id: required, too_long, too_short, pattern, range, invalid_enum, not_unique, or a domain-specific code. */
             code: string;
             message: string;
+        };
+        /** @enum {unknown} */
+        GitCredentialKind: "token" | "deployKey" | "basicAuth";
+        GitCredentialResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            kind: components["schemas"]["GitCredentialKind"];
+            provider: components["schemas"]["GitProvider"];
+            username: null | string;
+            publicKey: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
         };
         /** @enum {unknown} */
         GitProvider: "generic" | "gitHub" | "gitLab";
@@ -2218,6 +2734,18 @@ export interface components {
             items: components["schemas"]["ApplicationSummary"][];
             nextCursor: null | string;
         };
+        PageOfAuditEventDto: {
+            items: components["schemas"]["AuditEventDto"][];
+            nextCursor: null | string;
+        };
+        PageOfDeploymentDto: {
+            items: components["schemas"]["DeploymentDto"][];
+            nextCursor: null | string;
+        };
+        PageOfDeploymentListItemDto: {
+            items: components["schemas"]["DeploymentListItemDto"][];
+            nextCursor: null | string;
+        };
         PageOfDomainResponse: {
             items: components["schemas"]["DomainResponse"][];
             nextCursor: null | string;
@@ -2228,6 +2756,10 @@ export interface components {
         };
         PageOfEnvironmentResponse: {
             items: components["schemas"]["EnvironmentResponse"][];
+            nextCursor: null | string;
+        };
+        PageOfGitCredentialResponse: {
+            items: components["schemas"]["GitCredentialResponse"][];
             nextCursor: null | string;
         };
         PageOfJobDto: {
@@ -2362,6 +2894,12 @@ export interface components {
             port: null | number | string;
             isHttp: boolean;
         };
+        ProxyStatusDto: {
+            provider: string;
+            version: string;
+            running: boolean;
+            changed: boolean;
+        };
         PruneRequest: {
             stoppedContainers?: boolean;
             danglingImages?: boolean;
@@ -2442,6 +2980,21 @@ export interface components {
         };
         RotateSecretRequest: {
             value?: null | string;
+        };
+        RuntimeLogContainerDto: {
+            container: string;
+            error: null | string;
+        };
+        RuntimeLogLineDto: {
+            container: string;
+            /** Format: date-time */
+            timestamp: unknown;
+            stream: string;
+            text: string;
+        };
+        RuntimeLogsDto: {
+            containers: components["schemas"]["RuntimeLogContainerDto"][];
+            lines: components["schemas"]["RuntimeLogLineDto"][];
         };
         RuntimeRequest: {
             restartPolicy?: null | string;
@@ -2643,6 +3196,7 @@ export interface components {
             volumes: components["schemas"]["ServiceTemplateVolume"][];
             healthCheck: components["schemas"]["ServiceTemplateHealthCheck"];
             env: components["schemas"]["ServiceTemplateEnvVar"][];
+            command?: null | string[];
         };
         ServiceTemplateEnvVar: {
             key: string;
@@ -2735,6 +3289,8 @@ export interface components {
             /** Format: double */
             latencyMilliseconds: number | string;
         };
+        /** @enum {unknown} */
+        StepStatus: "running" | "succeeded" | "failed" | "skipped" | "cancelled";
         ToolInfo: {
             name: string;
             version: string;
@@ -2899,6 +3455,35 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        WebhookDeliveryDto: {
+            deliveryId: string;
+            /** Format: date-time */
+            receivedAt: unknown;
+            eventType: null | string;
+            ref: null | string;
+            commitSha: null | string;
+            outcome: components["schemas"]["WebhookOutcome"];
+            detail: null | string;
+            /** Format: uuid */
+            deploymentId: null | string;
+        };
+        WebhookDto: {
+            /** Format: uuid */
+            id: string;
+            provider: components["schemas"]["GitProvider"];
+            path: string;
+            enabled: boolean;
+            branchFilter: null | string;
+            /** Format: date-time */
+            lastDeliveryAt: unknown;
+            secret: null | string;
+        };
+        /** @enum {unknown} */
+        WebhookOutcome: "accepted" | "ignored" | "rejected" | "duplicate";
+        WebhookSetupRequest: {
+            provider?: components["schemas"]["GitProvider"];
+            branchFilter?: null | string;
         };
         /** @enum {unknown} */
         WorkloadStatus: "unknown" | "notDeployed" | "deploying" | "running" | "unhealthy" | "stopped" | "failed";
@@ -4173,6 +4758,185 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentCaResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getApplicationLogs: {
+        parameters: {
+            query?: {
+                tail?: number | string;
+                since?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLogsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getServiceLogs: {
+        parameters: {
+            query?: {
+                tail?: number | string;
+                since?: unknown;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLogsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listAuditLog: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                action?: string;
+                resourceType?: string;
+                resourceId?: string;
+                actorType?: components["schemas"]["AuditActorType"];
+                from?: unknown;
+                to?: unknown;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfAuditEventDto"];
                 };
             };
             /** @description Not authenticated (auth.unauthenticated). */
@@ -9995,6 +10759,1382 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listApplicationDeployments: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                status?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfDeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deployApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["DeployRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeployApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    stopApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    startApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    restartApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listServiceDeployments: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                status?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfDeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deployService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["DeployRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeployService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    stopService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    startService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    restartService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    rollbackToDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listAllDeployments: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                status?: string;
+                applicationId?: string;
+                serverId?: string;
+                trigger?: components["schemas"]["DeploymentTrigger"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfDeploymentListItemDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getDeploymentLogs: {
+        parameters: {
+            query?: {
+                source?: string;
+                fromSequence?: number | string;
+                limit?: number | string;
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    setupWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookSetupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryDto"][];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    detectBuildMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuildDetectRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildDetectResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    ensureServerProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyStatusDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listGitCredentials: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfGitCredentialResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    createGitCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGitCredentialRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitCredentialResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getGitCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitCredentialResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteGitCredential: {
+        parameters: {
+            query?: {
+                confirm?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

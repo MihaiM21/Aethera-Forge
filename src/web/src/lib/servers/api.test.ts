@@ -24,10 +24,10 @@ const problemBody = (status: number, code: string) =>
   new Response(JSON.stringify({ type: `urn:aethera:problem:${code}`, title: code, status, code }), { status });
 
 describe("servers api client", () => {
-  it("lists with the capitalised paging parameters from the OpenAPI document", async () => {
+  it("lists with lower-case paging parameters: the API rejects the capitalised spelling of the OpenAPI document", async () => {
     const { api, calls } = setup(() => json({ items: [], nextCursor: null }));
     await api.list({ limit: 100, sort: "name", q: "edge" });
-    expect(calls[0].url).toBe("/api/v1/servers?Limit=100&sort=name&q=edge");
+    expect(calls[0].url).toBe("/api/v1/servers?limit=100&sort=name&q=edge");
   });
 
   it("sends the server name as ?confirm= for reset, delete and volume prune", async () => {

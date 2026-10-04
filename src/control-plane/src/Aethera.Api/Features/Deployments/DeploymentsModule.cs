@@ -12,6 +12,7 @@ public static class DeploymentsModule
     public static IEndpointRouteBuilder MapDeployments(this IEndpointRouteBuilder api)
     {
         DeploymentEndpoints.Map(api);
+        DeploymentLogEndpoints.Map(api);
         WebhookEndpoints.MapManagement(api);
         BuildEndpoints.Map(api);
         GitCredentialEndpoints.Map(api);

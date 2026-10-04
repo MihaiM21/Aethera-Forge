@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"os/exec"
 	"context"
 	"errors"
 	"io"
@@ -12,11 +13,16 @@ import (
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
 )
 
-// Capabilities of the Phase 3 subsystems.
+// Capabilities of the Phase 3 subsystems. The names are the ones of the protocol (agent.proto, Hello.capabilities): the control
+// plane only sends a command whose capability the agent listed, so a different spelling makes every such command fail with
+// "the agent does not support ...".
 const (
-	CapBuilds  = "builds"
-	CapCompose = "compose"
-	CapProxy   = "proxy"
+	// CapBuilds covers the build and build_detect arms (Dockerfile, static and image engines run on Docker alone).
+	CapBuilds = "build.dockerfile"
+	// CapNixpacks is advertised only when the nixpacks CLI is installed on the host.
+	CapNixpacks = "build.nixpacks"
+	CapCompose  = "compose.v2"
+	CapProxy    = "proxy.traefik"
 )
 
 // logWriters opens a lossless log stream for a build/deploy operation. Output is masked with the secrets carried by the
@@ -178,6 +184,13 @@ func (d *Deps) phase3Capabilities() []string {
 	var c []string
 	if d.Builder != nil {
 		c = append(c, CapBuilds)
+		lookPath := d.LookPath
+		if lookPath == nil {
+			lookPath = exec.LookPath
+		}
+		if _, err := lookPath("nixpacks"); err == nil {
+			c = append(c, CapNixpacks)
+		}
 	}
 	if d.Compose != nil {
 		c = append(c, CapCompose)

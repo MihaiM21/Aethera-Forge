@@ -36,6 +36,8 @@ su postgres -s /bin/bash -c "cd /tmp && $PGBIN/pg_ctl -D $D/data -m immediate st
 ```
 `bash deploy/smoke.sh` runs the whole Phase 1 stack end to end (web export, API, throw-away Postgres/Redis, curl, headless Chromium) and takes the same `AETHERA_DB` / `AETHERA_REDIS` if you want it to use yours. The API serves the web export from `Aethera:Web:Root` (default `wwwroot`; in Development `src/web/out`); restart it after a new `pnpm build`.
 
+`E2E_PHASES=ui bash deploy/agent-e2e.sh` is the Phase 4 check: the real API, a real agent with Docker-in-Docker and a Playwright run of the whole product UI (wizard, deployment, rollback, a service from a template, ops pages) with dark and light screenshots in `src/web/screenshots/phase4`. It needs Docker, Node and a Chrome or Edge (`PLAYWRIGHT_CHROMIUM_EXECUTABLE` overrides the lookup).
+
 Agent:
 ```bash
 cd src/agent && go vet ./... && go test ./... && make cross   # static linux/amd64 + arm64 in dist/

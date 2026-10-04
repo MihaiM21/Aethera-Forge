@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/shell/placeholder-page";
+import { RegistriesView } from "@/components/ops/registries-view";
 
 export const metadata: Metadata = { title: "Registries" };
 
 export default function Page() {
-  return <PlaceholderPage href="/registries" />;
+  return <RegistriesView />;
 }

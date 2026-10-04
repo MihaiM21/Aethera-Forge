@@ -1,0 +1,21 @@
+key: grafana
+name: Grafana
+description: Dashboards and visualization.
+category: monitoring
+image: grafana/grafana
+versions: ["11.4.0", "10.4.12"]
+ports:
+  - port: 3000
+    http: true
+volumes:
+  - name: data
+    path: /var/lib/grafana
+healthCheck:
+  type: http
+  path: /api/health
+  port: 3000
+env:
+  - key: GF_SECURITY_ADMIN_USER
+    value: admin
+  - key: GF_SECURITY_ADMIN_PASSWORD
+    generate: password

@@ -13,25 +13,74 @@ public sealed class UnsupportedSourceException(string code, string message) : Ex
 public static class DeploymentSnapshotFactory
 {
     /// <summary>
-    /// <paramref name="app"/> must have <c>GitSource</c>, <c>BuildConfig</c>, <c>ImageSource</c>, <c>ComposeSource</c>, ports, environment variables
-    /// (with their <c>Secret</c>), volumes, non-deleted domains and networks (with <c>Network</c>) loaded.
+    /// <paramref name="workload"/> must have its ports, environment variables (with their <c>Secret</c>), volumes, non-deleted domains and
+    /// networks (with <c>Network</c>) loaded, and for an <see cref="Application"/> its <c>GitSource</c>, <c>BuildConfig</c>, <c>ImageSource</c>
+    /// and <c>ComposeSource</c>. A <see cref="Service"/> is an image: its snapshot is the template image plus the common parts.
     /// </summary>
     /// <exception cref="UnsupportedSourceException">The source kind has no usable configuration.</exception>
+    public static DeploymentSnapshot Create(Workload workload) => workload switch
+    {
+        Application app => Create(app),
+        Service service => Create(service),
+        _ => throw new UnsupportedSourceException("source.unsupported", "This kind of workload cannot be deployed."),
+    };
+
+    /// <summary>The environment network every workload joins by default, so an application reaches a service of its environment by its slug.</summary>
+    public static string EnvironmentNetwork(Guid environmentId) => $"aethera-env-{environmentId.ToString("N")[..8]}";
+
+    public static DeploymentSnapshot Create(Service service)
+    {
+        var (repository, tag) = SplitImage(service.Image);
+        return Common(service, ApplicationSourceKind.DockerImage) with { Image = new ImageSnapshot(repository, tag, ImagePullPolicy.IfNotPresent, null, CommandOf(service)) };
+    }
+
+    /// <summary>The <c>command</c> array of the service config (set from the template, e.g. MinIO needs <c>server /data</c>), if any.</summary>
+    private static IReadOnlyList<string>? CommandOf(Service service)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(service.ConfigJson);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object || !doc.RootElement.TryGetProperty("command", out var c) || c.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return null;
+            var list = c.EnumerateArray().Where(x => x.ValueKind == System.Text.Json.JsonValueKind.String).Select(x => x.GetString()!).ToList();
+            return list.Count > 0 ? list : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static (string Repository, string Tag) SplitImage(string reference)
+    {
+        var at = reference.IndexOf('@');
+        if (at > 0) return (reference[..at], reference[at..]);
+        var colon = reference.LastIndexOf(':');
+        return colon > reference.LastIndexOf('/') ? (reference[..colon], reference[(colon + 1)..]) : (reference, "latest");
+    }
+
+    private static DeploymentSnapshot Common(Workload w, ApplicationSourceKind kind)
+    {
+        var networks = w.Networks.Where(n => n.Network is not null).OrderBy(n => n.Network.DockerName, StringComparer.Ordinal)
+            .Select(n => new NetworkEntry(n.Network.DockerName, n.Network.IsInternal, n.Aliases)).ToList();
+        if (networks.Count == 0) networks.Add(new NetworkEntry(EnvironmentNetwork(w.EnvironmentId), false, [w.Slug]));
+        return new DeploymentSnapshot
+        {
+            WorkloadId = w.Id, EnvironmentId = w.EnvironmentId, Slug = w.Slug, SourceKind = kind,
+            Runtime = Runtime(w.Runtime),
+            Env = w.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => new EnvEntry(
+                e.Key, e.SecretId is null ? e.Value : null, e.SecretId, e.Secret?.CurrentVersion, e.IsBuildTime, e.IsRuntime)).ToList(),
+            Ports = w.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
+            Volumes = w.Volumes.OrderBy(v => v.Name, StringComparer.Ordinal).Select(v => new VolumeEntry(v.Name, v.MountPath, v.HostPath, v.ReadOnly)).ToList(),
+            Domains = w.Domains.Where(d => !d.IsDeleted).OrderBy(d => d.Hostname, StringComparer.Ordinal)
+                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort)).ToList(),
+            Networks = networks,
+        };
+    }
+
     public static DeploymentSnapshot Create(Application app)
     {
-        var s = new DeploymentSnapshot
-        {
-            WorkloadId = app.Id, EnvironmentId = app.EnvironmentId, Slug = app.Slug, SourceKind = app.SourceKind,
-            Runtime = Runtime(app.Runtime),
-            Env = app.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => new EnvEntry(
-                e.Key, e.SecretId is null ? e.Value : null, e.SecretId, e.Secret?.CurrentVersion, e.IsBuildTime, e.IsRuntime)).ToList(),
-            Ports = app.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
-            Volumes = app.Volumes.OrderBy(v => v.Name, StringComparer.Ordinal).Select(v => new VolumeEntry(v.Name, v.MountPath, v.HostPath, v.ReadOnly)).ToList(),
-            Domains = app.Domains.Where(d => !d.IsDeleted).OrderBy(d => d.Hostname, StringComparer.Ordinal)
-                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort)).ToList(),
-            Networks = app.Networks.Where(n => n.Network is not null).OrderBy(n => n.Network.DockerName, StringComparer.Ordinal)
-                .Select(n => new NetworkEntry(n.Network.DockerName, n.Network.IsInternal, n.Aliases)).ToList(),
-        };
+        var s = Common(app, app.SourceKind);
 
         switch (app.SourceKind)
         {

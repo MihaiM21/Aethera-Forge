@@ -374,4 +374,183 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
         var read = await t.Developer.GetJsonAsync($"/api/v1/applications/{appId}/webhook");
         Assert.Null(read["secret"]);
     }
+
+    [RequiresDatabaseFact]
+    public async Task The_organization_wide_list_filters_by_status_and_names_the_application()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        var all = await t.Viewer.GetJsonAsync("/api/v1/deployments");
+        var item = all["items"]!.AsArray().Single(i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id())!;
+        Assert.Equal(appId, item["deployment"]!["applicationId"]!.GetValue<string>());
+        Assert.False(string.IsNullOrEmpty(item["applicationName"]!.GetValue<string>()));
+
+        var failed = await t.Viewer.GetJsonAsync($"/api/v1/deployments?status=failed&applicationId={appId}");
+        Assert.Empty(failed["items"]!.AsArray());
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync("/api/v1/deployments?bogus=1")).StatusCode);
+
+        var other = await fixture.NewTenantAsync();
+        var foreign = await other.Viewer.GetJsonAsync("/api/v1/deployments");
+        Assert.DoesNotContain(foreign["items"]!.AsArray(), i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Deployment_logs_expose_the_pipeline_stream_and_stay_inside_the_organization()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        var page = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs");
+        Assert.Equal("deploy", page["source"]!.GetValue<string>());
+        Assert.StartsWith("job:", page["streamId"]!.GetValue<string>());
+        Assert.NotEmpty(page["items"]!.AsArray());
+        Assert.True(page["ended"]!.GetValue<bool>());
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs?source=nope")).StatusCode);
+        var download = await t.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs?download=true");
+        Assert.Equal("text/plain", download.Content.Headers.ContentType!.MediaType);
+
+        var other = await fixture.NewTenantAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await other.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Application_logs_tail_the_running_container()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var none = await t.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/logs");
+        Assert.Empty(none["lines"]!.AsArray());
+
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+        Transport.LogLines(
+            new LogEntry("c", 1, DateTimeOffset.UtcNow.AddSeconds(-2), LogSource.Container, LogStream.Stdout, "hello"),
+            new LogEntry("c", 2, DateTimeOffset.UtcNow.AddSeconds(-1), LogSource.Container, LogStream.Stderr, "oops"));
+
+        var logs = await t.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/logs?tail=50");
+        // The scripted lines are shared by the fixture's transport: assert on ours, not on the count.
+        var lines = logs["lines"]!.AsArray();
+        Assert.Contains(lines, l => l!["text"]!.GetValue<string>() == "oops" && l["stream"]!.GetValue<string>() == "stderr");
+        Assert.Contains(lines, l => l!["text"]!.GetValue<string>() == "hello" && l["stream"]!.GetValue<string>() == "stdout");
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync($"/api/v1/applications/{appId}/logs?tail=0")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task The_audit_log_is_for_administrators_and_records_deployments()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        await DeployAsync(t, appId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await t.Developer.GetAsync("/api/v1/audit-log")).StatusCode);
+        var log = await t.Admin.GetJsonAsync("/api/v1/audit-log?action=application.*");
+        Assert.Contains(log["items"]!.AsArray(), e => e!["action"]!.GetValue<string>() == "application.deploy_requested" && e["resourceId"]!.GetValue<string>() == appId);
+        var none = await t.Admin.GetJsonAsync("/api/v1/audit-log?action=nothing.here");
+        Assert.Empty(none["items"]!.AsArray());
+    }
+
+    private async Task<(Tenant Tenant, string ServiceId)> ServiceAsync(string templateKey = "postgres")
+    {
+        Transport.On<HealthProbeCommand, HealthProbeOutcome>(_ => new HealthProbeOutcome(true, 1, 0, TimeSpan.Zero, "ok", null));
+        var tenant = await fixture.NewTenantAsync();
+        var server = await tenant.CreateServerAsync(publicIp: "203.0.113.10");
+        var (_, env) = await tenant.CreateProjectWithEnvironmentAsync();
+        var service = await tenant.Developer.CreateAsync("/api/v1/services", new { name = "db", environmentId = env, serverId = server.Id(), templateKey });
+        return (tenant, service.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_deploys_through_the_same_engine_and_joins_the_environment_network()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync();
+
+        var response = await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var queued = await response.ReadAsync();
+        var d = await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        Assert.Equal(DeploymentStatus.Running, d.Status);
+        Assert.StartsWith("postgres:", d.ImageRef);
+        var service = await t.Developer.GetJsonAsync($"/api/v1/services/{serviceId}");
+        Assert.Equal("running", service["state"]!["status"]!.GetValue<string>());
+
+        var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Single();
+        Assert.Contains(create.Spec.Networks!, n => n.Network.StartsWith("aethera-env-") && n.Aliases is { Count: > 0 });
+        Assert.DoesNotContain(create.Spec.Ports!, p => p.HostPort is > 0);
+        Assert.Contains(create.Spec.Env!, e => e.Name == "POSTGRES_USER");
+
+        var list = await t.Viewer.GetJsonAsync($"/api/v1/services/{serviceId}/deployments");
+        Assert.Single(list["items"]!.AsArray());
+        var all = await t.Viewer.GetJsonAsync("/api/v1/deployments");
+        Assert.Contains(all["items"]!.AsArray(), i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Service_routes_do_not_accept_an_application_and_the_other_way_round()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("redis");
+        Assert.Equal(HttpStatusCode.NotFound, (await t.Developer.PostAsync($"/api/v1/applications/{serviceId}/deployments", new { })).StatusCode);
+        var (_, appId) = await ImageAppAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await t.Developer.PostAsync($"/api/v1/services/{appId}/deployments", new { })).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_can_be_stopped_and_its_logs_read()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("redis");
+        var queued = await (await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { })).ReadAsync();
+        await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        Transport.LogLines(new LogEntry("c", 1, DateTimeOffset.UtcNow, LogSource.Container, LogStream.Stdout, "ready"));
+        var logs = await t.Viewer.GetJsonAsync($"/api/v1/services/{serviceId}/logs");
+        Assert.Contains(logs["lines"]!.AsArray(), l => l!["text"]!.GetValue<string>() == "ready");
+
+        var stop = await t.Developer.PostAsync($"/api/v1/services/{serviceId}/stop", new { });
+        Assert.Equal(HttpStatusCode.Accepted, stop.StatusCode);
+        await GatewayFixture.EventuallyAsync(async () =>
+            (await t.Developer.GetJsonAsync($"/api/v1/services/{serviceId}"))["state"]!["status"]!.GetValue<string>() == "stopped", "the service to stop", timeoutMs: 15000);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_whose_image_has_no_default_command_gets_the_one_from_its_template()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("minio");
+        var queued = await (await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { })).ReadAsync();
+        await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Last();
+        Assert.Equal(["server", "/data", "--console-address", ":9001"], create.Spec.Command);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_log_stream_ends_when_its_job_finishes_not_when_the_deployment_turns_running()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        // The deployment is Running, but the job that narrates it is still writing: the stream must stay open.
+        var slow = await (await t.Admin.PostAsync("/api/v1/jobs/echo", new { lines = new[] { "closing line" }, delayMs = 2500 })).ReadAsync();
+        var jobId = Guid.Parse(slow.Id());
+        await WithDbAsync(async db => await db.Deployments.Where(d => d.Id == Guid.Parse(queued.Id())).ExecuteUpdateAsync(u => u.SetProperty(d => d.JobId, jobId)));
+
+        var open = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy");
+        Assert.False(open["ended"]!.GetValue<bool>(), "the job is still running");
+
+        await GatewayFixture.EventuallyAsync(async () =>
+            (await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy"))["ended"]!.GetValue<bool>(), "the stream to end with its job", timeoutMs: 15000);
+        var done = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs?source=deploy");
+        Assert.Contains(done["items"]!.AsArray(), l => l!["text"]!.GetValue<string>().Contains("closing line"));
+    }
 }

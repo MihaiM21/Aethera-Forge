@@ -1,0 +1,17 @@
+key: redis
+name: Redis
+description: In-memory key-value store and cache.
+category: cache
+image: redis
+versions: ["7.4", "7.2", "6.2"]
+ports:
+  - port: 6379
+volumes:
+  - name: data
+    path: /data
+healthCheck:
+  type: tcp
+  port: 6379
+env:
+  - key: REDIS_PASSWORD
+    generate: password

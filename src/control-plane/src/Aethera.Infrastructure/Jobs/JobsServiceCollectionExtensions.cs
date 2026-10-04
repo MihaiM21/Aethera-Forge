@@ -65,6 +65,7 @@ public static class JobsServiceCollectionExtensions
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, EchoJobHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ILogStreamAuthorizer, JobLogStreamAuthorizer>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ILogStreamAuthorizer, BuildLogStreamAuthorizer>());
         return services;
     }
 }

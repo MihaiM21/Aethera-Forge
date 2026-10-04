@@ -1,0 +1,23 @@
+key: mariadb
+name: MariaDB
+description: Relational database, MySQL compatible.
+category: database
+image: mariadb
+versions: ["11.4", "10.11", "10.6"]
+ports:
+  - port: 3306
+volumes:
+  - name: data
+    path: /var/lib/mysql
+healthCheck:
+  type: tcp
+  port: 3306
+env:
+  - key: MARIADB_ROOT_PASSWORD
+    generate: password
+  - key: MARIADB_DATABASE
+    value: app
+  - key: MARIADB_USER
+    value: app
+  - key: MARIADB_PASSWORD
+    generate: password

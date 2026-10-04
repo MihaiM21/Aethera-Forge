@@ -1,0 +1,23 @@
+key: minio
+name: MinIO
+description: S3-compatible object storage.
+category: storage
+image: minio/minio
+command: [server, /data, --console-address, ":9001"]
+versions: ["RELEASE.2025-02-28T09-55-16Z", "latest"]
+ports:
+  - port: 9000
+  - port: 9001
+    http: true
+volumes:
+  - name: data
+    path: /data
+healthCheck:
+  type: http
+  path: /minio/health/live
+  port: 9000
+env:
+  - key: MINIO_ROOT_USER
+    value: minio-admin
+  - key: MINIO_ROOT_PASSWORD
+    generate: password

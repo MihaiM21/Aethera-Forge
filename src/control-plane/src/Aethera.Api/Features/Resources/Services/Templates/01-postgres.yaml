@@ -1,0 +1,21 @@
+key: postgres
+name: PostgreSQL
+description: Relational database.
+category: database
+image: postgres
+versions: ["17", "16", "15", "14"]
+ports:
+  - port: 5432
+volumes:
+  - name: data
+    path: /var/lib/postgresql/data
+healthCheck:
+  type: tcp
+  port: 5432
+env:
+  - key: POSTGRES_USER
+    value: postgres
+  - key: POSTGRES_PASSWORD
+    generate: password
+  - key: POSTGRES_DB
+    value: app

@@ -1,0 +1,23 @@
+key: mysql
+name: MySQL
+description: Relational database.
+category: database
+image: mysql
+versions: ["8.4", "8.0", "9.1"]
+ports:
+  - port: 3306
+volumes:
+  - name: data
+    path: /var/lib/mysql
+healthCheck:
+  type: tcp
+  port: 3306
+env:
+  - key: MYSQL_ROOT_PASSWORD
+    generate: password
+  - key: MYSQL_DATABASE
+    value: app
+  - key: MYSQL_USER
+    value: app
+  - key: MYSQL_PASSWORD
+    generate: password
