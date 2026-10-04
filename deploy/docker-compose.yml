@@ -1,0 +1,80 @@
+# Aethera master (control plane + web UI + PostgreSQL + Redis) in one command:
+#
+#   cp deploy/.env.example deploy/.env      # set AETHERA_PUBLIC_HOST (and change the DB password)
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# UI: http://<host>:8080   Agent gRPC (mTLS): <host>:9443 (slaves dial this; keep it reachable, no TLS-terminating proxy in front)
+# To also manage the master machine itself, add:  --profile agent  (see deploy/.env.example)
+name: aethera
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aethera
+      POSTGRES_PASSWORD: ${AETHERA_DB_PASSWORD:-aethera}
+      POSTGRES_DB: aethera
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aethera -d aethera"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aethera:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.control-plane
+    image: aethera/control-plane:local
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      ConnectionStrings__Aethera: Host=postgres;Port=5432;Database=aethera;Username=aethera;Password=${AETHERA_DB_PASSWORD:-aethera}
+      ConnectionStrings__Redis: redis:6379
+      # What agents dial and what the gRPC server certificate names: a hostname/IP slaves can reach.
+      Aethera__Agents__PublicEndpoint: ${AETHERA_PUBLIC_HOST:-localhost}:${AETHERA_GRPC_PORT:-9443}
+      # Optional (base64 of 32 bytes). Unset = generated once and kept in the aethera_data volume.
+      AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:-}
+    ports:
+      - "${AETHERA_HTTP_PORT:-8080}:8080"
+      - "${AETHERA_GRPC_PORT:-9443}:9443"
+    volumes:
+      - aethera_data:/data
+
+  # Optional: an agent for the master machine itself (--profile agent). Enroll it like any other server.
+  agent:
+    profiles: ["agent"]
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.agent
+    image: aethera/agent:local
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      AETHERA_ENDPOINT: ${AETHERA_AGENT_ENDPOINT:-127.0.0.1:9443}
+      AETHERA_CA_SHA256: ${AETHERA_CA_SHA256:-}
+      AETHERA_JOIN_TOKEN: ${AETHERA_JOIN_TOKEN:-}
+      AETHERA_AGENT_NAME: ${AETHERA_AGENT_NAME:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/aethera:/var/lib/aethera
+
+volumes:
+  pgdata:
+  redisdata:
+  aethera_data:

@@ -1,0 +1,30 @@
+# Aethera control plane: Next.js export + .NET API in one image. Build context: the repository root.
+FROM node:22-alpine AS web
+RUN corepack enable
+WORKDIR /src/web
+COPY src/web/package.json src/web/pnpm-lock.yaml src/web/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY src/web/ ./
+RUN pnpm build
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+WORKDIR /src
+COPY proto/ proto/
+COPY src/control-plane/ src/control-plane/
+# The OpenAPI document is generated at build time into src/web/openapi (committed); skip it here.
+RUN dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -o /app \
+    -p:OpenApiGenerateDocuments=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=api /app ./
+COPY --from=web /src/web/out ./wwwroot
+COPY deploy/docker/control-plane-entrypoint.sh /usr/local/bin/aethera-entrypoint
+RUN chmod +x /usr/local/bin/aethera-entrypoint && mkdir -p /data && chown -R $APP_UID /data
+USER $APP_UID
+ENV ASPNETCORE_URLS=http://+:8080 \
+    Aethera__Database__AutoMigrate=true
+EXPOSE 8080 9443
+VOLUME /data
+ENTRYPOINT ["aethera-entrypoint"]
+CMD ["dotnet", "Aethera.Api.dll"]

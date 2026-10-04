@@ -15,6 +15,25 @@ Aethera is an open-source self-hosted deployment and infrastructure management p
 | Web UI | Next.js (App Router, static export), Tailwind v4, shadcn/ui | `src/web` |
 | Agent protocol | Protobuf / gRPC | `proto` |
 
+## Deploy with Docker Compose
+
+Master (UI, API, PostgreSQL, Redis; the master key is generated on first start and kept in the `aethera_data` volume, back it up):
+
+```bash
+cp deploy/.env.example deploy/.env        # set AETHERA_PUBLIC_HOST to a name/IP the slaves can reach
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+# UI: http://<host>:8080, agents dial <host>:9443 (mTLS, no TLS-terminating proxy in front of it)
+```
+
+Slave server: create it in the UI (Servers > Add server), copy the endpoint, CA fingerprint and join token, then on the slave:
+
+```bash
+cp deploy/.env.agent.example deploy/.env.agent      # paste the three values
+docker compose -f deploy/docker-compose.agent.yml --env-file deploy/.env.agent up -d --build
+```
+
+The agent enrolls once (state in `/var/lib/aethera`), needs only outbound access, and the token is not needed afterwards. To manage the master machine too, add `--profile agent` to the master command with the same three values in `deploy/.env`.
+
 ## Quick dev start
 
 Prerequisites: .NET 10 SDK, Go 1.24, Node 22 with pnpm 10, Docker (for Postgres and Redis), `buf` (only when changing `proto/`).

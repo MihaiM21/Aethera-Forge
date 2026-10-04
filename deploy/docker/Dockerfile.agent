@@ -1,0 +1,16 @@
+# Aethera server agent. Build context: the repository root.
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY src/agent/ ./
+ARG VERSION=0.0.0-dev
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/mihaim21/aethera-forge/agent/internal/version.Version=${VERSION}" \
+    -o /out/aethera-agent ./cmd/aethera-agent
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=build /out/aethera-agent /usr/local/bin/aethera-agent
+COPY deploy/docker/agent-entrypoint.sh /usr/local/bin/aethera-agent-entrypoint
+RUN chmod +x /usr/local/bin/aethera-agent-entrypoint
+# Runs as root: it needs the Docker socket, which is root-equivalent anyway.
+ENTRYPOINT ["aethera-agent-entrypoint"]

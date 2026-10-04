@@ -1,0 +1,24 @@
+# Aethera agent for a slave server:
+#
+#   cp deploy/.env.agent.example deploy/.env.agent     # fill in the values from the UI (Servers > Add server)
+#   docker compose -f deploy/docker-compose.agent.yml --env-file deploy/.env.agent up -d --build
+#
+# Needs only outbound access to the master (AETHERA_ENDPOINT); no inbound ports. Enrolls once, then reconnects on its own.
+name: aethera-agent
+
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.agent
+    image: aethera/agent:local
+    restart: unless-stopped
+    environment:
+      AETHERA_ENDPOINT: ${AETHERA_ENDPOINT:-}        # master host:9443
+      AETHERA_CA_SHA256: ${AETHERA_CA_SHA256:-}      # pins the master's CA on first contact
+      AETHERA_JOIN_TOKEN: ${AETHERA_JOIN_TOKEN:-}    # one-time; only used on the first start
+      AETHERA_AGENT_NAME: ${AETHERA_AGENT_NAME:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside: bind mounts the agent creates are resolved by the host's Docker daemon.
+      - /var/lib/aethera:/var/lib/aethera

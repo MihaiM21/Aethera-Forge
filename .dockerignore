@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/node_modules/
+src/web/out/
+src/web/.next/
+src/agent/dist/
+.git/
+.claude/
+.env
