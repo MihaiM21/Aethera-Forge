@@ -126,7 +126,7 @@ export function ServerDetailView({ api = serversApi, id: idProp }: { api?: Serve
                 {r}
               </Badge>
             ))}
-            <Badge tone="neutral">{s.transport}</Badge>
+            <Badge tone="neutral">via {s.transport}</Badge>
             {s.lifecycle !== "active" && <Badge tone="warning">{s.lifecycle}</Badge>}
             {s.agentVersion && <span className="font-mono text-2xs">agent {s.agentVersion}</span>}
           </span>

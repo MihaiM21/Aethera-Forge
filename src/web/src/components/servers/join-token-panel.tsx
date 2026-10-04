@@ -44,7 +44,7 @@ export function JoinTokenPanel({
   }, [expired]);
 
   return (
-    <TerminalCard path="servers/join" label={expired ? "EXPIRED" : "ONE-TIME"} className="w-full">
+    <TerminalCard path="servers/join" label={expired ? "EXPIRED" : "ONE-TIME"}>
       <div className="grid gap-4 font-sans">
         <p className="flex items-start gap-2 text-xs text-warning">
           <KeyRoundIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

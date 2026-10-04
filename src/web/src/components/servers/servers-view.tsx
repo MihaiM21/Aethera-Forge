@@ -105,7 +105,7 @@ export function ServerRow({ row, now }: { row: ServerRowData; now: Date }) {
               {r}
             </Badge>
           ))}
-          <Badge tone="neutral">{server.transport}</Badge>
+          <Badge tone="neutral">via {server.transport}</Badge>
           {server.lifecycle !== "active" && <Badge tone="warning">{server.lifecycle}</Badge>}
         </div>
       </div>

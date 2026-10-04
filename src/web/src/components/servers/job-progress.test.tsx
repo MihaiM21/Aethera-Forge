@@ -6,14 +6,21 @@ import { JobProgress } from "./job-progress";
 
 describe("JobProgress", () => {
   it("follows a job until it succeeds, then stops polling and reports it", async () => {
+    // The second poll waits for the gate, so the queued state stays on screen long enough to assert.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
     const job = vi
       .fn()
       .mockResolvedValueOnce(makeJob({ status: "queued", queuePosition: 2 }))
-      .mockResolvedValueOnce(makeJob({ status: "running" }))
+      .mockImplementationOnce(async () => {
+        await gate;
+        return makeJob({ status: "running" });
+      })
       .mockResolvedValue(makeJob({ status: "succeeded" }));
     const onFinished = vi.fn();
     render(<JobProgress jobId="abcdef12-0000" label="Prune Docker resources" api={fakeApi({ job })} intervalMs={10} onFinished={onFinished} />);
     expect(await screen.findByText(/position 2 in queue/i)).toBeInTheDocument();
+    release();
     await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
     expect(onFinished.mock.calls[0][0].status).toBe("succeeded");
     expect(screen.getByText("Succeeded")).toBeInTheDocument();
