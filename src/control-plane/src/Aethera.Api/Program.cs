@@ -1,3 +1,4 @@
+using Aethera.Api.Features.Audit;
 using Aethera.Api;
 using Aethera.Api.Features.Agents;
 using Aethera.Api.Features.Auth;
@@ -36,6 +37,7 @@ api.MapResources();            // WP1.2
 api.MapJobs();                 // WP1.3
 api.MapAgents();               // WP2.2
 api.MapDeployments();          // WP3.2-3.4: deployments, rollback, build detection, proxy, webhook management
+api.MapAuditLog();             // WP4.4: audit log viewer
 api.MapContributors();         // test/extension seam
 app.MapGitWebhooks();          // WP3.4: POST /webhooks/git/{endpointId} (anonymous, signature-verified)
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root

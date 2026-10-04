@@ -374,4 +374,82 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
         var read = await t.Developer.GetJsonAsync($"/api/v1/applications/{appId}/webhook");
         Assert.Null(read["secret"]);
     }
+
+    [RequiresDatabaseFact]
+    public async Task The_organization_wide_list_filters_by_status_and_names_the_application()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        var all = await t.Viewer.GetJsonAsync("/api/v1/deployments");
+        var item = all["items"]!.AsArray().Single(i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id())!;
+        Assert.Equal(appId, item["deployment"]!["applicationId"]!.GetValue<string>());
+        Assert.False(string.IsNullOrEmpty(item["applicationName"]!.GetValue<string>()));
+
+        var failed = await t.Viewer.GetJsonAsync($"/api/v1/deployments?status=failed&applicationId={appId}");
+        Assert.Empty(failed["items"]!.AsArray());
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync("/api/v1/deployments?bogus=1")).StatusCode);
+
+        var other = await fixture.NewTenantAsync();
+        var foreign = await other.Viewer.GetJsonAsync("/api/v1/deployments");
+        Assert.DoesNotContain(foreign["items"]!.AsArray(), i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Deployment_logs_expose_the_pipeline_stream_and_stay_inside_the_organization()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+
+        var page = await t.Viewer.GetJsonAsync($"/api/v1/deployments/{queued.Id()}/logs");
+        Assert.Equal("deploy", page["source"]!.GetValue<string>());
+        Assert.StartsWith("job:", page["streamId"]!.GetValue<string>());
+        Assert.NotEmpty(page["items"]!.AsArray());
+        Assert.True(page["ended"]!.GetValue<bool>());
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs?source=nope")).StatusCode);
+        var download = await t.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs?download=true");
+        Assert.Equal("text/plain", download.Content.Headers.ContentType!.MediaType);
+
+        var other = await fixture.NewTenantAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await other.Viewer.GetAsync($"/api/v1/deployments/{queued.Id()}/logs")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Application_logs_tail_the_running_container()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        var none = await t.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/logs");
+        Assert.Empty(none["lines"]!.AsArray());
+
+        var queued = await DeployAsync(t, appId);
+        await WaitForAsync(queued.Id(), Finished, "the deployment to finish");
+        Transport.LogLines(
+            new LogEntry("c", 1, DateTimeOffset.UtcNow.AddSeconds(-2), LogSource.Container, LogStream.Stdout, "hello"),
+            new LogEntry("c", 2, DateTimeOffset.UtcNow.AddSeconds(-1), LogSource.Container, LogStream.Stderr, "oops"));
+
+        var logs = await t.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/logs?tail=50");
+        Assert.Equal(2, logs["lines"]!.AsArray().Count);
+        Assert.Equal("stderr", logs["lines"]![1]!["stream"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync($"/api/v1/applications/{appId}/logs?tail=0")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task The_audit_log_is_for_administrators_and_records_deployments()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        await DeployAsync(t, appId);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await t.Developer.GetAsync("/api/v1/audit-log")).StatusCode);
+        var log = await t.Admin.GetJsonAsync("/api/v1/audit-log?action=application.*");
+        Assert.Contains(log["items"]!.AsArray(), e => e!["action"]!.GetValue<string>() == "application.deploy_requested" && e["resourceId"]!.GetValue<string>() == appId);
+        var none = await t.Admin.GetJsonAsync("/api/v1/audit-log?action=nothing.here");
+        Assert.Empty(none["items"]!.AsArray());
+    }
 }
