@@ -35,7 +35,8 @@ public sealed class RecreateStrategy : IDeploymentStrategy
         // Domains and routing are attached through container labels by the proxy provider (WP3.3).
         d.SkipStep(DeploymentStep.Domain, run.Clock.UtcNow);
 
-        if (plan.Health is null)
+        var target = plan.HealthFor?.Invoke(plan.Container.Name) ?? plan.Health;
+        if (target is null)
         {
             d.SkipStep(DeploymentStep.HealthCheck, run.Clock.UtcNow);
         }
@@ -43,7 +44,7 @@ public sealed class RecreateStrategy : IDeploymentStrategy
         {
             d.BeginStep(DeploymentStep.HealthCheck, run.Clock.UtcNow);
             var probe = await run.ExecuteAsync<HealthProbeCommand, HealthProbeOutcome>(
-                new HealthProbeCommand(plan.Health, plan.HealthTimeout, plan.HealthInterval, plan.HealthRetries, plan.HealthStartPeriod),
+                new HealthProbeCommand(target, plan.HealthTimeout, plan.HealthInterval, plan.HealthRetries, plan.HealthStartPeriod),
                 "health", DeploymentStep.HealthCheck, FailureCodes.HealthTimeout, ct);
             d.HealthCheckResultJson = JsonSerializer.Serialize(new { probe.Healthy, probe.Attempts, probe.HttpStatus, probe.Detail });
             if (!probe.Healthy)

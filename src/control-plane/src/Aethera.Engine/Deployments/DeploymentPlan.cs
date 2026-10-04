@@ -24,6 +24,9 @@ public sealed class DeploymentPlan
     /// <summary>Probe that must succeed before the deployment is considered live. Null = none.</summary>
     public ProbeTarget? Health { get; init; }
 
+    /// <summary>Builds the probe for a container name; used by strategies that start the new container under a fresh name. Wins over <see cref="Health"/>.</summary>
+    public Func<string, ProbeTarget?>? HealthFor { get; init; }
+
     public TimeSpan HealthTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public TimeSpan HealthInterval { get; init; } = TimeSpan.FromSeconds(2);
     public int HealthRetries { get; init; } = 15;
