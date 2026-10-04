@@ -194,7 +194,7 @@ func runAgent(args []string, stdout, stderr io.Writer) int {
 	}
 	a, err := agent.New(agent.Options{
 		Config: cfg, Dir: state.Dir(cfg.StateDir), Docker: dk, Collector: &metrics.Collector{Docker: dk},
-		Version: version.Version, Logger: log, Exe: exe, Restarter: &restarter{stop: stop}, LogForwarder: fwd,
+		Version: version.Version, Logger: log, Exe: exe, DeployTools: true, Restarter: &restarter{stop: stop}, LogForwarder: fwd,
 	})
 	if err != nil {
 		if errors.Is(err, state.ErrNotEnrolled) {
