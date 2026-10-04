@@ -147,7 +147,9 @@ func TestIsTLSError(t *testing.T) {
 			t.Errorf("not recognised: %v", e)
 		}
 	}
-	for _, e := range []error{nil, errors.New("connection refused"), errors.New("EOF")} {
+	for _, e := range []error{nil, errors.New("connection refused"), errors.New("EOF"),
+		errors.New("rpc error: code = Unavailable desc = connection error: desc = \"transport: authentication handshake failed: EOF\""),
+		errors.New("tls: first record does not look like a TLS handshake"), errors.New("read tcp: connection reset by peer")} {
 		if pki.IsTLSError(e) {
 			t.Errorf("false positive: %v", e)
 		}

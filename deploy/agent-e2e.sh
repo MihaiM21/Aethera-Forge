@@ -16,7 +16,7 @@
 #   SKIP_AGENT_BUILD=1 Reuse src/agent/dist/aethera-agent-linux-<arch> instead of building it with golang:1.24 (module cache volume aethera-gomod)
 #   SKIP_API_BUILD=1   Do not run dotnet build
 #   E2E_DOCKER=dind|none   dind (default): the agent talks to a Docker-in-Docker daemon. none: no Docker for the agent at all.
-#   E2E_PHASES         Space separated subset of: main renew upgrade (default: all)
+#   E2E_PHASES         Space separated subset of: main renew upgrade restart (default: all)
 #   E2E_KEEP=1         Leave containers/volumes/work dir in place on exit (the next run removes leftovers anyway)
 #
 # Prints "[ ok ] ..." lines and exits non-zero on the first failure (with the tail of the API and agent logs).
@@ -28,7 +28,7 @@ BASE_PORT="${E2E_PORT_BASE:-15400}"
 PG_PORT=$((BASE_PORT + 1)); REDIS_PORT=$((BASE_PORT + 2)); GRPC_PORT=$((BASE_PORT + 10)); API_PORT=$((BASE_PORT + 11))
 ENDPOINT_HOST="${E2E_ENDPOINT_HOST:-host.docker.internal}"
 API="http://127.0.0.1:${API_PORT}"
-PHASES="${E2E_PHASES:-main renew upgrade}"
+PHASES="${E2E_PHASES:-main renew upgrade restart}"
 DOCKER_MODE="${E2E_DOCKER:-dind}"
 LABEL="aethera-e2e=1"
 PREFIX="aethera-e2e"
@@ -100,6 +100,8 @@ wait_for() {
 # status_axis SERVER AXIS: current health of one axis ("available", "unavailable", "unknown", ...)
 status_axis() { api GET "/api/v1/servers/$1/status" && [[ "$STATUS" == 200 ]] && jqv ".$2.health"; }
 axis_is() { [[ "$(status_axis "$1" "$2")" == "$3" ]]; }
+# session_live SERVER: the gateway holds a live agent stream (the stored axis alone can be stale after a control plane crash)
+session_live() { api GET "/api/v1/servers/$1/status" && [[ "$STATUS" == 200 ]] && [[ "$(jqx -r '.session != null' <"$BODY")" == true ]]; }
 
 # job_wait JOBID: waits for a terminal state and prints it
 job_wait() {
@@ -480,7 +482,7 @@ phase_main() {
   info "restarting the API (same database): the agent must reconnect by itself"
   start_api "$DB_CONN" Aethera__Agents__PingSeconds=4
   login_owner
-  wait_for "agent reconnects after an API restart" 120 axis_is "$SERVER" agent available
+  wait_for "agent reconnects after an API restart" 120 session_live "$SERVER"
   ok "API restarted: agent reconnected (new gateway certificate, same CA pin)"
 
   # ---- the agent's own log stream (WARN and above are forwarded as LogChunks and acknowledged with LogFlowControl): stored without gaps
@@ -565,11 +567,49 @@ phase_upgrade() {
   docker rm -f "$PREFIX-agent-upgrade" >/dev/null 2>&1
 }
 
+# ======================================================================================================== phase: restart
+phase_restart() {
+  info "---- phase restart: the API is killed without a goodbye five times; the agent must reconnect every time, a vanished agent must be noticed"
+  new_database; start_api "$DB_CONN"
+  login_owner
+  api POST /api/v1/servers '{"name":"e2e-restart","host":"host.docker.internal","roles":["worker"]}'; expect 201 "POST /servers"
+  XSERVER="$(jqe .id)"
+  new_join_token "$XSERVER"
+  agent_setup restart
+  enroll_agent restart "$TOKEN" "$ENDPOINT" "$PIN" || { cat "$WORK/enroll-restart.log" >&2; fail "enroll failed"; }
+  run_agent restart
+  wait_for "agent connected" 60 session_live "$XSERVER"
+  for i in 1 2 3 4 5; do
+    docker restart "$PREFIX-agent-restart" >/dev/null # the agent is in its first seconds when the API goes away (fresh dial, no backoff state)
+    stop_api
+    start_api "$DB_CONN"
+    login_owner
+    START=$SECONDS
+    wait_for "agent reconnects after API restart $i" 90 session_live "$XSERVER"
+    ok "API kill/restart $i: agent reconnected after $((SECONDS - START)) s"
+    agent_log_has "$PREFIX-agent-restart" 'TLS/certificate error' && fail "a control plane restart put the agent into the slow certificate-error retry: $(docker logs "$PREFIX-agent-restart" 2>&1 | grep 'TLS/certificate error' | tail -1 | cut -c1-400)"
+  done
+  # the agent vanishes while the API is down: the stored "connected" must not outlive the restart
+  stop_api
+  docker stop "$PREFIX-agent-restart" >/dev/null
+  start_api "$DB_CONN"
+  login_owner
+  START=$SECONDS
+  wait_for "stale 'connected' corrected" 150 axis_is "$XSERVER" agent unavailable
+  ok "agent gone during an API outage: status.agent corrected to unavailable after $((SECONDS - START)) s"
+  docker start "$PREFIX-agent-restart" >/dev/null
+  wait_for "agent back" 120 session_live "$XSERVER"
+  wait_for "agent axis available" 30 axis_is "$XSERVER" agent available
+  ok "agent started again: connected"
+  docker rm -f "$PREFIX-agent-restart" >/dev/null 2>&1
+}
+
 for p in $PHASES; do
   case "$p" in
     main) phase_main ;;
     renew) phase_renew ;;
     upgrade) phase_upgrade ;;
+    restart) phase_restart ;;
     *) fail "unknown phase $p" ;;
   esac
 done

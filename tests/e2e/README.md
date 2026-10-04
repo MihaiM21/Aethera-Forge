@@ -5,8 +5,8 @@ Linux container that dials the gateway. Everything is driven through the public 
 implementations meet: the .NET suites use `Grpc.Net` clients as the agent, the Go suites use a Go fake control plane.
 
 ```bash
-bash deploy/agent-e2e.sh                     # everything, about 12 minutes
-E2E_PHASES=main bash deploy/agent-e2e.sh     # one phase (main | renew | upgrade)
+bash deploy/agent-e2e.sh                     # everything, about 15 minutes
+E2E_PHASES=main bash deploy/agent-e2e.sh     # one phase (main | renew | upgrade | restart)
 SKIP_AGENT_BUILD=1 SKIP_API_BUILD=1 bash deploy/agent-e2e.sh   # reuse src/agent/dist and the built API
 ```
 
@@ -51,6 +51,10 @@ on Linux). That name is also the SAN of the gateway certificate, so changing it 
 
 **renew** gateway certificates last 5 minutes with a 3.6 minute renewal window: the gateway sends `CertRotationHint`, the agent renews,
 replaces key and certificate on disk, reconnects, and the superseded certificate is revoked (exactly one live certificate remains).
+
+**restart** the API is killed (no goodbye) five times right after the agent restarted: the agent must reconnect each time without entering
+the slow certificate-error retry; then the agent vanishes during an API outage and the stored "connected" status must be corrected to
+`unavailable` after the restart.
 
 **upgrade** `MinAgentVersion=99.0.0`: the agent gets `Disconnect(UPGRADE_REQUIRED)` and is never marked available.
 

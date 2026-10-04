@@ -251,7 +251,10 @@ func IsTLSError(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
-	for _, s := range []string{"x509:", "tls:", "certificate", "handshake failure", "authentication handshake"} {
+	// Only real certificate problems qualify. A handshake that merely dies (EOF,
+	// connection reset: a control plane that is starting or stopping) must keep
+	// the fast reconnect backoff, not the 5 minute certificate retry.
+	for _, s := range []string{"x509:", "failed to verify certificate", "bad certificate", "certificate expired", "expired certificate", "unknown certificate", "certificate required", "certificate revoked"} {
 		if strings.Contains(msg, s) {
 			return true
 		}
