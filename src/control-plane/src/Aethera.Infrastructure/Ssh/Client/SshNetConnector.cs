@@ -45,6 +45,30 @@ public sealed class SshNetConnector : ISshConnector
         return new SshNetConnection(client, presented ?? new HostKeyInfo("unknown", "unknown"));
     }
 
+    public async Task<HostKeyInfo> ScanHostKeyAsync(string host, int port, SshConnectionSettings settings, CancellationToken cancellationToken)
+    {
+        var info = new ConnectionInfo(host, port, "aethera-hostkey-scan", new NoneAuthenticationMethod("aethera-hostkey-scan")) { Timeout = settings.ConnectTimeout };
+        using var client = new SshClient(info);
+        HostKeyInfo? presented = null;
+        client.HostKeyReceived += (_, e) =>
+        {
+            presented = new HostKeyInfo(e.HostKeyName, "SHA256:" + e.FingerPrintSHA256);
+            e.CanTrust = true; // only to finish the handshake: nothing is sent to the server afterwards
+        };
+
+        try
+        {
+            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Authentication is expected to fail; the key arrived before that.
+            if (presented is null) throw Translate(ex);
+        }
+
+        return presented ?? throw new SshConnectException("The server did not present a host key.");
+    }
+
     private static bool FingerprintsEqual(string a, string b) =>
         CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 
@@ -59,7 +83,7 @@ public sealed class SshNetConnector : ISshConnector
                 using var stream = new MemoryStream(Encoding.UTF8.GetBytes(pem));
                 keyFile = string.IsNullOrEmpty(auth.Passphrase) ? new PrivateKeyFile(stream) : new PrivateKeyFile(stream, auth.Passphrase);
             }
-            catch (Exception ex) when (ex is SshException or InvalidOperationException or ArgumentException or NotSupportedException or FormatException or CryptographicException)
+            catch (Exception ex) when (ex is not OperationCanceledException) // the key parser throws SSH, ASN.1, crypto and format exceptions alike; none of them may carry key material out
             {
                 throw new SshConnectException("The stored SSH private key could not be read (wrong format or passphrase).", null, authentication: true);
             }

@@ -237,8 +237,10 @@ public static class DockerJson
         return result;
     }
 
-    private static DateTimeOffset? Time(string text) =>
-        text.Length > 0 && !text.StartsWith("0001-01-01", StringComparison.Ordinal) && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t)
-            ? t.ToUniversalTime()
-            : null;
+    private static DateTimeOffset? Time(string text)
+    {
+        if (text.Length == 0 || text.StartsWith("0001-01-01", StringComparison.Ordinal)) return null;
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(\.\d{7})\d+", "$1"); // Docker prints nanoseconds, .NET parses ticks
+        return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t) ? t.ToUniversalTime() : null;
+    }
 }

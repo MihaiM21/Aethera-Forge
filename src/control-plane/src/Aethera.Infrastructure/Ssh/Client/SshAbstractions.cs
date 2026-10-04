@@ -102,6 +102,9 @@ public interface ISshConnector
     /// <exception cref="SshHostKeyChangedException">The presented key differs from <paramref name="expectedFingerprint"/>.</exception>
     /// <exception cref="SshConnectException">The server could not be reached or refused the credentials.</exception>
     Task<ISshConnection> ConnectAsync(SshTarget target, SshAuth auth, string? expectedFingerprint, SshConnectionSettings settings, CancellationToken cancellationToken);
+
+    /// <summary>Reads the host key a server presents during key exchange and disconnects without authenticating (the "show me the fingerprint" step of the add-server wizard).</summary>
+    Task<HostKeyInfo> ScanHostKeyAsync(string host, int port, SshConnectionSettings settings, CancellationToken cancellationToken);
 }
 
 public sealed record SshConnectionSettings(TimeSpan ConnectTimeout, TimeSpan KeepAliveInterval);

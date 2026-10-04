@@ -9879,10 +9879,805 @@
         ],
         "x-required-scope": "servers:write"
       }
+    },
+    "/api/v1/servers/ssh": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Add a server that Aethera reaches over SSH, optionally installing the agent",
+        "description": "Stores the private key or password as an encrypted secret that belongs to the server (it is never returned). With `installAgent` (default) a `server.install_agent` job is enqueued. A supplied `hostKeyFingerprint` is pinned before the first connection; otherwise the first key is pinned (trust on first use).",
+        "operationId": "addSshServer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSshServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddSshServerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/ssh/host-key": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Read the SSH host key a host presents (nothing is authenticated or stored)",
+        "description": "Lets the user compare the fingerprint with the one shown by the provider before trusting it. Pass it back as `hostKeyFingerprint` when adding the server.",
+        "operationId": "scanSshHostKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanHostKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostKeyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/install-agent": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Install and enrol the agent over SSH (a job)",
+        "description": "Enqueues `server.install_agent`: verifies the host key, puts the agent binary on the host and checks its SHA-256, writes the systemd unit and `agent.yaml`, enrols with a fresh join token passed on standard input, starts the service and waits for the agent's session. The job log shows each step.",
+        "operationId": "installServerAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "SSH endpoint, host key pin, fallback switch and polling state of a server",
+        "operationId": "getServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "patch": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Turn the SSH fallback for a server on or off",
+        "operationId": "updateServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh/host-key/confirm": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Trust the host key a server presented after it changed",
+        "description": "Connections to the server stay blocked (`ssh.host_key_changed`) until an Administrator confirms the new fingerprint, which must be the one in `hostKey.pending`.",
+        "operationId": "confirmServerSshHostKey",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmHostKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/servers/{id}/ssh/test": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Open an SSH connection to the server and report what it answers",
+        "operationId": "testServerSsh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshTestResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddSshServerRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sshPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sshUser": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "privateKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "passphrase": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxConcurrentBuilds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "installAgent": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "hostKeyFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AddSshServerResponse": {
+        "required": [
+          "server",
+          "installJob"
+        ],
+        "type": "object",
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/ServerResponse"
+          },
+          "installJob": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobDto"
+              }
+            ]
+          }
+        }
+      },
       "AgentCaResponse": {
         "required": [
           "certificatePem",
@@ -10535,6 +11330,17 @@
             ]
           },
           "inlineContent": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ConfirmHostKeyRequest": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
             "type": [
               "null",
               "string"
@@ -12479,6 +13285,21 @@
           }
         }
       },
+      "HostKeyResponse": {
+        "required": [
+          "algorithm",
+          "fingerprint"
+        ],
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        }
+      },
       "ImagePullPolicy": {
         "enum": [
           "ifNotPresent",
@@ -12597,6 +13418,17 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "InstallAgentRequest": {
+        "type": "object",
+        "properties": {
+          "hostKeyFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -13516,6 +14348,25 @@
           }
         }
       },
+      "PendingHostKeyResponse": {
+        "required": [
+          "algorithm",
+          "fingerprint",
+          "seenAt"
+        ],
+        "type": "object",
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "seenAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "PortMappingSpec": {
         "required": [
           "containerPort"
@@ -14261,6 +15112,26 @@
           },
           "healthCheck": {
             "$ref": "#/components/schemas/HealthCheckResponse"
+          }
+        }
+      },
+      "ScanHostKeyRequest": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "port": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -15216,6 +16087,180 @@
           }
         }
       },
+      "SshHostKeyStateResponse": {
+        "required": [
+          "state",
+          "pinnedFingerprint",
+          "pending"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "pinnedFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingHostKeyResponse"
+              }
+            ]
+          }
+        }
+      },
+      "SshPollingResponse": {
+        "required": [
+          "since",
+          "lastSuccessAt",
+          "lastAttemptAt",
+          "lastError"
+        ],
+        "type": "object",
+        "properties": {
+          "since": {
+            "format": "date-time"
+          },
+          "lastSuccessAt": {
+            "format": "date-time"
+          },
+          "lastAttemptAt": {
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SshStateResponse": {
+        "required": [
+          "serverId",
+          "hasCredential",
+          "host",
+          "port",
+          "user",
+          "hostKey",
+          "allowSshFallback",
+          "mode",
+          "degraded",
+          "degradedReason",
+          "polling",
+          "observedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hasCredential": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "user": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hostKey": {
+            "$ref": "#/components/schemas/SshHostKeyStateResponse"
+          },
+          "allowSshFallback": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "degraded": {
+            "type": "boolean"
+          },
+          "degradedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "polling": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SshPollingResponse"
+              }
+            ]
+          },
+          "observedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "SshTestResponse": {
+        "required": [
+          "connected",
+          "hostKey",
+          "os",
+          "architecture",
+          "dockerVersion",
+          "latencyMilliseconds"
+        ],
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "hostKey": {
+            "$ref": "#/components/schemas/HostKeyResponse"
+          },
+          "os": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "architecture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dockerVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "latencyMilliseconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "ToolInfo": {
         "required": [
           "name",
@@ -15635,6 +16680,17 @@
               {
                 "$ref": "#/components/schemas/RuntimeRequest"
               }
+            ]
+          }
+        }
+      },
+      "UpdateSshRequest": {
+        "type": "object",
+        "properties": {
+          "allowSshFallback": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         }

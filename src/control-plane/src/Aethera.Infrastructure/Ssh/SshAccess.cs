@@ -47,6 +47,23 @@ public static class SshCredentialFormat
         return trimmed.StartsWith("-----BEGIN", StringComparison.Ordinal) ? new SshAuth { PrivateKey = value.Replace("\r\n", "\n") + (value.EndsWith('\n') ? "" : "\n") } : new SshAuth { Password = value };
     }
 
+    /// <summary>Whether <paramref name="pem"/> is a private key SSH.NET can read with the given passphrase (the add-server endpoint refuses unreadable keys up front).</summary>
+    public static bool TryReadKey(string pem, string? passphrase, out string? error)
+    {
+        try
+        {
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(pem.EndsWith('\n') ? pem : pem + "\n"));
+            using var key = string.IsNullOrEmpty(passphrase) ? new Renci.SshNet.PrivateKeyFile(stream) : new Renci.SshNet.PrivateKeyFile(stream, passphrase);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            error = "The private key could not be read. Check its format and passphrase.";
+            return false;
+        }
+    }
+
     /// <summary>The value to store for the given parts.</summary>
     public static string Compose(string? privateKey, string? passphrase, string? password)
     {
