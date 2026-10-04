@@ -25,6 +25,19 @@ LABEL org.opencontainers.image.title="Aethera control plane" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
+# pg_dump for the scheduled and the pre-migration database backups. The client must be at least as new as the server (PostgreSQL 17 in
+# the compose files), which Ubuntu's own archive does not have: the PostgreSQL project's repository does.
+ARG PG_CLIENT_MAJOR=17
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-${PG_CLIENT_MAJOR} \
+    && apt-get purge -y --auto-remove gnupg \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=api /app ./
 COPY --from=web /src/web/out ./wwwroot
 COPY deploy/docker/control-plane-entrypoint.sh /usr/local/bin/aethera-entrypoint

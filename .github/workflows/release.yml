@@ -2,7 +2,7 @@ name: Release
 
 # Push a tag like v0.1.0 (or v0.2.0-rc.1 for a pre-release). Builds and pushes the GHCR images (linux/amd64 + linux/arm64), builds the
 # static agent binaries and publishes a GitHub release with everything install.sh and install-agent.sh download:
-#   aethera-agent-linux-{amd64,arm64}, SHA256SUMS, install.sh, install-agent.sh, docker-compose.prod.yml
+#   aethera-agent-linux-{amd64,arm64}, SHA256SUMS, install.sh, install-agent.sh, aethera-ctl.sh, docker-compose.prod.yml
 # Run it by hand (workflow_dispatch) to rehearse a release: images are built but not pushed and nothing is published.
 on:
   push:
@@ -55,6 +55,8 @@ jobs:
             dockerfile: deploy/docker/Dockerfile.control-plane
           - name: agent
             dockerfile: deploy/docker/Dockerfile.agent
+          - name: updater
+            dockerfile: deploy/docker/Dockerfile.updater
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -105,11 +107,11 @@ jobs:
         run: |
           mkdir -p release
           cp src/agent/dist/aethera-agent-linux-amd64 src/agent/dist/aethera-agent-linux-arm64 release/
-          cp deploy/install.sh deploy/install-agent.sh release/
+          cp deploy/install.sh deploy/install-agent.sh deploy/aethera-ctl.sh release/
           cp deploy/docker-compose.prod.yml release/
           # The compose file defaults to :latest; a release pins its own version so a fresh install matches what was tested.
           sed -i 's/AETHERA_VERSION:-latest/AETHERA_VERSION:-${{ needs.version.outputs.version }}/g' release/docker-compose.prod.yml
-          (cd release && sha256sum aethera-agent-linux-amd64 aethera-agent-linux-arm64 install.sh install-agent.sh docker-compose.prod.yml > SHA256SUMS)
+          (cd release && sha256sum aethera-agent-linux-amd64 aethera-agent-linux-arm64 install.sh install-agent.sh aethera-ctl.sh docker-compose.prod.yml > SHA256SUMS)
           cat release/SHA256SUMS
       - name: Release notes from CHANGELOG.md
         run: |

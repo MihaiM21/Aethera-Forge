@@ -79,6 +79,8 @@ export function createServersApi(client: ApiClient) {
     prune: (id: string, body: PruneRequest, confirm?: string) =>
       client.post<Job>(`${base(id)}/maintenance/prune`, body, { query: { confirm } }),
     refreshDiscovery: (id: string) => client.post<Job>(`${base(id)}/maintenance/refresh-discovery`),
+    /** Replaces the agent binary with the newest release's (a job; the agent rolls back by itself if the new one does not reconnect). */
+    updateAgent: (id: string) => client.post<Job>(`${base(id)}/agent/update`),
 
     job: (jobId: string, o: Signal = {}) => client.get<Job>(`/jobs/${encodeURIComponent(jobId)}`, o),
   };

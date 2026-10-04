@@ -23,6 +23,8 @@ import type {
   Environment,
   GitCredential,
   Job,
+  Maintenance,
+  MaintenanceReport,
   OrganizationRole,
   Page,
   Project,
@@ -34,8 +36,10 @@ import type {
   Service,
   ServiceSummary,
   ServiceTemplate,
+  SystemVersion,
   UpdateApplicationRequest,
   UpdateServiceRequest,
+  UpdaterState,
   User,
   Volume,
   Webhook,
@@ -219,6 +223,16 @@ export function createResourcesApi(client: ApiClient) {
           query: { limit: q.limit, cursor: q.cursor, action: q.action, resourceType: q.resourceType, resourceId: q.resourceId, actorType: q.actorType, from: q.from, to: q.to },
           signal: o.signal,
         }),
+    },
+
+    system: {
+      version: (o: Signal = {}) => client.get<SystemVersion>("/system/version", o),
+      /** Looks for a new release now (administrators). */
+      checkVersion: () => client.post<SystemVersion>("/system/version/check"),
+      /** Hands the update to the updater container; the API restarts, so poll `version` until it answers again. */
+      startUpdate: () => client.post<UpdaterState>("/system/update", {}),
+      maintenance: (o: Signal = {}) => client.get<Maintenance>("/system/maintenance", o),
+      runMaintenance: () => client.post<MaintenanceReport>("/system/maintenance/run"),
     },
 
     jobs: {

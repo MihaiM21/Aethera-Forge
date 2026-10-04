@@ -70,4 +70,20 @@ describe("resources api client", () => {
     const { api } = setup();
     expect(api.deployments.logDownloadUrl("d 1", "build")).toBe("/api/v1/deployments/d%201/logs?download=true&source=build");
   });
+
+  it("reaches the version, update and maintenance endpoints", async () => {
+    const { api, calls } = setup();
+    await api.system.version();
+    await api.system.checkVersion();
+    await api.system.startUpdate();
+    await api.system.maintenance();
+    await api.system.runMaintenance();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/system/version",
+      "POST /api/v1/system/version/check",
+      "POST /api/v1/system/update",
+      "GET /api/v1/system/maintenance",
+      "POST /api/v1/system/maintenance/run",
+    ]);
+  });
 });

@@ -232,6 +232,20 @@ export function MaintenanceSection({ server, api }: { server: Server; api: Serve
   const [jobs, setJobs] = React.useState<Array<{ job: Job; label: string }>>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [updating, setUpdating] = React.useState(false);
+
+  async function updateAgent() {
+    setUpdating(true);
+    setError(null);
+    try {
+      const job = await api.updateAgent(server.id);
+      setJobs((j) => [{ job, label: "Update agent" }, ...j]);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   async function refreshDiscovery() {
     setRefreshing(true);
@@ -260,6 +274,12 @@ export function MaintenanceSection({ server, api }: { server: Server; api: Serve
         <Button variant="outline" onClick={() => setPruneOpen(true)}>
           Prune Docker resources…
         </Button>
+        {server.transport === "agent" && (
+          <Button variant="outline" onClick={() => void updateAgent()} disabled={updating}>
+            {updating && <Loader2Icon className="animate-spin" aria-hidden="true" />}
+            Update agent
+          </Button>
+        )}
       </div>
       {error && (
         <p role="alert" className="text-xs text-danger">

@@ -49,7 +49,10 @@ services:
       Aethera__Agents__PublicEndpoint: ${AETHERA_PUBLIC_HOST:?set by install.sh}:${AETHERA_GRPC_PORT:-9443}
       # AES-256 key (base64, 32 bytes) that encrypts secrets and the internal CA key. Losing it makes stored secrets unreadable.
       AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:?set by install.sh}
+      # Where new releases are looked up: GitHub by default; a mirror or GitHub Enterprise through AETHERA_UPDATE_API_URL; AETHERA_UPDATE_CHECK=false for air-gapped installs.
       Aethera__Updates__Repository: ${AETHERA_UPDATE_REPOSITORY:-MihaiM21/aethera-forge}
+      Aethera__Updates__ApiBaseUrl: ${AETHERA_UPDATE_API_URL:-https://api.github.com}
+      Aethera__Updates__Enabled: ${AETHERA_UPDATE_CHECK:-true}
     ports:
       - "${AETHERA_HTTP_PORT:-8080}:8080"
       - "${AETHERA_GRPC_PORT:-9443}:9443"
@@ -93,6 +96,22 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside: bind mounts the agent creates are resolved by the host's Docker daemon.
       - /var/lib/aethera:/var/lib/aethera
+
+  # One-click updates from the UI (--profile updater; install.sh enables it). Watches a request file the control plane writes, then
+  # backs up the database, pulls the new images and restarts the stack, rolling back if the new version does not come up. It holds the
+  # Docker socket (root-equivalent) and the installation directory; leave the profile out to update with `aethera update` on the host.
+  updater:
+    profiles: ["updater"]
+    image: ${AETHERA_UPDATER_IMAGE:-ghcr.io/mihaim21/aethera-forge/updater}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      AETHERA_DIR: ${AETHERA_DIR:-/opt/aethera}
+      AETHERA_HEALTH_TIMEOUT: ${AETHERA_HEALTH_TIMEOUT:-180}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside: `docker compose` resolves the project's files and bind mounts on the host.
+      - ${AETHERA_DIR:-/opt/aethera}:${AETHERA_DIR:-/opt/aethera}
+      - aethera_data:/data
 
 networks:
   # The network Aethera's proxy and every routed application join. The agent reuses it when it exists.

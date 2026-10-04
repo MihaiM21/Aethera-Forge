@@ -93,6 +93,16 @@ else
   mv "$COMPOSE.tmp" "$COMPOSE"
 fi
 
+# `aethera`: status, logs, update, backup and restore on this machine; the updater container runs the same script.
+CTL_BIN=/usr/local/bin/aethera
+if [ -n "$COMPOSE_FILE_SRC" ] && [ -f "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" ]; then
+  install -m 0755 "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" "$CTL_BIN"
+else
+  if [ "$VERSION" = latest ]; then base="https://github.com/$REPO/releases/latest/download"
+  else base="https://github.com/$REPO/releases/download/$VERSION"; fi
+  curl -fsSL "$base/aethera-ctl.sh" -o "$CTL_BIN.tmp" && chmod 0755 "$CTL_BIN.tmp" && mv "$CTL_BIN.tmp" "$CTL_BIN" || warn "could not install the aethera command"
+fi
+
 # The .env keeps the generated secrets. An existing one is the source of truth: re-running must never rotate the master key or the
 # database password (that would lock the installation out of its own data).
 env_get() { [ -f "$ENV_FILE" ] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 || true; }
@@ -124,8 +134,21 @@ fi
 env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 [ -z "$DOMAIN" ] || env_set AETHERA_DOMAIN "$DOMAIN"
 env_set AETHERA_VERSION "$VERSION"
+env_set AETHERA_DIR "$DIR"
+# The agent profile is added once this machine's agent is enrolled: an agent without a token would only restart in a loop.
+profiles="updater"
+[ -s /var/lib/aethera/enrollment.json ] && profiles="agent,updater"
+env_set COMPOSE_PROFILES "$profiles"
 env_set AETHERA_HTTP_PORT "$HTTP_PORT"
 env_set AETHERA_GRPC_PORT "$GRPC_PORT"
+
+# Settings the compose file reads, passed through when set in the environment of this script (private registry or mirror, a release
+# mirror, update checks off): AETHERA_IMAGE, AETHERA_AGENT_IMAGE, AETHERA_UPDATER_IMAGE, AETHERA_UPDATE_API_URL, AETHERA_UPDATE_CHECK,
+# AETHERA_UPDATE_REPOSITORY.
+for name in AETHERA_IMAGE AETHERA_AGENT_IMAGE AETHERA_UPDATER_IMAGE AETHERA_UPDATE_API_URL AETHERA_UPDATE_CHECK AETHERA_UPDATE_REPOSITORY AETHERA_HEALTH_TIMEOUT; do
+  value="$(printenv "$name" || true)"
+  [ -z "$value" ] || env_set "$name" "$value"
+done
 
 dc() { docker compose -f "$COMPOSE" --env-file "$ENV_FILE" "$@"; }
 
@@ -175,7 +198,8 @@ fi
 if [ "$WITH_AGENT" -eq 1 ]; then
   if [ -s /var/lib/aethera/enrollment.json ]; then
     say "This machine's agent is already enrolled"
-    dc --profile agent up -d agent
+    env_set COMPOSE_PROFILES "agent,updater"
+    dc up -d agent
   else
     say "Enrolling an agent for this machine"
     server="$(api POST /servers "{\"name\":\"local\",\"host\":\"$PUBLIC_HOST\",\"roles\":[\"master\",\"build\"]}")" || die "could not create the server record"
@@ -186,12 +210,16 @@ if [ "$WITH_AGENT" -eq 1 ]; then
     env_set AETHERA_CA_SHA256 "$(printf '%s' "$jt" | json_field caFingerprintSha256)"
     env_set AETHERA_AGENT_ENDPOINT "127.0.0.1:$GRPC_PORT"
     mkdir -p /var/lib/aethera
-    dc --profile agent up -d agent
+    env_set COMPOSE_PROFILES "agent,updater"
+    dc up -d agent
     # The token is single use and only needed for the first start: take it out of the .env again.
     sleep 5
     env_set AETHERA_JOIN_TOKEN ""
   fi
 fi
+
+say "Starting the updater"
+dc up -d updater || warn "the updater did not start; update with 'aethera update' on this machine instead"
 
 # ---- done -------------------------------------------------------------------------------------------------------------
 if [ -n "$DOMAIN" ]; then URL="https://$DOMAIN (after the proxy is set up and DNS points here)"; else URL="http://$PUBLIC_HOST:$HTTP_PORT"; fi
@@ -205,4 +233,4 @@ if [ -n "$ADMIN_EMAIL" ]; then
 else
   echo "    Next:        open the URL and register: the first account becomes the owner."
 fi
-echo "    Manage:      docker compose -f $COMPOSE --env-file $ENV_FILE ps | logs | pull && up -d"
+echo "    Manage:      aethera status | logs | update | backup   (updates also work from Settings > System in the UI)"

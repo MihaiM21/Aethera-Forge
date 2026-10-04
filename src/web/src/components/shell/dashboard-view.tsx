@@ -54,8 +54,15 @@ function Skeletons({ rows = 3 }: { rows?: number }) {
 export type Alert = { key: string; tone: "danger" | "warning"; text: string; href: string };
 
 /** Alerts derived from what the API already reports: servers whose agent is down, failing applications, high usage. */
-export function deriveAlerts(servers: Server[], apps: ApplicationSummary[], services: ServiceSummary[], usage: { cpu: number | null; memory: number | null; disk: number | null }): Alert[] {
+export function deriveAlerts(
+  servers: Server[],
+  apps: ApplicationSummary[],
+  services: ServiceSummary[],
+  usage: { cpu: number | null; memory: number | null; disk: number | null },
+  update?: { current: string; latest: string } | null,
+): Alert[] {
   const alerts: Alert[] = [];
+  if (update) alerts.push({ key: "update", tone: "warning", text: `Aethera ${update.latest} is available (running ${update.current})`, href: "/settings#system" });
   for (const s of servers) {
     if (s.lifecycle === "active" && s.status.agent.status !== "connected" && s.transport === "agent")
       alerts.push({ key: `srv:${s.id}`, tone: "danger", text: `${s.name}: the agent is ${s.status.agent.status}`, href: `/servers/${s.id}` });
@@ -116,7 +123,11 @@ export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs
   const serverCounts = countBy(serverItems, (s) => (s.status.agent.status === "connected" ? "online" : s.transport === "ssh" ? "ssh" : "offline"));
   const appCounts = countBy(appItems, (a) => a.status);
   const usage = aggregateUsage(metrics.data ?? []);
-  const alerts = deriveAlerts(serverItems, appItems, svcItems, usage);
+  // Only administrators can act on an update, so only they are told. A failing lookup just means no alert.
+  const canUpdate = me?.role === "owner" || me?.role === "admin";
+  const version = usePolled((signal) => api.system.version({ signal }), "dash-version", { intervalMs: 5 * 60_000, enabled: canUpdate });
+  const update = canUpdate && version.data?.updateAvailable && version.data.latest ? { current: version.data.current, latest: version.data.latest.version } : null;
+  const alerts = deriveAlerts(serverItems, appItems, svcItems, usage, update);
   const activeJobs: Job[] = jobs.data?.items ?? [];
   const firstError = [serverList, apps, recent].find((r) => r.error && !r.data)?.error;
 

@@ -72,6 +72,24 @@ describe("SettingsTab destructive actions", () => {
   });
 });
 
+describe("SettingsTab agent update", () => {
+  it("updates the agent through a job and follows it", async () => {
+    const updateAgent = vi.fn().mockResolvedValue(makeJob({ id: "77777777-0000-4000-8000-000000000000" }));
+    const { user, api } = setup({ updateAgent });
+    await user.click(screen.getByRole("button", { name: /update agent/i }));
+    await waitFor(() => expect(updateAgent).toHaveBeenCalledWith(server.id));
+    expect(await screen.findByText("Update agent", { selector: "span" })).toBeInTheDocument();
+    await waitFor(() => expect(api.job).toHaveBeenCalledWith("77777777-0000-4000-8000-000000000000", expect.anything()));
+  });
+
+  it("shows why the agent update was refused", async () => {
+    const updateAgent = vi.fn().mockRejectedValue(problem(404, "server.not_found", "The server does not exist"));
+    const { user } = setup({ updateAgent });
+    await user.click(screen.getByRole("button", { name: /update agent/i }));
+    expect(await screen.findByText(/does not exist/i)).toBeInTheDocument();
+  });
+});
+
 describe("SettingsTab join tokens", () => {
   it("lists tokens without values and revokes only active ones", async () => {
     const revokeJoinToken = vi.fn().mockResolvedValue(undefined);
