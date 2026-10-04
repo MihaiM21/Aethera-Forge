@@ -23,8 +23,8 @@ if "--password-stdin" in args:
     record["stdin"] = sys.stdin.read()
     record["dockerConfig"] = os.environ.get("DOCKER_CONFIG", "")
 
-if os.environ.get("AETHERA_STUB_ENV"):
-    record["env"] = {k: v for k, v in os.environ.items() if k.startswith("BUILD_") or k == "TOKEN"}
+# Variables a build may take from the environment (`--build-arg NAME` without a value): proves a secret never needed argv.
+record["env"] = {k: v for k, v in os.environ.items() if k in ("NPM_TOKEN", "BUILD_SECRET")}
 
 with open("/tmp/docker-calls.jsonl", "a") as log:
     log.write(json.dumps(record) + "\n")
@@ -53,6 +53,8 @@ elif args[:2] == ["image", "pull"]:
     print("1.27: Pulling from library/nginx")
     print("Status: Image is up to date for nginx:1.27")
 elif args[:1] == ["version"]:
+    print("27.3.1")
+elif args[:1] == ["info"] and "{{.ServerVersion}}" in args:
     print("27.3.1")
 elif args[:1] == ["info"]:
     print(json.dumps({"ServerVersion": "27.3.1", "Driver": "overlay2", "CgroupVersion": "2", "DockerRootDir": "/var/lib/docker",
