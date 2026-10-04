@@ -243,6 +243,28 @@ public sealed class StatusServiceTests(GatewayFixture fixture)
         Assert.Equal(ReachabilityStatus.Unknown, (await fixture.LoadServerAsync(noTarget)).ReachabilityStatus);
     }
 
+    [RequiresDatabaseFact]
+    public async Task A_server_stored_as_connected_without_a_live_session_is_marked_unavailable_after_a_restart()
+    {
+        // The API was killed: nobody recorded the disconnect, so the database still says "connected" (found by the agent end-to-end test).
+        var (_, orphan) = await fixture.SeedServerAsync();
+        var (_, live) = await fixture.SeedServerAsync();
+        await fixture.Get<ServerStatusService>().AgentConnectedAsync(orphan, "1.0.0", "linux", "amd64");
+        await fixture.Get<ServerStatusService>().AgentConnectedAsync(live, "1.0.0", "linux", "amd64");
+        await using var agent = FakeAgent.Start(fixture, live);
+        await agent.ExpectWelcomeAsync();
+
+        var service = new AgentGatewayLifetimeService(
+            fixture.Get<Aethera.Infrastructure.Agents.Pki.IInternalCa>(), fixture.Get<AgentSessionRegistry>(), fixture.Get<IServiceScopeFactory>(), fixture.Get<ServerStatusService>(),
+            fixture.Get<IOptions<AgentGatewayOptions>>(), NullLogger<AgentGatewayLifetimeService>.Instance);
+        Assert.True(await service.ReconcileOrphanedSessionsAsync(default) >= 1);
+
+        Assert.Equal(AgentStatus.Unavailable, (await fixture.LoadServerAsync(orphan)).AgentStatus);
+        Assert.Equal(AgentStatus.Connected, (await fixture.LoadServerAsync(live)).AgentStatus);
+        var events = await fixture.WithDbAsync(db => db.ResourceEvents.AsNoTracking().Where(e => e.ResourceId == orphan && e.Axis == "agent" && e.NewValue == "unavailable").ToListAsync());
+        Assert.Single(events);
+    }
+
     [Fact]
     public void The_probe_target_is_the_configured_port_else_the_ssh_port_of_a_server_with_credentials()
     {
