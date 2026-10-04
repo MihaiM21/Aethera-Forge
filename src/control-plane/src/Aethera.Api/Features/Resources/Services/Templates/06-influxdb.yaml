@@ -1,0 +1,32 @@
+key: influxdb
+name: InfluxDB
+description: Time-series database.
+category: database
+image: influxdb
+versions: ["2.7", "2.6"]
+ports:
+  - port: 8086
+    http: true
+volumes:
+  - name: data
+    path: /var/lib/influxdb2
+  - name: config
+    path: /etc/influxdb2
+healthCheck:
+  type: http
+  path: /health
+  port: 8086
+env:
+  - key: DOCKER_INFLUXDB_INIT_MODE
+    value: setup
+  - key: DOCKER_INFLUXDB_INIT_USERNAME
+    value: admin
+  - key: DOCKER_INFLUXDB_INIT_PASSWORD
+    generate: password
+  - key: DOCKER_INFLUXDB_INIT_ORG
+    value: aethera
+  - key: DOCKER_INFLUXDB_INIT_BUCKET
+    value: default
+  - key: DOCKER_INFLUXDB_INIT_ADMIN_TOKEN
+    generate: password
+    length: 48

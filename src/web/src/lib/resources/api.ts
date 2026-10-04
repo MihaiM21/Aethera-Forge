@@ -68,7 +68,7 @@ export function createResourcesApi(client: ApiClient) {
       get: (id: string, o: Signal = {}) => client.get<Project>(`/projects/${enc(id)}`, o),
       create: (body: CreateProjectRequest) => client.post<Project>("/projects", body),
       update: (id: string, body: { name?: string; description?: string | null }) => client.patch<Project>(`/projects/${enc(id)}`, body),
-      remove: (id: string, confirm: string) => client.delete<void>(`/projects/${enc(id)}`, { query: { confirm } }),
+      remove: (id: string, confirm: string, cascade = false) => client.delete<void>(`/projects/${enc(id)}`, { query: { confirm, cascade: cascade || undefined } }),
       templates: (o: Signal = {}) => client.get<ProjectTemplate[]>("/project-templates", o),
       fromTemplate: (body: { templateKey: string; name: string; slug?: string; description?: string; serverId?: string }) =>
         client.post<ProjectFromTemplate>("/projects/from-template", body),

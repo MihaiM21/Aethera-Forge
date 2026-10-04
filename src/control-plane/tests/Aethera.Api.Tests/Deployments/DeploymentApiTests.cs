@@ -434,8 +434,10 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
             new LogEntry("c", 2, DateTimeOffset.UtcNow.AddSeconds(-1), LogSource.Container, LogStream.Stderr, "oops"));
 
         var logs = await t.Viewer.GetJsonAsync($"/api/v1/applications/{appId}/logs?tail=50");
-        Assert.Equal(2, logs["lines"]!.AsArray().Count);
-        Assert.Equal("stderr", logs["lines"]![1]!["stream"]!.GetValue<string>());
+        // The scripted lines are shared by the fixture's transport: assert on ours, not on the count.
+        var lines = logs["lines"]!.AsArray();
+        Assert.Contains(lines, l => l!["text"]!.GetValue<string>() == "oops" && l["stream"]!.GetValue<string>() == "stderr");
+        Assert.Contains(lines, l => l!["text"]!.GetValue<string>() == "hello" && l["stream"]!.GetValue<string>() == "stdout");
         Assert.Equal(HttpStatusCode.BadRequest, (await t.Viewer.GetAsync($"/api/v1/applications/{appId}/logs?tail=0")).StatusCode);
     }
 
@@ -451,5 +453,82 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
         Assert.Contains(log["items"]!.AsArray(), e => e!["action"]!.GetValue<string>() == "application.deploy_requested" && e["resourceId"]!.GetValue<string>() == appId);
         var none = await t.Admin.GetJsonAsync("/api/v1/audit-log?action=nothing.here");
         Assert.Empty(none["items"]!.AsArray());
+    }
+
+    private async Task<(Tenant Tenant, string ServiceId)> ServiceAsync(string templateKey = "postgres")
+    {
+        Transport.On<HealthProbeCommand, HealthProbeOutcome>(_ => new HealthProbeOutcome(true, 1, 0, TimeSpan.Zero, "ok", null));
+        var tenant = await fixture.NewTenantAsync();
+        var server = await tenant.CreateServerAsync(publicIp: "203.0.113.10");
+        var (_, env) = await tenant.CreateProjectWithEnvironmentAsync();
+        var service = await tenant.Developer.CreateAsync("/api/v1/services", new { name = "db", environmentId = env, serverId = server.Id(), templateKey });
+        return (tenant, service.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_deploys_through_the_same_engine_and_joins_the_environment_network()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync();
+
+        var response = await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var queued = await response.ReadAsync();
+        var d = await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        Assert.Equal(DeploymentStatus.Running, d.Status);
+        Assert.StartsWith("postgres:", d.ImageRef);
+        var service = await t.Developer.GetJsonAsync($"/api/v1/services/{serviceId}");
+        Assert.Equal("running", service["state"]!["status"]!.GetValue<string>());
+
+        var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Single();
+        Assert.Contains(create.Spec.Networks!, n => n.Network.StartsWith("aethera-env-") && n.Aliases is { Count: > 0 });
+        Assert.DoesNotContain(create.Spec.Ports!, p => p.HostPort is > 0);
+        Assert.Contains(create.Spec.Env!, e => e.Name == "POSTGRES_USER");
+
+        var list = await t.Viewer.GetJsonAsync($"/api/v1/services/{serviceId}/deployments");
+        Assert.Single(list["items"]!.AsArray());
+        var all = await t.Viewer.GetJsonAsync("/api/v1/deployments");
+        Assert.Contains(all["items"]!.AsArray(), i => i!["deployment"]!["id"]!.GetValue<string>() == queued.Id());
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Service_routes_do_not_accept_an_application_and_the_other_way_round()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("redis");
+        Assert.Equal(HttpStatusCode.NotFound, (await t.Developer.PostAsync($"/api/v1/applications/{serviceId}/deployments", new { })).StatusCode);
+        var (_, appId) = await ImageAppAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await t.Developer.PostAsync($"/api/v1/services/{appId}/deployments", new { })).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_can_be_stopped_and_its_logs_read()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("redis");
+        var queued = await (await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { })).ReadAsync();
+        await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        Transport.LogLines(new LogEntry("c", 1, DateTimeOffset.UtcNow, LogSource.Container, LogStream.Stdout, "ready"));
+        var logs = await t.Viewer.GetJsonAsync($"/api/v1/services/{serviceId}/logs");
+        Assert.Contains(logs["lines"]!.AsArray(), l => l!["text"]!.GetValue<string>() == "ready");
+
+        var stop = await t.Developer.PostAsync($"/api/v1/services/{serviceId}/stop", new { });
+        Assert.Equal(HttpStatusCode.Accepted, stop.StatusCode);
+        await GatewayFixture.EventuallyAsync(async () =>
+            (await t.Developer.GetJsonAsync($"/api/v1/services/{serviceId}"))["state"]!["status"]!.GetValue<string>() == "stopped", "the service to stop", timeoutMs: 15000);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task A_service_whose_image_has_no_default_command_gets_the_one_from_its_template()
+    {
+        Healthy();
+        var (t, serviceId) = await ServiceAsync("minio");
+        var queued = await (await t.Developer.PostAsync($"/api/v1/services/{serviceId}/deployments", new { })).ReadAsync();
+        await WaitForAsync(queued.Id(), Finished, "the service deployment to finish");
+
+        var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Last();
+        Assert.Equal(["server", "/data", "--console-address", ":9001"], create.Spec.Command);
     }
 }

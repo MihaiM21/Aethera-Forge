@@ -38,4 +38,8 @@
     <Delete Files="$(OpenApiDocumentsDirectory)/aethera-v1.json" />
   </Target>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Features\Resources\Services\Templates\*.yaml" />
+  </ItemGroup>
+
 </Project>

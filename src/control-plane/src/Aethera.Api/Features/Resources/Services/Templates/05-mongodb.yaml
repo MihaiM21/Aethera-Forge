@@ -1,0 +1,19 @@
+key: mongodb
+name: MongoDB
+description: Document database.
+category: database
+image: mongo
+versions: ["8.0", "7.0", "6.0"]
+ports:
+  - port: 27017
+volumes:
+  - name: data
+    path: /data/db
+healthCheck:
+  type: tcp
+  port: 27017
+env:
+  - key: MONGO_INITDB_ROOT_USERNAME
+    value: admin
+  - key: MONGO_INITDB_ROOT_PASSWORD
+    generate: password

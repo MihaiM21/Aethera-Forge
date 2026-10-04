@@ -30,22 +30,32 @@ internal static class DeploymentEndpoints
 
     public static void Map(IEndpointRouteBuilder api)
     {
-        var apps = api.MapGroup("/applications").WithTags("Deployments");
-        apps.MapGet("/{id:guid}/deployments", List).WithName("listDeployments").RequireRead();
-        apps.MapPost("/{id:guid}/deployments", Deploy).WithName("deployApplication").RequireDeploy()
-            .Produces<DeploymentDto>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status404NotFound);
-        apps.MapPost("/{id:guid}/redeploy", Redeploy).WithName("redeployApplication").RequireDeploy().Produces<DeploymentDto>(StatusCodes.Status202Accepted);
-        apps.MapPost("/{id:guid}/stop", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-            Lifecycle(id, LifecycleAction.Stop, db, actor, audit, svc, ct)).WithName("stopApplication").RequireDeploy().Produces<JobDto>(StatusCodes.Status202Accepted);
-        apps.MapPost("/{id:guid}/start", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-            Lifecycle(id, LifecycleAction.Start, db, actor, audit, svc, ct)).WithName("startApplication").RequireDeploy().Produces<JobDto>(StatusCodes.Status202Accepted);
-        apps.MapPost("/{id:guid}/restart", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-            Lifecycle(id, LifecycleAction.Restart, db, actor, audit, svc, ct)).WithName("restartApplication").RequireDeploy().Produces<JobDto>(StatusCodes.Status202Accepted);
+        // Applications and services deploy through the same engine: the id is a workload id, the route only decides which kind it must be.
+        MapWorkload(api, "applications", "Application", "application");
+        MapWorkload(api, "services", "Service", "service");
 
         var deployments = api.MapGroup("/deployments").WithTags("Deployments");
         deployments.MapGet("/{id:guid}", Get).WithName("getDeployment").RequireRead();
         deployments.MapPost("/{id:guid}/rollback", Rollback).WithName("rollbackToDeployment").RequireDeploy()
             .Produces<DeploymentDto>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status409Conflict);
+    }
+
+    private static void MapWorkload(IEndpointRouteBuilder api, string prefix, string noun, string kind)
+    {
+        var group = api.MapGroup($"/{prefix}").WithTags("Deployments");
+        group.MapGet("/{id:guid}/deployments", (Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, [AsParameters] PageRequest page, string? sort, string? status, CancellationToken ct) =>
+            List(id, kind, http, db, actor, cursors, page, sort, status, ct)).WithName($"list{noun}Deployments").RequireRead();
+        group.MapPost("/{id:guid}/deployments", (Guid id, DeployRequest? request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
+            Queue(id, kind, DeploymentTrigger.Manual, db, actor, audit, svc, ct)).WithName($"deploy{noun}").RequireDeploy()
+            .Produces<DeploymentDto>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapPost("/{id:guid}/redeploy", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
+            Queue(id, kind, DeploymentTrigger.Redeploy, db, actor, audit, svc, ct)).WithName($"redeploy{noun}").RequireDeploy().Produces<DeploymentDto>(StatusCodes.Status202Accepted);
+        foreach (var (action, name) in new[] { (LifecycleAction.Stop, "stop"), (LifecycleAction.Start, "start"), (LifecycleAction.Restart, "restart") })
+        {
+            var captured = action;
+            group.MapPost($"/{{id:guid}}/{name}", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
+                Lifecycle(id, kind, captured, db, actor, audit, svc, ct)).WithName($"{name}{noun}").RequireDeploy().Produces<JobDto>(StatusCodes.Status202Accepted);
+        }
     }
 
     /// <summary>Developer role and the <c>deploy</c> scope.</summary>
@@ -56,10 +66,10 @@ internal static class DeploymentEndpoints
         db.Deployments.Where(d => d.Workload.Environment.Project.OrganizationId == org);
 
     private static async Task<Ok<Page<DeploymentDto>>> List(
-        Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, [AsParameters] PageRequest page, string? sort, string? status, CancellationToken ct)
+        Guid id, string kind, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, PageRequest page, string? sort, string? status, CancellationToken ct)
     {
         http.RejectUnknownQuery("status");
-        await RequireApplicationAsync(db, actor, id, ct);
+        await RequireWorkloadAsync(db, actor, id, kind, ct);
         var statuses = ResourceHttp.ParseEnumFilter<DeploymentStatus>(status, "status");
         var query = DeploymentsOf(db, actor.Org()).AsNoTracking().Where(d => d.WorkloadId == id);
         if (statuses is not null) query = query.Where(d => statuses.Contains(d.Status));
@@ -74,19 +84,13 @@ internal static class DeploymentEndpoints
         return TypedResults.Ok(ToDto(d, includeSteps: true));
     }
 
-    private static Task<IResult> Deploy(Guid id, DeployRequest? request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-        Queue(id, DeploymentTrigger.Manual, db, actor, audit, svc, ct);
-
-    private static Task<IResult> Redeploy(Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-        Queue(id, DeploymentTrigger.Redeploy, db, actor, audit, svc, ct);
-
     private static async Task<IResult> Queue(
-        Guid applicationId, DeploymentTrigger trigger, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
+        Guid applicationId, string kind, DeploymentTrigger trigger, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
     {
-        await RequireApplicationAsync(db, actor, applicationId, ct);
+        await RequireWorkloadAsync(db, actor, applicationId, kind, ct);
         var queued = await Translate(() => svc.DeployAsync(applicationId, trigger, null, ct));
         var deployment = queued.Deployment;
-        await audit.RecordAsync("application.deploy_requested", "application", applicationId, new { deploymentId = deployment.Id, number = deployment.Number, trigger }, ct);
+        await audit.RecordAsync($"{kind}.deploy_requested", kind, applicationId, new { deploymentId = deployment.Id, number = deployment.Number, trigger }, ct);
         return Results.Accepted($"/api/v1/deployments/{deployment.Id}", ToDto(deployment, includeSteps: false, queued.JobId));
     }
 
@@ -96,26 +100,32 @@ internal static class DeploymentEndpoints
                      ?? throw new ApiProblemException(ApiProblems.NotFound("deployment", id));
         var queued = await Translate(() => svc.RollbackAsync(target.WorkloadId, id, ct));
         var deployment = queued.Deployment;
-        await audit.RecordAsync("application.rollback_requested", "application", target.WorkloadId,
+        await audit.RecordAsync($"{await KindOfAsync(db, target.WorkloadId, ct)}.rollback_requested", await KindOfAsync(db, target.WorkloadId, ct), target.WorkloadId,
             new { deploymentId = deployment.Id, rollbackTo = id, targetNumber = target.Number }, ct);
         return Results.Accepted($"/api/v1/deployments/{deployment.Id}", ToDto(deployment, includeSteps: false, queued.JobId));
     }
 
     private static async Task<IResult> Lifecycle(
-        Guid id, LifecycleAction action, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
+        Guid id, string kind, LifecycleAction action, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
     {
-        await RequireApplicationAsync(db, actor, id, ct);
+        await RequireWorkloadAsync(db, actor, id, kind, ct);
         var job = await Translate(() => svc.LifecycleAsync(id, action, ct));
-        await audit.RecordAsync($"application.{action.ToString().ToLowerInvariant()}_requested", "application", id, new { jobId = job.Id }, ct);
+        await audit.RecordAsync($"{kind}.{action.ToString().ToLowerInvariant()}_requested", kind, id, new { jobId = job.Id }, ct);
         var dto = await JobMapper.ToDtoWithPositionAsync(db, job, ct);
         return Results.Accepted(dto.Links.Self, dto);
     }
 
-    private static async Task RequireApplicationAsync(AetheraDbContext db, ICurrentActor actor, Guid id, CancellationToken ct)
+    /// <summary>404 unless the workload exists in the callers organization and is of the kind the route names.</summary>
+    internal static async Task RequireWorkloadAsync(AetheraDbContext db, ICurrentActor actor, Guid id, string kind, CancellationToken ct)
     {
-        if (!await db.ApplicationsOf(actor.Org()).AsNoTracking().AnyAsync(a => a.Id == id, ct))
-            throw new ApiProblemException(ApiProblems.NotFound("application", id));
+        var org = actor.Org();
+        var query = db.Workloads.AsNoTracking().Where(w => w.Id == id && w.Environment.Project.OrganizationId == org);
+        var exists = kind == "service" ? await query.OfType<Service>().AnyAsync(ct) : await query.OfType<Application>().AnyAsync(ct);
+        if (!exists) throw new ApiProblemException(ApiProblems.NotFound(kind, id));
     }
+
+    private static async Task<string> KindOfAsync(AetheraDbContext db, Guid workloadId, CancellationToken ct) =>
+        await db.Workloads.AsNoTracking().OfType<Service>().AnyAsync(s => s.Id == workloadId, ct) ? "service" : "application";
 
     private static async Task<T> Translate<T>(Func<Task<T>> action)
     {

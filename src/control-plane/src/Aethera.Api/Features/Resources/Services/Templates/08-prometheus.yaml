@@ -1,0 +1,17 @@
+key: prometheus
+name: Prometheus
+description: Metrics collection and alerting.
+category: monitoring
+image: prom/prometheus
+versions: ["v3.1.0", "v2.55.1"]
+ports:
+  - port: 9090
+    http: true
+volumes:
+  - name: data
+    path: /prometheus
+healthCheck:
+  type: http
+  path: /-/healthy
+  port: 9090
+env: []

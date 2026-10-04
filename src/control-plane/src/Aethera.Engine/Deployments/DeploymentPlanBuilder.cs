@@ -66,6 +66,7 @@ public static class DeploymentPlanBuilder
 
         var container = new ContainerSpec("", name)
         {
+            Command = s.Image?.Command is { Count: > 0 } command ? command : null,
             Labels = labels,
             Env = env,
             Ports = s.Ports.Where(p => p.PublishedPort is > 0)

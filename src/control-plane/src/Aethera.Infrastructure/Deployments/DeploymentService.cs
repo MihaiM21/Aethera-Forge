@@ -55,7 +55,7 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
 
     public async Task<Job> LifecycleAsync(Guid applicationId, LifecycleAction action, CancellationToken ct = default)
     {
-        var app = await db.Applications.AsNoTracking().FirstOrDefaultAsync(a => a.Id == applicationId, ct)
+        var app = await db.Workloads.AsNoTracking().FirstOrDefaultAsync(a => a.Id == applicationId, ct)
                   ?? throw new KeyNotFoundException("The application does not exist.");
         if (app.CurrentDeploymentId is null)
             throw new DeploymentConflictException("application.not_deployed", "The application has no running deployment yet.");
@@ -78,15 +78,16 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
         {
             try
             {
-                var app = await db.Applications.Include(a => a.GitSource).FirstOrDefaultAsync(a => a.Id == applicationId, ct)
+                var app = await db.Workloads.FirstOrDefaultAsync(a => a.Id == applicationId, ct)
                           ?? throw new KeyNotFoundException("The application does not exist.");
+                if (app is Application { GitSource: null } application) await db.Entry(application).Reference(a => a.GitSource).LoadAsync(ct);
                 var now = clock.UtcNow;
                 var deployment = Deployment.Queue(app.Id, app.EnvironmentId, app.ServerId, app.AllocateDeploymentNumber(), trigger, now, app.Runtime.DeploymentStrategy);
-                deployment.SourceType = app.SourceKind;
+                deployment.SourceType = (app as Application)?.SourceKind ?? ApplicationSourceKind.DockerImage;
                 deployment.RollbackOfDeploymentId = rollbackOf;
                 deployment.TriggeredByUserId = actor.UserId;
                 deployment.TriggeredByApiTokenId = actor.ApiTokenId;
-                if (app.GitSource is { } git)
+                if (app is Application { GitSource: { } git })
                 {
                     deployment.RepositoryUrl = git.RepositoryUrl;
                     deployment.Ref = info?.Ref ?? git.Branch;

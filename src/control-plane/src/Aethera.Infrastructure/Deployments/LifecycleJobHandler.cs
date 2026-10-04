@@ -23,7 +23,7 @@ public sealed class LifecycleJobHandler : IJobHandler
         var resolver = sp.GetRequiredService<IServerTransportResolver>();
         var payload = context.GetPayload<LifecyclePayload>();
 
-        var app = await db.Applications.FirstOrDefaultAsync(a => a.Id == payload.ApplicationId, cancellationToken)
+        var app = await db.Workloads.FirstOrDefaultAsync(a => a.Id == payload.ApplicationId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
         var deployment = app.CurrentDeploymentId is { } id ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == id, cancellationToken) : null;
         if (deployment is null || deployment.ContainerIds.Count == 0)

@@ -48,12 +48,18 @@ internal static class DeploymentLogEndpoints
             .Produces<string>(StatusCodes.Status200OK, "text/plain")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        api.MapGet("/applications/{id:guid}/logs", RuntimeLogs).WithName("getApplicationLogs").WithTags("Deployments")
-            .WithSummary("Tail the running containers of an application")
-            .WithDescription("A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.")
-            .RequireRead()
-            .Produces<RuntimeLogsDto>()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+        foreach (var (prefix, noun, kind) in new[] { ("applications", "Application", "application"), ("services", "Service", "service") })
+        {
+            var k = kind;
+            api.MapGet($"/{prefix}/{{id:guid}}/logs", (Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, IServerTransportResolver transports, int? tail, DateTimeOffset? since, CancellationToken ct) =>
+                    RuntimeLogs(id, k, http, db, actor, transports, tail, since, ct))
+                .WithName($"get{noun}Logs").WithTags("Deployments")
+                .WithSummary($"Tail the running containers of {(kind == "service" ? "a service" : "an application")}")
+                .WithDescription("A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.")
+                .RequireRead()
+                .Produces<RuntimeLogsDto>()
+                .ProducesProblem(StatusCodes.Status404NotFound);
+        }
     }
 
     private static async Task<Ok<Page<DeploymentListItemDto>>> List(
@@ -63,7 +69,7 @@ internal static class DeploymentLogEndpoints
         http.RejectUnknownQuery("status", "applicationId", "serverId", "trigger");
         var statuses = ResourceHttp.ParseEnumFilter<DeploymentStatus>(status, "status");
         var org = actor.Org();
-        var query = db.Deployments.AsNoTracking().Include(d => d.Workload).Where(d => d.Workload.Environment.Project.OrganizationId == org && d.Workload is Application);
+        var query = db.Deployments.AsNoTracking().Include(d => d.Workload).Where(d => d.Workload.Environment.Project.OrganizationId == org);
         if (statuses is not null) query = query.Where(d => statuses.Contains(d.Status));
         if (applicationId is { } app) query = query.Where(d => d.WorkloadId == app);
         if (serverId is { } server) query = query.Where(d => d.ServerId == server);
@@ -115,14 +121,14 @@ internal static class DeploymentLogEndpoints
     }
 
     private static async Task<IResult> RuntimeLogs(
-        Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, IServerTransportResolver transports, int? tail, DateTimeOffset? since, CancellationToken ct)
+        Guid id, string kind, HttpContext http, AetheraDbContext db, ICurrentActor actor, IServerTransportResolver transports, int? tail, DateTimeOffset? since, CancellationToken ct)
     {
         http.RejectUnknownQuery("tail", "since");
         if (tail is < 1 or > MaxRuntimeTail) return ApiProblems.InvalidParameter("tail", $"Must be between 1 and {MaxRuntimeTail}.", "range");
 
         var org = actor.Org();
-        var app = await db.ApplicationsOf(org).AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct)
-                  ?? throw new ApiProblemException(ApiProblems.NotFound("application", id));
+        await DeploymentEndpoints.RequireWorkloadAsync(db, actor, id, kind, ct);
+        var app = await db.Workloads.AsNoTracking().FirstAsync(a => a.Id == id, ct);
         var containers = app.CurrentDeploymentId is { } current
             ? await db.Deployments.AsNoTracking().Where(d => d.Id == current).Select(d => d.ContainerIds).FirstOrDefaultAsync(ct) ?? []
             : [];
