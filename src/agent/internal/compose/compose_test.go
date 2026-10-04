@@ -44,6 +44,12 @@ func TestValidateRejectsHostPower(t *testing.T) {
 		"socket":      "services:\n  a:\n    image: x\n    volumes: [\"/var/run/docker.sock:/var/run/docker.sock\"]\n",
 		"long socket": "services:\n  a:\n    image: x\n    volumes:\n      - type: bind\n        source: /var/run/docker.sock\n        target: /s\n",
 		"escape":      "services:\n  a:\n    image: x\n    volumes: [\"../../etc:/etc\"]\n",
+		"abs build":   "services:\n  a:\n    build: /etc\n",
+		"abs context": "services:\n  a:\n    build:\n      context: /home/user\n",
+		"up build":    "services:\n  a:\n    build:\n      context: ../other\n",
+		"env abs":     "services:\n  a:\n    image: x\n    env_file: /etc/environment\n",
+		"env list":    "services:\n  a:\n    image: x\n    env_file:\n      - ./ok.env\n      - path: ../../secrets.env\n",
+		"secret file": "services:\n  a:\n    image: x\nsecrets:\n  s:\n    file: /etc/shadow\n",
 	}
 	for name, doc := range bad {
 		if err := Validate(doc, denyBinds{}); err == nil {
@@ -52,6 +58,9 @@ func TestValidateRejectsHostPower(t *testing.T) {
 	}
 	if err := Validate("services:\n  a:\n    image: x\n    volumes: [\"data:/d\", \"./conf:/c\"]\n", denyBinds{}); err != nil {
 		t.Errorf("named and project-relative volumes rejected: %v", err)
+	}
+	if err := Validate("services:\n  a:\n    build: ./app\n    env_file: [.env, ./conf/a.env]\n", denyBinds{}); err != nil {
+		t.Errorf("project-local build and env files rejected: %v", err)
 	}
 	if err := Validate("services: [", nil); err == nil {
 		t.Error("invalid yaml accepted")

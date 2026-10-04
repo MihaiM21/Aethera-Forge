@@ -25,7 +25,7 @@ const (
 	DefaultNetwork = "aethera-proxy"
 	// DefaultImage and DefaultVersion are used when the command leaves them empty.
 	DefaultImage   = "traefik"
-	DefaultVersion = "v3.1"
+	DefaultVersion = "v3.6"
 
 	configLabel  = "aethera.proxy.config-sha256"
 	managedLabel = "aethera.managed"

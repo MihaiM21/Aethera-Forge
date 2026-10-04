@@ -354,9 +354,20 @@ func mapHealth(s string) agentv1.ContainerHealth {
 func Validate(content string, binds BindChecker) error {
 	var doc struct {
 		Services map[string]map[string]any `yaml:"services"`
+		Secrets  map[string]map[string]any `yaml:"secrets"`
+		Configs  map[string]map[string]any `yaml:"configs"`
 	}
 	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
 		return fmt.Errorf("invalid compose file: %w", err)
+	}
+	for _, group := range []map[string]map[string]any{doc.Secrets, doc.Configs} {
+		for name, def := range group {
+			if f, ok := def["file"].(string); ok {
+				if err := projectLocal(f); err != nil {
+					return fmt.Errorf("%q: file %w", name, err)
+				}
+			}
+		}
 	}
 	for name, svc := range doc.Services {
 		fail := func(format string, a ...any) error {
@@ -389,6 +400,14 @@ func Validate(content string, binds BindChecker) error {
 				if strings.Contains(fmt.Sprint(o), "unconfined") {
 					return fail("unconfined security options are not allowed")
 				}
+			}
+		}
+		if err := buildContextLocal(svc["build"]); err != nil {
+			return fail("build context %v", err)
+		}
+		for _, f := range envFiles(svc["env_file"]) {
+			if err := projectLocal(f); err != nil {
+				return fail("env_file %v", err)
 			}
 		}
 		vols, _ := svc["volumes"].([]any)
@@ -435,4 +454,64 @@ func bindSource(v any) string {
 		}
 	}
 	return ""
+}
+
+// projectLocal accepts only paths inside the project directory: absolute paths and ".." would read host files (/etc, other
+// projects) into an image, an environment or a secret. URLs are left to docker.
+func projectLocal(p string) error {
+	if strings.Contains(p, "://") {
+		return nil
+	}
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, `\`) || (len(p) > 1 && p[1] == ':') {
+		return fmt.Errorf("%q must be relative to the project directory", p)
+	}
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return fmt.Errorf("%q must not contain '..'", p)
+		}
+	}
+	return nil
+}
+
+func buildContextLocal(v any) error {
+	switch t := v.(type) {
+	case string:
+		return projectLocal(t)
+	case map[string]any:
+		if c, ok := t["context"].(string); ok {
+			if err := projectLocal(c); err != nil {
+				return err
+			}
+		}
+		if df, ok := t["dockerfile"].(string); ok {
+			return projectLocal(df)
+		}
+	}
+	return nil
+}
+
+// envFiles flattens the three spellings of env_file: a string, a list of strings, a list of {path: ...}.
+func envFiles(v any) []string {
+	switch t := v.(type) {
+	case string:
+		return []string{t}
+	case []any:
+		var out []string
+		for _, e := range t {
+			switch x := e.(type) {
+			case string:
+				out = append(out, x)
+			case map[string]any:
+				if p, ok := x["path"].(string); ok {
+					out = append(out, p)
+				}
+			}
+		}
+		return out
+	case map[string]any:
+		if p, ok := t["path"].(string); ok {
+			return []string{p}
+		}
+	}
+	return nil
 }
