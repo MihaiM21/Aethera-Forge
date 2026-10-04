@@ -1785,7 +1785,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLogsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "401": {
             "description": "Not authenticated (auth.unauthenticated).",
@@ -11595,7 +11612,24 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "401": {
             "description": "Not authenticated (auth.unauthenticated).",
@@ -17568,6 +17602,68 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "RuntimeLogContainerDto": {
+        "required": [
+          "container",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RuntimeLogLineDto": {
+        "required": [
+          "container",
+          "timestamp",
+          "stream",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeLogsDto": {
+        "required": [
+          "containers",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLogContainerDto"
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLogLineDto"
+            }
           }
         }
       },

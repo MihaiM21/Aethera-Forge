@@ -43,12 +43,17 @@ internal static class DeploymentLogEndpoints
         deployments.MapGet("/{id:guid}/logs", Logs).WithName("getDeploymentLogs")
             .WithSummary("Read the build or pipeline log of a deployment, paged by sequence, or download it as text")
             .WithDescription("`source` is `build` (default when the deployment built an image) or `deploy`. Live lines come from the `/hubs/logs` stream named in `streamId`.")
-            .RequireRead();
+            .RequireRead()
+            .Produces<DeploymentLogPageDto>()
+            .Produces<string>(StatusCodes.Status200OK, "text/plain")
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         api.MapGet("/applications/{id:guid}/logs", RuntimeLogs).WithName("getApplicationLogs").WithTags("Deployments")
             .WithSummary("Tail the running containers of an application")
             .WithDescription("A bounded snapshot of the last `tail` lines per container (stdout and stderr), oldest first; poll with `since` for new lines.")
-            .RequireRead();
+            .RequireRead()
+            .Produces<RuntimeLogsDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static async Task<Ok<Page<DeploymentListItemDto>>> List(
