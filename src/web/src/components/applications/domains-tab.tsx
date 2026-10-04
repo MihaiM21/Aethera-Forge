@@ -30,7 +30,7 @@ export function CertBadge({ domain }: { domain: Pick<Domain, "certificate" | "ht
   return <Badge tone={s === "issued" ? "success" : s === "failed" || s === "expired" ? "danger" : "neutral"}>cert {s}</Badge>;
 }
 
-function AddDomainDialog({ kind, id, onClose, onAdded, api }: { kind: WorkloadKind; id: string; onClose: () => void; onAdded: () => void; api: ResourcesApi }) {
+export function AddDomainDialog({ kind, id, onClose, onAdded, api }: { kind: WorkloadKind; id: string; onClose: () => void; onAdded: () => void; api: ResourcesApi }) {
   const [hostname, setHostname] = React.useState("");
   const [port, setPort] = React.useState("");
   const [path, setPath] = React.useState("");

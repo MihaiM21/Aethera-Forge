@@ -20,6 +20,8 @@ export type WizardState = {
   name: string;
   slug: string;
   slugTouched: boolean;
+  /** The user typed the name: stop suggesting one from the repository or image. */
+  nameTouched: boolean;
   method: BuildMethod;
   repoUrl: string;
   branch: string;
@@ -49,6 +51,7 @@ export const initialWizardState: WizardState = {
   name: "",
   slug: "",
   slugTouched: false,
+  nameTouched: false,
   method: "dockerfile",
   repoUrl: "",
   branch: "main",
@@ -172,6 +175,11 @@ export function applyCandidate(s: WizardState, c: BuildCandidate): WizardState {
 
 export function nextSlug(s: WizardState, name: string): Partial<WizardState> {
   return s.slugTouched ? { name } : { name, slug: slugify(name) };
+}
+
+/** A name suggested from the repository or image, until the user types their own. */
+export function suggestFrom(s: WizardState, text: string): Partial<WizardState> {
+  return s.nameTouched || !text ? {} : nextSlug(s, text);
 }
 
 const nz = (v: string): string | undefined => (v.trim() ? v.trim() : undefined);

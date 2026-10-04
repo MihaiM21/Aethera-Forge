@@ -23,6 +23,7 @@ import {
   isRepoMethod,
   nextSlug,
   parseDotenv,
+  suggestFrom,
   suggestName,
   toCreateRequest,
   validateStep,
@@ -261,7 +262,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                       placeholder="https://github.com/owner/repo.git"
                       onChange={(e) => {
                         const url = e.target.value;
-                        set({ repoUrl: url, ...(s.name ? {} : nextSlug(s, suggestName(url))) });
+                        set({ repoUrl: url, ...suggestFrom(s, suggestName(url)) });
                       }}
                     />
                   )}
@@ -293,7 +294,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
             {s.method === "dockerImage" && (
               <div className="grid gap-4 sm:grid-cols-3">
                 <Field label="Image" error={err("image")} className="sm:col-span-2">
-                  {(c) => <Input {...c} value={s.image} placeholder="nginx" onChange={(e) => set({ image: e.target.value, ...(s.name ? {} : nextSlug(s, e.target.value.split("/").pop() ?? "")) })} />}
+                  {(c) => <Input {...c} value={s.image} placeholder="nginx" onChange={(e) => set({ image: e.target.value, ...suggestFrom(s, (e.target.value.split("/").pop() ?? "").split(":")[0]) })} />}
                 </Field>
                 <Field label="Tag" error={err("tag")}>
                   {(c) => <Input {...c} value={s.tag} onChange={(e) => set({ tag: e.target.value })} />}
@@ -321,7 +322,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Application name" error={err("name")}>
-                {(c) => <Input {...c} value={s.name} onChange={(e) => set(nextSlug(s, e.target.value))} />}
+                {(c) => <Input {...c} value={s.name} onChange={(e) => set({ ...nextSlug(s, e.target.value), nameTouched: true })} />}
               </Field>
               <Field label="Slug" error={err("slug")} hint="Used in container and image names.">
                 {(c) => <Input {...c} className="font-mono" value={s.slug} onChange={(e) => set({ slug: e.target.value, slugTouched: true })} />}

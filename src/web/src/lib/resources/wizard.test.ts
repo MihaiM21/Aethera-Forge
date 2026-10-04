@@ -6,6 +6,7 @@ import {
   nextSlug,
   parseDotenv,
   providerOf,
+  suggestFrom,
   suggestName,
   toCreateRequest,
   validateStep,
@@ -96,6 +97,12 @@ describe("helpers", () => {
   it("derives the slug from the name until the user edits it", () => {
     expect(nextSlug(initialWizardState, "My App!").slug).toBe("my-app");
     expect(nextSlug({ ...initialWizardState, slugTouched: true, slug: "custom" }, "Other")).toEqual({ name: "Other" });
+  });
+
+  it("suggests a name from the repository only until the user typed one", () => {
+    expect(suggestFrom(initialWizardState, "my-app")).toMatchObject({ name: "my-app", slug: "my-app" });
+    expect(suggestFrom({ ...initialWizardState, nameTouched: true }, "other")).toEqual({});
+    expect(suggestFrom(initialWizardState, "")).toEqual({});
   });
 
   it("applies a detection candidate to the build step", () => {

@@ -174,6 +174,7 @@ export function createResourcesApi(client: ApiClient) {
           signal: o.signal,
         }),
       create: (body: CreateSecretRequest) => client.post<Secret>("/secrets", body),
+      update: (id: string, body: { name?: string; description?: string | null }) => client.patch<Secret>(`/secrets/${enc(id)}`, body),
       rotate: (id: string, value: string) => client.post<Secret>(`/secrets/${enc(id)}/rotate`, { value }),
       reveal: (id: string) => client.post<{ id: string; name: string; version: number | string | null; value: string }>(`/secrets/${enc(id)}/reveal`),
       remove: (id: string) => client.delete<void>(`/secrets/${enc(id)}`),
@@ -188,6 +189,14 @@ export function createResourcesApi(client: ApiClient) {
 
     gitCredentials: {
       list: (o: Signal = {}) => client.get<Page<GitCredential>>("/git-credentials", o),
+      create: (body: { name: string; kind: "token" | "deployKey" | "basicAuth"; provider?: string; username?: string; value: string; publicKey?: string }) =>
+        client.post<GitCredential>("/git-credentials", body),
+      /** Needs the credential name as `?confirm=`; 409 `git_credential.in_use` while an application uses it. */
+      remove: (id: string, confirm: string) => client.delete<void>(`/git-credentials/${enc(id)}`, { query: { confirm } }),
+    },
+
+    account: {
+      changePassword: (currentPassword: string, newPassword: string) => client.post<void>("/auth/password", { currentPassword, newPassword }),
     },
 
     users: {
