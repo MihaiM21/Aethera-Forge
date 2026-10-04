@@ -1234,10 +1234,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/ssh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a server that Aethera reaches over SSH, optionally installing the agent
+         * @description Stores the private key or password as an encrypted secret that belongs to the server (it is never returned). With `installAgent` (default) a `server.install_agent` job is enqueued. A supplied `hostKeyFingerprint` is pinned before the first connection; otherwise the first key is pinned (trust on first use).
+         */
+        post: operations["addSshServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/ssh/host-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the SSH host key a host presents (nothing is authenticated or stored)
+         * @description Lets the user compare the fingerprint with the one shown by the provider before trusting it. Pass it back as `hostKeyFingerprint` when adding the server.
+         */
+        post: operations["scanSshHostKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/install-agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install and enrol the agent over SSH (a job)
+         * @description Enqueues `server.install_agent`: verifies the host key, puts the agent binary on the host and checks its SHA-256, writes the systemd unit and `agent.yaml`, enrols with a fresh join token passed on standard input, starts the service and waits for the agent's session. The job log shows each step.
+         */
+        post: operations["installServerAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/ssh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** SSH endpoint, host key pin, fallback switch and polling state of a server */
+        get: operations["getServerSsh"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Turn the SSH fallback for a server on or off */
+        patch: operations["updateServerSsh"];
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/ssh/host-key/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trust the host key a server presented after it changed
+         * @description Connections to the server stay blocked (`ssh.host_key_changed`) until an Administrator confirms the new fingerprint, which must be the one in `hostKey.pending`.
+         */
+        post: operations["confirmServerSshHostKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/ssh/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open an SSH connection to the server and report what it answers */
+        post: operations["testServerSsh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddSshServerRequest: {
+            name?: null | string;
+            host?: null | string;
+            /** Format: int32 */
+            sshPort?: null | number | string;
+            sshUser?: null | string;
+            privateKey?: null | string;
+            passphrase?: null | string;
+            password?: null | string;
+            roles?: null | string[];
+            publicIp?: null | string;
+            /** Format: int32 */
+            maxConcurrentBuilds?: null | number | string;
+            installAgent?: null | boolean;
+            hostKeyFingerprint?: null | string;
+        };
+        AddSshServerResponse: {
+            server: components["schemas"]["ServerResponse"];
+            installJob: null | components["schemas"]["JobDto"];
+        };
         AgentCaResponse: {
             certificatePem: string;
             fingerprintSha256: string;
@@ -1398,6 +1533,9 @@ export interface components {
         ComposeSourceResponse: {
             filePath: null | string;
             inlineContent: null | string;
+        };
+        ConfirmHostKeyRequest: {
+            fingerprint?: null | string;
         };
         /** @enum {unknown} */
         ContainerHealthState: "unspecified" | "none" | "starting" | "healthy" | "unhealthy";
@@ -1871,6 +2009,10 @@ export interface components {
             /** Format: date-time */
             bootTime: unknown;
         };
+        HostKeyResponse: {
+            algorithm: string;
+            fingerprint: string;
+        };
         /** @enum {unknown} */
         ImagePullPolicy: "ifNotPresent" | "always" | "never";
         ImageSourceRequest: {
@@ -1897,6 +2039,9 @@ export interface components {
             created: string[];
             updated: string[];
             skipped: string[];
+        };
+        InstallAgentRequest: {
+            hostKeyFingerprint?: null | string;
         };
         IpamEntry: {
             subnet: string;
@@ -2117,6 +2262,12 @@ export interface components {
             items: components["schemas"]["VolumeResponse"][];
             nextCursor: null | string;
         };
+        PendingHostKeyResponse: {
+            algorithm: string;
+            fingerprint: string;
+            /** Format: date-time */
+            seenAt: unknown;
+        };
         PortMappingSpec: {
             /** Format: int32 */
             containerPort: number | string;
@@ -2305,6 +2456,11 @@ export interface components {
             ports: components["schemas"]["PortResponse"][];
             resources: components["schemas"]["ResourceLimitsResponse"];
             healthCheck: components["schemas"]["HealthCheckResponse"];
+        };
+        ScanHostKeyRequest: {
+            host?: null | string;
+            /** Format: int32 */
+            port?: null | number | string;
         };
         SecretOwnerResponse: {
             type: string;
@@ -2539,6 +2695,46 @@ export interface components {
         SetupStatusResponse: {
             setupRequired: boolean;
         };
+        SshHostKeyStateResponse: {
+            state: string;
+            pinnedFingerprint: null | string;
+            pending: null | components["schemas"]["PendingHostKeyResponse"];
+        };
+        SshPollingResponse: {
+            /** Format: date-time */
+            since: unknown;
+            /** Format: date-time */
+            lastSuccessAt: unknown;
+            /** Format: date-time */
+            lastAttemptAt: unknown;
+            lastError: null | string;
+        };
+        SshStateResponse: {
+            /** Format: uuid */
+            serverId: string;
+            hasCredential: boolean;
+            host: string;
+            /** Format: int32 */
+            port: number | string;
+            user: null | string;
+            hostKey: components["schemas"]["SshHostKeyStateResponse"];
+            allowSshFallback: boolean;
+            mode: string;
+            degraded: boolean;
+            degradedReason: null | string;
+            polling: null | components["schemas"]["SshPollingResponse"];
+            /** Format: date-time */
+            observedAt: unknown;
+        };
+        SshTestResponse: {
+            connected: boolean;
+            hostKey: components["schemas"]["HostKeyResponse"];
+            os: null | string;
+            architecture: null | string;
+            dockerVersion: null | string;
+            /** Format: double */
+            latencyMilliseconds: number | string;
+        };
         ToolInfo: {
             name: string;
             version: string;
@@ -2621,6 +2817,9 @@ export interface components {
             templateVersion?: null | string;
             config?: null | components["schemas"]["JsonObject"];
             runtime?: null | components["schemas"]["RuntimeRequest"];
+        };
+        UpdateSshRequest: {
+            allowSshFallback?: null | boolean;
         };
         UpdateUserRequest: {
             email?: null | string;
@@ -9292,6 +9491,510 @@ export interface operations {
             };
             /** @description Unexpected error (internal.error). */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    addSshServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSshServerRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddSshServerResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    scanSshHostKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanHostKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostKeyResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    installServerAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getServerSsh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshStateResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateServerSsh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/merge-patch+json": components["schemas"]["UpdateSshRequest"];
+                "application/json": components["schemas"]["UpdateSshRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshStateResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    confirmServerSshHostKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmHostKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshStateResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    testServerSsh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SshTestResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
