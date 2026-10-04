@@ -18,6 +18,7 @@ import { usePolled } from "@/lib/servers/use-polled";
  */
 export function RollbackDialog({
   applicationId,
+  kind = "applications",
   currentDeploymentId,
   open,
   onOpenChange,
@@ -26,6 +27,7 @@ export function RollbackDialog({
   preselect,
 }: {
   applicationId: string;
+  kind?: "applications" | "services";
   currentDeploymentId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,7 +36,7 @@ export function RollbackDialog({
   api?: ResourcesApi;
   preselect?: string;
 }) {
-  const list = usePolled((signal) => api.applications.deployments(applicationId, { limit: 50 }, { signal }), `rollback:${applicationId}`, {
+  const list = usePolled((signal) => (kind === "services" ? api.services.deployments(applicationId, { signal }) : api.applications.deployments(applicationId, { limit: 50 }, { signal })), `rollback:${applicationId}`, {
     intervalMs: null,
     enabled: open,
   });

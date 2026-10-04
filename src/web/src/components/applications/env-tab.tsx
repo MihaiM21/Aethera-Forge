@@ -3,7 +3,7 @@
 import * as React from "react";
 import { EyeIcon, EyeOffIcon, KeyRoundIcon, PlusIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { FormError, SaveButton, useAction } from "@/components/resources/form";
-import { ErrorPanel, SectionTitle } from "@/components/servers/common";
+import { CopyButton, ErrorPanel, SectionTitle } from "@/components/servers/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -133,11 +133,49 @@ function ImportDialog({ open, onOpenChange, onImport }: { open: boolean; onOpenC
   );
 }
 
+function RevealDialog({ env, api, onClose }: { env: EnvVar; api: ResourcesApi; onClose: () => void }) {
+  const [value, setValue] = React.useState<string | null>(null);
+  const act = useAction();
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reveal {env.key}</DialogTitle>
+          <DialogDescription>Revealing a secret needs the administrator role and is recorded in the audit log.</DialogDescription>
+        </DialogHeader>
+        {value === null ? (
+          <Button
+            onClick={async () => {
+              const r = await act.run(() => api.secrets.reveal(env.secretId!));
+              if (r) setValue(r.value);
+            }}
+            disabled={act.pending}
+          >
+            <EyeIcon aria-hidden="true" /> Reveal the current value
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all border border-border bg-muted px-2 py-1.5 font-mono text-xs">{value}</code>
+            <CopyButton text={value} />
+          </div>
+        )}
+        <FormError message={act.error} />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Environment variables of an application or service. Secret values are masked: the API never returns them. */
 export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadKind; id: string; slug: string; api?: ResourcesApi }) {
   const list = usePolled((signal) => api.envVars.list(kind, id, { signal }), `env:${id}`, { intervalMs: null });
   const [editing, setEditing] = React.useState<EnvVar | "new" | null>(null);
   const [importing, setImporting] = React.useState(false);
+  const [revealing, setRevealing] = React.useState<EnvVar | null>(null);
   const act = useAction();
 
   async function save(v: { key: string; value: string; secret: boolean; build: boolean; runtime: boolean }): Promise<boolean> {
@@ -188,7 +226,7 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
                 <TableHead>Name</TableHead>
                 <TableHead>Value</TableHead>
                 <TableHead>Scope</TableHead>
-                <TableHead className="w-24 text-right">Actions</TableHead>
+                <TableHead className="w-32 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -211,6 +249,11 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
+                    {v.isSecret && v.secretId && (
+                      <Button size="icon-sm" variant="ghost" aria-label={`Reveal ${v.key}`} onClick={() => setRevealing(v)}>
+                        <EyeIcon aria-hidden="true" />
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => setEditing(v)}>
                       Edit
                     </Button>
@@ -233,6 +276,7 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
         </div>
       )}
       {editing && <EnvDialog key={editing === "new" ? "new" : editing.id} open onOpenChange={(o) => !o && setEditing(null)} existing={editing === "new" ? null : editing} onSave={save} />}
+      {revealing && <RevealDialog env={revealing} api={api} onClose={() => setRevealing(null)} />}
       {importing && (
         <ImportDialog
           open

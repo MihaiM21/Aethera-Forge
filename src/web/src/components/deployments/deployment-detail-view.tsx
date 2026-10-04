@@ -38,10 +38,21 @@ export function DeploymentDetailView({ api = resourcesApi, id: idProp }: { api?:
   const dep = usePolled((signal) => api.deployments.get(id!, { signal }), String(id), { intervalMs: 2500, enabled: id !== null });
   const d = dep.data;
   const active = d ? isDeploymentActive(d.status) : true;
-  const app = usePolled((signal) => api.applications.get(d!.applicationId, { signal }), `app:${d?.applicationId}`, {
-    intervalMs: null,
-    enabled: Boolean(d),
-  });
+  // The id is a workload id: an application, or a service (the API answers 404 for the wrong kind).
+  const workload = usePolled(
+    async (signal) => {
+      try {
+        const app = await api.applications.get(d!.applicationId, { signal });
+        return { kind: "applications" as const, name: app.name };
+      } catch (e) {
+        if (!isApiError(e) || e.status !== 404) throw e;
+        const svc = await api.services.get(d!.applicationId, { signal });
+        return { kind: "services" as const, name: svc.name };
+      }
+    },
+    `workload:${d?.applicationId}`,
+    { intervalMs: null, enabled: Boolean(d) },
+  );
   const log = useDeploymentLog(api, id, tab ?? undefined);
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -82,12 +93,13 @@ export function DeploymentDetailView({ api = resourcesApi, id: idProp }: { api?:
   if (!d) return <ErrorPanel error={dep.error} title="Could not load the deployment" onRetry={() => void dep.refresh()} />;
 
   const logTab = tab ?? (log.sources.includes("build") ? "build" : "deploy");
-  const appName = app.data?.name ?? "Application";
+  const kind = workload.data?.kind ?? "applications";
+  const appName = workload.data?.name ?? "Workload";
 
   async function redeploy() {
     setActionError(null);
     try {
-      const next = await api.applications.redeploy(d!.applicationId);
+      const next = await (kind === "services" ? api.services.deploy(d!.applicationId) : api.applications.redeploy(d!.applicationId));
       navigateTo(`/deployments/${encodeURIComponent(next.id)}`);
     } catch (e) {
       setActionError(errorMessage(e));
@@ -106,7 +118,7 @@ export function DeploymentDetailView({ api = resourcesApi, id: idProp }: { api?:
         }
         description={
           <span>
-            <DetailLink href={`/applications/${encodeURIComponent(d.applicationId)}`} className="text-lime underline-offset-4 hover:underline">
+            <DetailLink href={`/${kind}/${encodeURIComponent(d.applicationId)}`} className="text-lime underline-offset-4 hover:underline">
               {appName}
             </DetailLink>
             {d.commitMessage ? ` · ${d.commitMessage}` : ""}
@@ -115,8 +127,8 @@ export function DeploymentDetailView({ api = resourcesApi, id: idProp }: { api?:
         actions={
           <>
             <Button variant="outline" asChild>
-              <DetailLink href={`/applications/${encodeURIComponent(d.applicationId)}#deployments`}>
-                <ChevronLeftIcon aria-hidden="true" /> Application
+              <DetailLink href={`/${kind}/${encodeURIComponent(d.applicationId)}#deployments`}>
+                <ChevronLeftIcon aria-hidden="true" /> {kind === "services" ? "Service" : "Application"}
               </DetailLink>
             </Button>
             <Button variant="outline" onClick={() => setRollbackOpen(true)}>
@@ -193,6 +205,7 @@ export function DeploymentDetailView({ api = resourcesApi, id: idProp }: { api?:
 
       <RollbackDialog
         applicationId={d.applicationId}
+        kind={kind}
         currentDeploymentId={d.id}
         open={rollbackOpen}
         onOpenChange={setRollbackOpen}
