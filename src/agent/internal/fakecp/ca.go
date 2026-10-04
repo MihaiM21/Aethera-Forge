@@ -70,6 +70,16 @@ func serial() *big.Int {
 // ServerCert issues a TLS server certificate for the given hosts (DNS names or
 // IPs) and returns it with the CA appended to the chain.
 func (ca *CA) ServerCert(hosts ...string) (tls.Certificate, error) {
+	return ca.serverCert(false, hosts...)
+}
+
+// ServerCertEmbeddedCA is ServerCert the way the real control plane presents it:
+// only the leaf goes on the wire, and the CA travels inside it (pki.EmbeddedCAOID).
+func (ca *CA) ServerCertEmbeddedCA(hosts ...string) (tls.Certificate, error) {
+	return ca.serverCert(true, hosts...)
+}
+
+func (ca *CA) serverCert(embed bool, hosts ...string) (tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -89,9 +99,15 @@ func (ca *CA) ServerCert(hosts ...string) (tls.Certificate, error) {
 			tmpl.DNSNames = append(tmpl.DNSNames, h)
 		}
 	}
+	if embed {
+		tmpl.ExtraExtensions = []pkix.Extension{{Id: pki.EmbeddedCAOID, Value: ca.Cert.Raw}}
+	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.Cert, &key.PublicKey, ca.Key)
 	if err != nil {
 		return tls.Certificate{}, err
+	}
+	if embed {
+		return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, nil
 	}
 	return tls.Certificate{Certificate: [][]byte{der, ca.Cert.Raw}, PrivateKey: key}, nil
 }

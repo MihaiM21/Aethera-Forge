@@ -30,6 +30,33 @@ func TestPinnedConfigAcceptsMatchingCAAndHost(t *testing.T) {
 	}
 }
 
+// The real control plane sends only its leaf (a TLS stack drops a self-signed root) and embeds the CA in it.
+func TestPinnedConfigAcceptsTheCAEmbeddedInTheLeaf(t *testing.T) {
+	ca, _ := fakecp.NewCA(nil)
+	other, _ := fakecp.NewCA(nil)
+	srv, _ := ca.ServerCertEmbeddedCA("127.0.0.1")
+	if len(srv.Certificate) != 1 {
+		t.Fatal("test setup: only the leaf may be on the wire")
+	}
+	if err := pki.PinnedConfig("127.0.0.1:9443", ca.Fingerprint, nil).VerifyPeerCertificate(rawChain(srv), nil); err != nil {
+		t.Fatal(err)
+	}
+	// An embedded CA that does not match the pin must not be trusted.
+	if err := pki.PinnedConfig("127.0.0.1:9443", other.Fingerprint, nil).VerifyPeerCertificate(rawChain(srv), nil); err == nil || !strings.Contains(err.Error(), "pinned") {
+		t.Fatalf("pin of another CA accepted: %v", err)
+	}
+	// A leaf that claims the pinned CA but was not signed by it must not verify.
+	forged, _ := other.ServerCertEmbeddedCA("127.0.0.1")
+	if err := pki.PinnedConfig("127.0.0.1:9443", other.Fingerprint, nil).VerifyPeerCertificate(rawChain(forged), nil); err != nil {
+		t.Fatalf("test setup: %v", err)
+	}
+	forgedLeaf, _ := ca.ServerCertEmbeddedCA("127.0.0.1")
+	forgedLeaf.Certificate[0] = rawChain(forged)[0]
+	if err := pki.PinnedConfig("127.0.0.1:9443", ca.Fingerprint, nil).VerifyPeerCertificate(rawChain(forgedLeaf), nil); err == nil {
+		t.Fatal("a leaf from another CA was accepted")
+	}
+}
+
 func TestPinnedConfigRejects(t *testing.T) {
 	ca, _ := fakecp.NewCA(nil)
 	other, _ := fakecp.NewCA(nil)

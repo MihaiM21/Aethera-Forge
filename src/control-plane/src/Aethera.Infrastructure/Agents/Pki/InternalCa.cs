@@ -61,6 +61,14 @@ public sealed class InternalCa : IInternalCa, IDisposable
     private const string ClientAuthOid = "1.3.6.1.5.5.7.3.2";
     private const string ServerAuthOid = "1.3.6.1.5.5.7.3.1";
 
+    /// <summary>
+    /// Private extension (experimental arc: a UUID arc does not fit the object identifier type of Go's x509 package) of the listener certificate whose value is the DER of the CA certificate. A TLS stack strips a
+    /// self-signed root from the chain it sends (.NET does on every platform), but an agent that has only pinned the CA fingerprint
+    /// (first contact, enrollment) needs the CA certificate to verify the server at all. The pin keeps this safe: the embedded
+    /// certificate is used only if its SHA-256 equals the pin, and the leaf must still verify against it.
+    /// </summary>
+    public const string EmbeddedCaOid = "1.3.6.1.3.54173.1";
+
     private readonly IServiceScopeFactory _scopes;
     private readonly IServiceProvider _services;
     private readonly AgentGatewayOptions _options;
@@ -148,6 +156,7 @@ public sealed class InternalCa : IInternalCa, IDisposable
 
         request.CertificateExtensions.Add(san.Build());
         request.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(ca.Certificate, includeKeyIdentifier: true, includeIssuerAndSerial: false));
+        request.CertificateExtensions.Add(new X509Extension(new Oid(EmbeddedCaOid), ca.Certificate.RawData, critical: false));
 
         var notAfter = now.AddDays(_options.ServerCertificateDays);
         if (notAfter > ca.Info.NotAfter) notAfter = ca.Info.NotAfter;

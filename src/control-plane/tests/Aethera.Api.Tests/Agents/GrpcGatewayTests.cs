@@ -232,6 +232,36 @@ public sealed class GrpcGatewayTests(GrpcGatewayFixture fixture)
     }
 
     [RequiresDatabaseFact]
+    public async Task The_listener_certificate_carries_the_ca_for_agents_that_only_pinned_its_fingerprint()
+    {
+        // TLS stacks strip a self-signed root from the chain they send, so an agent that has pinned only the CA fingerprint (enrollment)
+        // could not authenticate the server from the handshake alone (found by the Go agent end-to-end test; Grpc.Net clients with the
+        // CA in their trust store never noticed). The CA therefore travels inside the listener certificate.
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, Host.GrpcPort);
+        X509Certificate2? presented = null;
+        using var ssl = new SslStream(tcp.GetStream(), false, (_, certificate, _, _) =>
+        {
+            presented = new X509Certificate2(certificate!);
+            return true;
+        });
+        await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+        {
+            TargetHost = "localhost", EnabledSslProtocols = SslProtocols.Tls13, ApplicationProtocols = [SslApplicationProtocol.Http2],
+        });
+
+        var embedded = Assert.Single(presented!.Extensions.Cast<X509Extension>(), e => e.Oid?.Value == InternalCa.EmbeddedCaOid);
+        using var ca = X509Certificate2.CreateFromPem(Host.CaPem);
+        Assert.Equal(ca.RawData, embedded.RawData);
+        Assert.False(embedded.Critical);
+        using var chain = new X509Chain();
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.Add(X509CertificateLoader.LoadCertificate(embedded.RawData));
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        Assert.True(chain.Build(presented), "the listener certificate must verify against the embedded CA");
+    }
+
+    [RequiresDatabaseFact]
     public async Task A_replayed_expired_or_unknown_token_is_permission_denied_with_one_message()
     {
         var (serverId, token) = await Host.NewServerWithTokenAsync();
