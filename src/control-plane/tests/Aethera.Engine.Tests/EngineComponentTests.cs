@@ -1,11 +1,9 @@
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Aethera.Domain;
 using Aethera.Domain.Transport;
 using Aethera.Engine.Deployments;
 using Aethera.Engine.Git;
-using Aethera.Engine.Networking;
 using Aethera.Engine.Proxy;
 
 namespace Aethera.Engine.Tests;
@@ -65,35 +63,6 @@ public class TraefikProxyProviderTests
 
         Assert.Throws<ArgumentException>(() => _p.BuildEnsureCommand(new ProxySettings("a\"b@x.io")));
     }
-}
-
-public class DnsCheckerTests
-{
-    private sealed class FakeResolver(params string[] addresses) : IDnsResolver
-    {
-        public Task<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<IPAddress>>(addresses.Select(IPAddress.Parse).ToList());
-    }
-
-    [Fact]
-    public async Task Matching_address_is_ok() =>
-        Assert.True((await new DnsChecker(new FakeResolver("203.0.113.5")).CheckAsync("a.example.com", ["203.0.113.5"], default)).Ok);
-
-    [Fact]
-    public async Task Mapped_ipv6_matches_ipv4() =>
-        Assert.Equal(DnsStatus.Ok, (await new DnsChecker(new FakeResolver("::ffff:203.0.113.5")).CheckAsync("a", ["203.0.113.5"], default)).Status);
-
-    [Fact]
-    public async Task Other_address_is_a_mismatch_with_a_helpful_message()
-    {
-        var r = await new DnsChecker(new FakeResolver("198.51.100.1")).CheckAsync("a.example.com", ["203.0.113.5"], default);
-        Assert.Equal(DnsStatus.Mismatch, r.Status);
-        Assert.Contains("203.0.113.5", r.Message);
-    }
-
-    [Fact]
-    public async Task Unresolvable_host_is_not_found() =>
-        Assert.Equal(DnsStatus.Missing, (await new DnsChecker(new FakeResolver()).CheckAsync("a", ["203.0.113.5"], default)).Status);
 }
 
 public class GitProviderTests

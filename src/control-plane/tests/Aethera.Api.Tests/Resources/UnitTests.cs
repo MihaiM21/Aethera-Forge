@@ -222,7 +222,7 @@ public sealed class ResourceEndpointConventionTests : IClassFixture<AetheraApiFa
     }
 
     [Fact]
-    public void TheModuleMapsTheExpectedNumberOfEndpoints() => Assert.Equal(77 + 15 + 7, _endpoints.Count); // 15 more under /servers since WP2.2 (join tokens, status, metrics, discovery, Docker inventory, maintenance), 7 since WP2.3 (SSH)
+    public void TheModuleMapsTheExpectedNumberOfEndpoints() => Assert.Equal(77 + 15 + 7 + 12, _endpoints.Count); // 15 more under /servers since WP2.2 (join tokens, status, metrics, discovery, Docker inventory, maintenance), 7 since WP2.3 (SSH), 12 since WP3 (deployments, lifecycle, webhook setup under /applications; build detection and proxy under /servers)
 
     [Fact]
     public void EveryEndpoint_HasAUniqueCamelCaseName_AndATag()
