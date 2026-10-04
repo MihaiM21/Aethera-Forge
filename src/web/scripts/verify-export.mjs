@@ -44,6 +44,9 @@ const expectations = [
   ["/projects/_", "projects/_.html"],
   ["/projects/demo-project", "projects/_.html"],
   ["/projects/0192f3c8-aaaa-bbbb-cccc-111122223333", "projects/_.html"],
+  ["/servers/new", "servers/new.html"],
+  ["/servers/_", "servers/_.html"],
+  ["/servers/0192f3c8-aaaa-bbbb-cccc-111122223333", "servers/_.html"],
 ];
 
 let failed = 0;

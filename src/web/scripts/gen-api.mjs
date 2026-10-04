@@ -21,8 +21,9 @@ if (!existsSync(input)) {
   process.exit(0);
 }
 
-const bin = resolve(root, "node_modules/.bin/openapi-typescript");
-const result = spawnSync(bin, ["openapi/aethera.v1.json", "-o", "src/lib/api/schema.d.ts"], {
+// Run the CLI entry with node itself: .bin shims are .cmd files on Windows and cannot be spawned directly.
+const cli = resolve(root, "node_modules/openapi-typescript/bin/cli.js");
+const result = spawnSync(process.execPath, [cli, "openapi/aethera.v1.json", "-o", "src/lib/api/schema.d.ts"], {
   cwd: root,
   stdio: "inherit",
 });

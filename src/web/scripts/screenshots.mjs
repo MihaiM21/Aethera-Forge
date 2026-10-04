@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { startServer } from "./serve-export.mjs";
+import { SERVERS, mockServersApi } from "./screenshot-mocks.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(process.argv[2] ?? join(here, "..", "screenshots"));
@@ -64,6 +65,10 @@ async function newPage(theme, { width = 1280, height = 800, setupRequired = fals
     }
     if (url.pathname.endsWith("/auth/me")) {
       return route.fulfill(problem(401, "auth.unauthenticated", "Unauthenticated"));
+    }
+    const mock = mockServersApi(url.pathname, route.request().method(), url.search);
+    if (mock) {
+      return route.fulfill({ status: mock.status, contentType: "application/json", body: JSON.stringify(mock.body) });
     }
     return route.fulfill(problem(404, "request.not_found", "Not found"));
   });
@@ -121,6 +126,56 @@ for (const theme of ["dark", "light"]) {
     await shot(page, `palette-${theme}`);
     await context.close();
   }
+
+  // Servers: list, add-server wizard (token shown once), detail tabs.
+  {
+    const { context, page } = await newPage(theme, { width: 1280, height: 900 });
+    await page.goto(`${base}/servers?preview=1`, { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: "edge-fra-1" }).waitFor();
+    await page.getByText("2 workloads").first().waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await shot(page, `servers-${theme}`);
+
+    await page.goto(`${base}/servers/new?preview=1`, { waitUntil: "networkidle" });
+    await page.getByLabel("Name").fill("edge-new-1");
+    await page.getByLabel("Host").fill("198.51.100.77");
+    await page.getByRole("button", { name: /continue/i }).click();
+    await page.getByRole("button", { name: /generate join command/i }).click();
+    await page.getByLabel("Join token", { exact: true }).waitFor();
+    await page.waitForTimeout(400);
+    await shot(page, `servers-new-${theme}`);
+
+    const id = SERVERS[0].id;
+    for (const tab of ["overview", "metrics", "containers", "settings"]) {
+      await page.goto(`${base}/servers/${id}?preview=1#${tab}`, { waitUntil: "networkidle" });
+      await page.getByRole("heading", { name: "edge-fra-1" }).waitFor();
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(outDir, `server-${tab}-${theme}.png`), fullPage: tab === "overview" || tab === "settings" });
+      console.log("wrote", join(outDir, `server-${tab}-${theme}.png`));
+    }
+
+    // A server whose machine is down: lower axes are "blocked by server".
+    await page.goto(`${base}/servers/${SERVERS[2].id}?preview=1`, { waitUntil: "networkidle" });
+    await page.getByRole("heading", { name: "db-nbg-1" }).waitFor();
+    await page.getByRole("article", { name: "Agent axis" }).waitFor();
+    await page.waitForTimeout(400);
+    await shot(page, `server-blocked-${theme}`);
+    await context.close();
+  }
+}
+
+// Servers on a phone.
+{
+  const { context, page } = await newPage("dark", { width: 390, height: 780 });
+  await page.goto(`${base}/servers?preview=1`, { waitUntil: "networkidle" });
+  await page.getByRole("link", { name: "edge-fra-1" }).waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(outDir, "servers-mobile-dark.png"), fullPage: true });
+  await page.goto(`${base}/servers/${SERVERS[0].id}?preview=1`, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "edge-fra-1" }).waitFor();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(outDir, "server-detail-mobile-dark.png"), fullPage: true });
+  await context.close();
 }
 
 // Boot screen mid-animation (dark only) and the phone layout with the sheet open.
