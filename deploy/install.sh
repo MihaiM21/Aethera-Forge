@@ -8,6 +8,7 @@
 #   --version <v>             release to install, e.g. v0.1.0 (AETHERA_VERSION, default latest)
 #   --host <name-or-ip>       what servers use to reach this machine's agent port (AETHERA_PUBLIC_HOST, default: detected)
 #   --domain <name>           serve the UI on https://<name> through Aethera's proxy (AETHERA_DOMAIN)
+#   --acme-email <email>      Let's Encrypt account for HTTPS certificates (AETHERA_ACME_EMAIL); without it the proxy serves HTTP only
 #   --admin-email <email>     create the first owner now (AETHERA_ADMIN_EMAIL); otherwise open the URL and register
 #   --admin-password <pw>     its password (AETHERA_ADMIN_PASSWORD); generated and printed once when only the email is given
 #   --admin-name <name>       display name of that owner (AETHERA_ADMIN_NAME, default "Administrator")
@@ -26,6 +27,7 @@ DIR="${AETHERA_DIR:-/opt/aethera}"
 VERSION="${AETHERA_VERSION:-latest}"
 PUBLIC_HOST="${AETHERA_PUBLIC_HOST:-}"
 DOMAIN="${AETHERA_DOMAIN:-}"
+ACME_EMAIL="${AETHERA_ACME_EMAIL:-}"
 ADMIN_EMAIL="${AETHERA_ADMIN_EMAIL:-}"
 ADMIN_PASSWORD="${AETHERA_ADMIN_PASSWORD:-}"
 ADMIN_NAME="${AETHERA_ADMIN_NAME:-Administrator}"
@@ -46,6 +48,7 @@ while [ $# -gt 0 ]; do
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
     --host) PUBLIC_HOST="${2:?--host needs a value}"; shift 2 ;;
     --domain) DOMAIN="${2:?--domain needs a value}"; shift 2 ;;
+    --acme-email) ACME_EMAIL="${2:?--acme-email needs a value}"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="${2:?--admin-email needs a value}"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="${2:?--admin-password needs a value}"; shift 2 ;;
     --admin-name) ADMIN_NAME="${2:?--admin-name needs a value}"; shift 2 ;;
@@ -54,7 +57,7 @@ while [ $# -gt 0 ]; do
     --compose-file) COMPOSE_FILE_SRC="${2:?--compose-file needs a value}"; shift 2 ;;
     --http-port) HTTP_PORT="${2:?--http-port needs a value}"; shift 2 ;;
     --grpc-port) GRPC_PORT="${2:?--grpc-port needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -133,6 +136,7 @@ if [ -z "$PUBLIC_HOST" ]; then
 fi
 env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 [ -z "$DOMAIN" ] || env_set AETHERA_DOMAIN "$DOMAIN"
+[ -z "$ACME_EMAIL" ] || env_set AETHERA_ACME_EMAIL "$ACME_EMAIL"
 env_set AETHERA_VERSION "$VERSION"
 env_set AETHERA_DIR "$DIR"
 # The agent profile is added once this machine's agent is enrolled: an agent without a token would only restart in a loop.
@@ -144,8 +148,8 @@ env_set AETHERA_GRPC_PORT "$GRPC_PORT"
 
 # Settings the compose file reads, passed through when set in the environment of this script (private registry or mirror, a release
 # mirror, update checks off): AETHERA_IMAGE, AETHERA_AGENT_IMAGE, AETHERA_UPDATER_IMAGE, AETHERA_UPDATE_API_URL, AETHERA_UPDATE_CHECK,
-# AETHERA_UPDATE_REPOSITORY.
-for name in AETHERA_IMAGE AETHERA_AGENT_IMAGE AETHERA_UPDATER_IMAGE AETHERA_UPDATE_API_URL AETHERA_UPDATE_CHECK AETHERA_UPDATE_REPOSITORY AETHERA_HEALTH_TIMEOUT; do
+# AETHERA_UPDATE_REPOSITORY, AETHERA_INSTALL_AGENT_URL.
+for name in AETHERA_IMAGE AETHERA_AGENT_IMAGE AETHERA_UPDATER_IMAGE AETHERA_UPDATE_API_URL AETHERA_UPDATE_CHECK AETHERA_UPDATE_REPOSITORY AETHERA_HEALTH_TIMEOUT AETHERA_INSTALL_AGENT_URL; do
   value="$(printenv "$name" || true)"
   [ -z "$value" ] || env_set "$name" "$value"
 done

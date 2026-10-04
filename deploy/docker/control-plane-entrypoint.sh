@@ -12,4 +12,6 @@ if [ -z "${AETHERA_MASTER_KEY:-}" ]; then
   AETHERA_MASTER_KEY="$(cat "$f")"
   export AETHERA_MASTER_KEY
 fi
+# The folder the updater container shares with the API (request.json, status.json, alive).
+mkdir -p /data/updater 2>/dev/null || true
 exec "$@"

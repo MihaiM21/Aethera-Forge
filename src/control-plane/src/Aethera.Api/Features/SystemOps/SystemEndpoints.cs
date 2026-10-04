@@ -105,7 +105,15 @@ internal static class SystemEndpoints
         if (UpdaterControl.InFlight(status))
             return new ApiProblem(StatusCodes.Status409Conflict, "system.update_in_progress", "An update is already in progress.");
 
-        await updater.RequestAsync(latest.Version, actor.UserId, ct);
+        try
+        {
+            await updater.RequestAsync(latest.Version, actor.UserId, ct);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The shared folder exists (the updater is alive) but this process cannot write to it.
+            return new ApiProblem(StatusCodes.Status409Conflict, "system.updater_unavailable", "The request could not be handed to the updater: the shared folder is not writable.");
+        }
         await audit.RecordAsync("system.update_requested", "system", null, new { from = checker.CurrentVersion, to = latest.Version }, ct);
         return Results.Accepted("/api/v1/system/version", (await updater.GetStatusAsync(ct)) is var s ? new UpdaterDto(s.Available, s.State, s.TargetVersion, s.Message, s.UpdatedAt) : null);
     }

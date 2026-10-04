@@ -50,6 +50,11 @@ services:
       # AES-256 key (base64, 32 bytes) that encrypts secrets and the internal CA key. Losing it makes stored secrets unreadable.
       AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:?set by install.sh}
       # Where new releases are looked up: GitHub by default; a mirror or GitHub Enterprise through AETHERA_UPDATE_API_URL; AETHERA_UPDATE_CHECK=false for air-gapped installs.
+      # The install command the UI prints for a new server fetches this script; behind HTTPS, set it to https://<domain>/install-agent.sh.
+      Aethera__Agents__InstallScriptUrl: ${AETHERA_INSTALL_AGENT_URL:-}
+      # Let's Encrypt: without an email the proxy serves HTTP only. AETHERA_ACME_STAGING=true uses the staging CA while testing.
+      Aethera__Proxy__AcmeEmail: ${AETHERA_ACME_EMAIL:-}
+      Aethera__Proxy__Staging: ${AETHERA_ACME_STAGING:-false}
       Aethera__Updates__Repository: ${AETHERA_UPDATE_REPOSITORY:-MihaiM21/aethera-forge}
       Aethera__Updates__ApiBaseUrl: ${AETHERA_UPDATE_API_URL:-https://api.github.com}
       Aethera__Updates__Enabled: ${AETHERA_UPDATE_CHECK:-true}
@@ -74,8 +79,8 @@ services:
       traefik.http.routers.aethera-https.tls.certresolver: letsencrypt
       traefik.http.services.aethera.loadbalancer.server.port: "8080"
     healthcheck:
-      # The aspnet image has no curl: a raw HTTP request over bash's /dev/tcp.
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      # The aspnet image has no curl: a raw HTTP request over bash's /dev/tcp (dash, the image's sh, has none).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
       interval: 10s
       timeout: 5s
       retries: 12

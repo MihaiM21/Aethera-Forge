@@ -36,9 +36,9 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP4.4 Dashboard & ops pages (details, API additions and known limits: `docs/architecture/0008-product-ui.md`; verified by `E2E_PHASES=ui bash deploy/agent-e2e.sh`)
 
 ## Phase 5 — Ship it (MVP)
-- [ ] WP5.1 Packaging (Dockerfile, compose, install.sh, release workflow)
-- [ ] WP5.2 Self-ops (self-update, maintenance jobs, log retention)
-- [ ] WP5.3 Docs (install, architecture, Coolify migration, CONTRIBUTING, CHANGELOG)
+- [x] WP5.1 Packaging (Dockerfile, compose, install.sh, release workflow)
+- [x] WP5.2 Self-ops (self-update, maintenance jobs, log retention)
+- [x] WP5.3 Docs (install, architecture, Coolify migration, CONTRIBUTING, CHANGELOG; details and known limits: `docs/architecture/0009-packaging-and-self-ops.md`; verified by `bash deploy/install-e2e.sh`)
 
 ## Later phases
 - [ ] 6. Multi-server roles & resources

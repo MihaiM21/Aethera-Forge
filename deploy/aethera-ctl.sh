@@ -63,7 +63,7 @@ restore_from() { # restore_from <file>
 wait_healthy() { # wait_healthy <seconds>: the control plane answers /ready
   n=0
   while [ "$n" -lt "$1" ]; do
-    if dc exec -T aethera sh -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '" >/dev/null 2>&1; then return 0; fi
+    if dc exec -T aethera bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '" >/dev/null 2>&1; then return 0; fi
     sleep 3; n=$((n + 3))
   done
   return 1
@@ -112,9 +112,10 @@ do_update() { # do_update <version>
   if [ -n "$(dc ps -q agent 2>/dev/null)" ]; then dc up -d --no-deps agent || true; fi
 
   if wait_healthy "$HEALTH_TIMEOUT"; then
-    report done "$target" "Aethera is running $target."
-    # The updater replaces itself last: this process ends here when it is the updater.
-    if [ "$MODE" = daemon ]; then dc up -d --no-deps updater >/dev/null 2>&1 || true; fi
+    report "done" "$target" "Aethera is running $target."
+    # The updater replaces itself last. `compose up` stops the container it runs in, which would kill it before the new one exists, so a
+    # short-lived helper container (the same image) does it, a couple of seconds from now.
+    if [ "$MODE" = daemon ]; then swap_updater; fi
     return 0
   fi
 
@@ -132,12 +133,21 @@ do_update() { # do_update <version>
   return 1
 }
 
+swap_updater() {
+  image="$(docker inspect --format '{{.Config.Image}}' "$(hostname)" 2>/dev/null || true)"
+  [ -n "$image" ] || return 0
+  docker rm -f aethera-updater-swap >/dev/null 2>&1 || true
+  docker run -d --rm --name aethera-updater-swap -v /var/run/docker.sock:/var/run/docker.sock -v "$DIR:$DIR" -e AETHERA_DIR="$DIR"     --entrypoint aethera "$image" swap-updater >/dev/null 2>&1 || true
+}
+
 # ---- daemon (updater container) -------------------------------------------------------------------------------------------------
 daemon() {
   MODE=daemon
   BACKUP_DIR="${AETHERA_BACKUP_DIR:-/data/backups}"
   require_install
+  # The control plane runs unprivileged and must be able to drop request.json here, whoever created the folder first.
   mkdir -p "$CTL"
+  chmod 1777 "$CTL"
   say "Updater running; watching $CTL"
   while :; do
     : > "$CTL/alive"
@@ -158,6 +168,7 @@ cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
   daemon) daemon ;;
+  swap-updater) require_install; sleep 3; dc up -d --no-deps updater ;;
   status)
     require_install
     say "Version $(env_get AETHERA_VERSION)"
