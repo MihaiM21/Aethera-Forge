@@ -20,6 +20,9 @@ public sealed class PlanContext
     /// <summary>Returns the plaintext of a pinned secret version. The caller registers it for log redaction.</summary>
     public required Func<Guid, int, string> ResolveSecret { get; init; }
 
+    /// <summary>Id of the build record; also the agent's log stream id (<c>build:&lt;id&gt;</c>).</summary>
+    public Guid? BuildId { get; init; }
+
     public GitCredentialSpec? GitCredential { get; init; }
     public RegistryCredentials? Registry { get; init; }
 
@@ -87,6 +90,7 @@ public static class DeploymentPlanBuilder
         var common = new DeploymentPlan
         {
             ServerId = c.ServerId, Container = container, PreviousContainer = c.PreviousContainer, Networks = allNetworks,
+            InternalNetworks = s.Networks.Where(n => n.Internal).Select(n => n.DockerName).ToHashSet(),
             JobId = c.JobId, OrganizationId = c.OrganizationId, OnLog = c.OnLog,
             HealthFor = health, HealthTimeout = TimeSpan.FromSeconds(s.Runtime.HealthTimeoutSeconds),
             HealthInterval = TimeSpan.FromSeconds(s.Runtime.HealthIntervalSeconds), HealthRetries = Math.Max(1, s.Runtime.HealthRetries),
@@ -108,7 +112,7 @@ public static class DeploymentPlanBuilder
     private static DeploymentPlan Copy(DeploymentPlan p, string? imageReference = null, bool local = false, RegistryCredentials? pullAuth = null, BuildSpec? build = null) =>
         new()
         {
-            ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, JobId = p.JobId,
+            ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, InternalNetworks = p.InternalNetworks, JobId = p.JobId,
             OrganizationId = p.OrganizationId, OnLog = p.OnLog, HealthFor = p.HealthFor, HealthTimeout = p.HealthTimeout, HealthInterval = p.HealthInterval,
             HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod,
             ImageReference = imageReference, LocalImage = local, PullAuth = pullAuth, Build = build,
@@ -126,7 +130,7 @@ public static class DeploymentPlanBuilder
             _ => BuildEngineKind.Dockerfile,
         };
         var buildVars = s.Env.Where(e => e.Build).Select(e => ToSpec(e, c)).ToList();
-        return new BuildSpec(c.DeploymentId.ToString(), engine, [ImagePolicy.Tag(s.Slug, c.DeploymentId)])
+        return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [ImagePolicy.Tag(s.Slug, c.DeploymentId)])
         {
             Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: git.CommitPin is null ? 1 : 0, Credentials: c.GitCredential),
             ContextPath = b.Context,

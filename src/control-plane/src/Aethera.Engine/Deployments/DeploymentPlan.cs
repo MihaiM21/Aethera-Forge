@@ -46,6 +46,12 @@ public sealed class DeploymentPlan
     /// <summary>Networks created (idempotently) before the container starts.</summary>
     public IReadOnlyList<string> Networks { get; init; } = [];
 
+    /// <summary>Networks from <see cref="Networks"/> without outside connectivity (databases).</summary>
+    public IReadOnlySet<string> InternalNetworks { get; init; } = new HashSet<string>();
+
+    /// <summary>Filled in by the runner when the build step succeeded (size, digest, cache use, platform).</summary>
+    public BuildOutcome? BuildResult { get; set; }
+
     public Guid? JobId { get; init; }
     public Guid? OrganizationId { get; init; }
     public Action<LogEntry>? OnLog { get; init; }

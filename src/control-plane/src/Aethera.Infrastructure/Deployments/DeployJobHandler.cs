@@ -67,6 +67,7 @@ public sealed class DeployJobHandler : IJobHandler
             app.StatusReason = $"Deployment #{deployment.Number} in progress";
         }, cancellationToken);
 
+        var buildRecord = await PrepareBuildRecordAsync(db, clock, deployment, snapshot, context, cancellationToken);
         var resolver = sp.GetRequiredService<IServerTransportResolver>();
         var proxyOptions = sp.GetRequiredService<IOptions<ProxyOptions>>().Value;
         var proxy = sp.GetRequiredService<IProxyProvider>();
@@ -79,7 +80,7 @@ public sealed class DeployJobHandler : IJobHandler
         var runner = new DeploymentRunner(new ResolvingServerTransport(resolver), sp.GetServices<IDeploymentStrategy>(), clock);
         var plan = DeploymentPlanBuilder.Build(snapshot, new PlanContext
         {
-            ServerId = deployment.ServerId, DeploymentId = deployment.Id, DeploymentNumber = deployment.Number, JobId = context.JobId,
+            ServerId = deployment.ServerId, DeploymentId = deployment.Id, DeploymentNumber = deployment.Number, JobId = context.JobId, BuildId = buildRecord?.Id,
             OrganizationId = context.Job.OrganizationId,
             PreviousContainer = previous?.ContainerIds.FirstOrDefault(),
             ResolveSecret = (id, version) => secrets.TryGetValue((id, version), out var v) ? v : throw new InvalidOperationException("A pinned secret version is missing."),
@@ -89,6 +90,7 @@ public sealed class DeployJobHandler : IJobHandler
 
         await context.Log.WriteSystemAsync($"Deploying {app.Name} #{deployment.Number} with the {deployment.Strategy} strategy.", cancellationToken);
         var result = await runner.RunAsync(deployment, plan, async (_, ct) => await db.SaveChangesAsync(ct), cancellationToken);
+        if (buildRecord is not null) await FinishBuildRecordAsync(db, clock, buildRecord, deployment, plan);
 
         switch (result)
         {
@@ -113,6 +115,56 @@ public sealed class DeployJobHandler : IJobHandler
                     ? JobFailedException.Transient(code, "The server could not be reached", message, deployment.FailedStep?.ToString())
                     : JobFailedException.Permanent(code, "The deployment failed", message, deployment.FailedStep?.ToString());
         }
+    }
+
+    /// <summary>
+    /// Creates (or, when resuming, reuses) the <see cref="Build"/> row of a source build before the build starts, so the UI can follow
+    /// its log stream (<c>build:&lt;id&gt;</c>) live. Null for deployments that do not build.
+    /// </summary>
+    private static async Task<Build?> PrepareBuildRecordAsync(
+        AetheraDbContext db, IClock clock, Deployment deployment, DeploymentSnapshot snapshot, JobContext context, CancellationToken ct)
+    {
+        if (snapshot.Git is null || snapshot.Compose is not null || snapshot.Image is not null || deployment.RollbackOfDeploymentId is not null) return null;
+        if (deployment.BuildId is { } existingId
+            && await db.Builds.FirstOrDefaultAsync(b => b.Id == existingId && b.Status == BuildStatus.Running, ct) is { } running)
+            return running;
+
+        var attempt = await db.Builds.CountAsync(b => b.DeploymentId == deployment.Id, ct) + 1;
+        var build = new Build
+        {
+            DeploymentId = deployment.Id, Attempt = attempt, Engine = snapshot.Build?.Engine ?? BuildEngines.Dockerfile, JobId = context.JobId,
+            Platform = snapshot.Build?.TargetPlatform,
+        };
+        build.Start(clock.UtcNow);
+        db.Builds.Add(build);
+        deployment.BuildId = build.Id;
+        await db.SaveChangesAsync(ct);
+        return build;
+    }
+
+    private static async Task FinishBuildRecordAsync(AetheraDbContext db, IClock clock, Build build, Deployment deployment, DeploymentPlan plan)
+    {
+        var step = deployment.Steps.FirstOrDefault(s => s.Step == DeploymentStep.Build);
+        var status = step?.Status switch
+        {
+            StepStatus.Succeeded => BuildStatus.Succeeded,
+            StepStatus.Cancelled => BuildStatus.Cancelled,
+            _ => deployment.Status == DeploymentStatus.Cancelled ? BuildStatus.Cancelled : BuildStatus.Failed,
+        };
+        await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+        {
+            if (build.Status != BuildStatus.Running) return;
+            if (plan.BuildResult is { } r)
+            {
+                build.CommitSha = r.CommitSha;
+                build.ResultImage = r.Tags.FirstOrDefault();
+                build.ResultImageDigest = r.Digest;
+                build.ResultImageSizeBytes = r.SizeBytes;
+                build.CacheHit = r.CacheHit;
+                build.Platform = r.Platform is { Length: > 0 } ? r.Platform : build.Platform;
+            }
+            build.Finish(status, clock.UtcNow);
+        }, CancellationToken.None);
     }
 
     /// <summary>Makes sure Traefik runs on the server before routes are attached. Returns a failure message, or null when the proxy is ready.</summary>

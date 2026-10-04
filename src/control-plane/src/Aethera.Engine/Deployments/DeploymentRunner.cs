@@ -79,6 +79,7 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             await save(ct);
             var built = await run.ExecuteAsync<BuildImageCommand, BuildOutcome>(
                 new BuildImageCommand(spec), "build", DeploymentStep.Build, FailureCodes.BuildFailed, ct);
+            plan.BuildResult = built;
             d.CommitSha = built.CommitSha;
             d.ImageDigest = built.Digest;
             d.CompleteStep(DeploymentStep.Build, clock.UtcNow);

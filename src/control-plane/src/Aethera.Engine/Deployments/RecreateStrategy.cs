@@ -17,7 +17,7 @@ public sealed class RecreateStrategy : IDeploymentStrategy
         d.BeginStep(DeploymentStep.Network, run.Clock.UtcNow);
         foreach (var network in plan.Networks)
             await run.ExecuteAsync<NetworkCreateCommand, DockerNetwork>(
-                new NetworkCreateCommand(network, IfNotExists: true), $"network.{network}", DeploymentStep.Network, FailureCodes.NetworkFailed, ct);
+                new NetworkCreateCommand(network, Internal: plan.InternalNetworks.Contains(network), IfNotExists: true), $"network.{network}", DeploymentStep.Network, FailureCodes.NetworkFailed, ct);
         d.CompleteStep(DeploymentStep.Network, run.Clock.UtcNow);
         await run.SaveAsync(ct);
 

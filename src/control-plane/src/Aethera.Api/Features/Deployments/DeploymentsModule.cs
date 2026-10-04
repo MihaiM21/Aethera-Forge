@@ -14,6 +14,7 @@ public static class DeploymentsModule
         DeploymentEndpoints.Map(api);
         WebhookEndpoints.MapManagement(api);
         BuildEndpoints.Map(api);
+        GitCredentialEndpoints.Map(api);
         return api;
     }
 
