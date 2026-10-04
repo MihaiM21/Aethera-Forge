@@ -24,10 +24,10 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP2.5 Agent <-> gateway end-to-end (`deploy/agent-e2e.sh`, interop fixes)
 
 ## Phase 3 — Build & deploy engine
-- [ ] WP3.1 Build engines
-- [ ] WP3.2 Deployment engine
-- [ ] WP3.3 Traefik & networking
-- [ ] WP3.4 Git integration
+- [x] WP3.1 Build engines
+- [x] WP3.2 Deployment engine
+- [x] WP3.3 Traefik & networking
+- [x] WP3.4 Git integration (details and known limits: `docs/architecture/0007-build-and-deploy.md`)
 
 ## Phase 4 — Product UI & services
 - [ ] WP4.1 App flows

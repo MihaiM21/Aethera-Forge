@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Aethera.Domain\Aethera.Domain.csproj" />
     <ProjectReference Include="..\Aethera.Agent.Protocol\Aethera.Agent.Protocol.csproj" />
+    <ProjectReference Include="..\Aethera.Engine\Aethera.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>

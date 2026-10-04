@@ -4,6 +4,8 @@
 package agent
 
 import (
+	"net"
+	"path/filepath"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -20,6 +22,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
+	"github.com/mihaim21/aethera-forge/agent/internal/build"
+	"github.com/mihaim21/aethera-forge/agent/internal/compose"
 	"github.com/mihaim21/aethera-forge/agent/internal/config"
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
 	"github.com/mihaim21/aethera-forge/agent/internal/docker"
@@ -29,6 +33,7 @@ import (
 	"github.com/mihaim21/aethera-forge/agent/internal/ops"
 	"github.com/mihaim21/aethera-forge/agent/internal/pki"
 	"github.com/mihaim21/aethera-forge/agent/internal/policy"
+	"github.com/mihaim21/aethera-forge/agent/internal/proxy"
 	"github.com/mihaim21/aethera-forge/agent/internal/selfupdate"
 	"github.com/mihaim21/aethera-forge/agent/internal/state"
 	"github.com/mihaim21/aethera-forge/agent/internal/transport"
@@ -51,7 +56,9 @@ type Options struct {
 	Logger    *slog.Logger
 	// Exe enables self-update when set (path of the running binary).
 	Exe       string
-	Restarter selfupdate.Restarter
+	// DeployTools enables the build, compose and proxy subsystems (they need the docker and git CLIs on the host).
+	DeployTools bool
+	Restarter   selfupdate.Restarter
 	Clock     transport.Clock
 	Rand      func() float64
 	Now       func() time.Time
@@ -156,6 +163,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	a.pol = policy.New(cfg)
 	a.pol.SetSubnets(a.dockerSubnets)
+	a.pol.SetLookup(a.resolveProbeHost)
 	a.ring = events.NewRing(0, 0, a.o.Now)
 	a.conv = events.NewConverter()
 
@@ -189,6 +197,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.deps = &ops.Deps{
 		Docker: a.o.Docker, Policy: a.pol, Logs: a.logs, BaseContext: baseCtx, Updater: a.updater, Now: a.o.Now,
 		Discover: a.o.Collector.Discovery,
+	}
+	if a.o.DeployTools {
+		work := string(a.o.Dir)
+		runner := build.OSRunner{}
+		a.deps.Builder = &build.Service{Runner: runner, Docker: a.o.Docker, Engines: build.DefaultEngines(), WorkDir: filepath.Join(work, "build"), Now: a.o.Now}
+		a.deps.Compose = &compose.Service{Runner: runner, Dir: a.o.Dir.ProjectsPath(), Binds: a.pol}
+		a.deps.Proxy = &proxy.Manager{Docker: a.o.Docker, Dir: filepath.Join(work, "proxy")}
 	}
 	caps := a.deps.Capabilities()
 	a.disp = dispatch.New(dispatch.Config{
@@ -400,4 +415,21 @@ func (a *Agent) renew(ctx context.Context, why string) {
 	}
 	a.identity.Store(id)
 	a.client.Reload() // reconnect with the new certificate
+}
+
+// resolveProbeHost lets health probes address a container by name: the control plane probes the container it just started, and
+// container names do not resolve on the host. Anything else goes through the normal resolver (and the SSRF policy afterwards).
+func (a *Agent) resolveProbeHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if info, err := a.o.Docker.ContainerInspect(ctx, host, false); err == nil {
+		var out []netip.Addr
+		for _, n := range info.GetNetworks() {
+			if ip, perr := netip.ParseAddr(n.GetIpAddress()); perr == nil {
+				out = append(out, ip)
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }

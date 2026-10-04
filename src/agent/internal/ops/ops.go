@@ -1,7 +1,7 @@
 // Package ops contains the handlers behind the command allowlist: Docker
 // containers, images, volumes, networks, prune, log streaming, health probes,
 // discovery refresh and self-update. Compose, build, build-detect and proxy
-// commands belong to Phase 3 and are deliberately NOT registered, so the
+// commands (Phase 3) are registered only when their subsystem is configured; otherwise the
 // dispatcher answers them REJECTED_UNSUPPORTED instead of faking success.
 package ops
 
@@ -15,10 +15,13 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
+	"github.com/mihaim21/aethera-forge/agent/internal/build"
+	"github.com/mihaim21/aethera-forge/agent/internal/compose"
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
 	"github.com/mihaim21/aethera-forge/agent/internal/docker"
 	"github.com/mihaim21/aethera-forge/agent/internal/logstream"
 	"github.com/mihaim21/aethera-forge/agent/internal/policy"
+	"github.com/mihaim21/aethera-forge/agent/internal/proxy"
 	"github.com/mihaim21/aethera-forge/agent/internal/selfupdate"
 )
 
@@ -47,6 +50,10 @@ type Deps struct {
 	// Updater may be nil, in which case self-update is not offered.
 	Updater *selfupdate.Updater
 	Now     func() time.Time
+	// Builder, Compose and Proxy are the Phase 3 subsystems; a nil one is not registered (and not advertised).
+	Builder *build.Service
+	Compose *compose.Service
+	Proxy   *proxy.Manager
 
 	streams sync.Map // stream_id -> context.CancelFunc
 }
@@ -57,7 +64,7 @@ func (d *Deps) Capabilities() []string {
 	if d.Updater != nil {
 		caps = append(caps, CapSelfUpdate)
 	}
-	return caps
+	return append(caps, d.phase3Capabilities()...)
 }
 
 func (d *Deps) now() time.Time {
@@ -104,6 +111,7 @@ func Register(disp *dispatch.Dispatcher, d *Deps) {
 	r("health_probe", CapProbe, d.healthProbe)
 	r("discovery_refresh", CapDiscovery, d.discoveryRefresh)
 	r("system_prune", CapPrune, d.systemPrune)
+	d.registerPhase3(r)
 	if d.Updater != nil {
 		r("agent_self_update", CapSelfUpdate, d.agentSelfUpdate)
 	}
