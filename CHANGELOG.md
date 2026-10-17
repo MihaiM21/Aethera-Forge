@@ -8,6 +8,7 @@ First release (MVP). Everything below is new.
 
 ### Install and operate
 - One-line installer (`install.sh`): Docker if missing, generated database password and master key, control plane + PostgreSQL + Redis, optional first owner and an agent for the same machine. `/install-agent.sh` adds more servers (systemd service, checksum-verified download).
+- `install.sh --from-source [ref]` (also the automatic fallback while no release exists) builds the stack from the repository; `install.ps1` does the same on Windows/macOS with Docker Desktop.
 - Release images on GHCR for linux/amd64 and linux/arm64 (`control-plane`, `agent`, `updater`), static agent binaries and `SHA256SUMS` as release assets.
 - Updates: the control plane checks the GitHub releases and shows the new version with its notes; one click (or `aethera update`) backs up the database, pulls the images, restarts and **rolls back with the database restored** if the new version does not start. Agents update themselves on request.
 - Database safety: a backup before every migration of an existing installation, a refusal to start on a database newer than the code, daily `pg_dump` backups (newest seven kept).

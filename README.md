@@ -23,6 +23,8 @@ On a Linux server, as root:
 curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- --admin-email you@example.com --host aethera.example.com
 ```
 
+Until a release is published the script builds the images from source on its own (a few minutes; `--from-source [ref]` forces that). On Windows or macOS with Docker Desktop: `pwsh deploy/install.ps1` from a checkout (or `irm https://raw.githubusercontent.com/MihaiM21/Aethera-Forge/master/deploy/install.ps1 | iex`), then open http://localhost:8080.
+
 It installs Docker if needed, generates the secrets, starts the control plane with PostgreSQL and Redis, creates the owner and enrolls an agent for the machine. More servers join with one command from the UI. Updates, backups and housekeeping are built in (Settings > System, or `aethera update`). Full guide: [`docs/install.md`](docs/install.md); coming from Coolify: [`docs/migration-from-coolify.md`](docs/migration-from-coolify.md); how it fits together: [`docs/architecture/`](docs/architecture/README.md).
 
 ## Development stack with Docker Compose

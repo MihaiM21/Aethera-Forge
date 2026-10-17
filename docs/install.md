@@ -16,6 +16,8 @@ curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/in
   --admin-email you@example.com --host aethera.example.com
 ```
 
+No release published yet (or you want a branch)? The installer falls back to building the images from the repository on this machine, or do it explicitly with `--from-source [branch-or-tag]`. That mode has no updater container and no `aethera` command; run the installer again to update. On Windows or macOS (Docker Desktop) use `deploy/install.ps1`, which does the same for a local machine.
+
 Without `--admin-email` nothing is created: open `http://<server>:8080` and register, the first account becomes the owner. With it, the installer creates the owner (the generated password is printed once, change it in Settings), creates a server called `local`, enrolls the agent for this machine and starts it.
 
 What the installer does, in order:

@@ -14,6 +14,8 @@
 #   --admin-name <name>       display name of that owner (AETHERA_ADMIN_NAME, default "Administrator")
 #   --org-name <name>         organization name (AETHERA_ORG_NAME, default "Aethera")
 #   --no-agent                do not enroll an agent for this machine
+#   --from-source [<ref>]     build the images on this machine from the repository (branch or tag, default master) instead of pulling a
+#                             release. Used automatically while no release is published. No updater: re-run this script to update.
 #   --compose-file <path>     use this compose file instead of downloading docker-compose.prod.yml (for development)
 #   --http-port <n>           host port of the UI/API (AETHERA_HTTP_PORT, default 8080)
 #   --grpc-port <n>           host port of the agent gateway (AETHERA_GRPC_PORT, default 9443)
@@ -36,6 +38,8 @@ HTTP_PORT="${AETHERA_HTTP_PORT:-8080}"
 GRPC_PORT="${AETHERA_GRPC_PORT:-9443}"
 WITH_AGENT=1
 COMPOSE_FILE_SRC=""
+FROM_SOURCE=0
+SOURCE_REF="${AETHERA_SOURCE_REF:-master}"
 GENERATED_PASSWORD=0
 
 say() { printf '==> %s\n' "$*"; }
@@ -54,10 +58,11 @@ while [ $# -gt 0 ]; do
     --admin-name) ADMIN_NAME="${2:?--admin-name needs a value}"; shift 2 ;;
     --org-name) ORG_NAME="${2:?--org-name needs a value}"; shift 2 ;;
     --no-agent) WITH_AGENT=0; shift ;;
+    --from-source) FROM_SOURCE=1; if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then SOURCE_REF="$2"; shift; fi; shift ;;
     --compose-file) COMPOSE_FILE_SRC="${2:?--compose-file needs a value}"; shift 2 ;;
     --http-port) HTTP_PORT="${2:?--http-port needs a value}"; shift 2 ;;
     --grpc-port) GRPC_PORT="${2:?--grpc-port needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -85,25 +90,45 @@ chmod 0700 "$DIR"
 ENV_FILE="$DIR/.env"
 COMPOSE="$DIR/docker-compose.yml"
 
+release_base() {
+  if [ "$VERSION" = latest ]; then echo "https://github.com/$REPO/releases/latest/download"
+  else echo "https://github.com/$REPO/releases/download/$VERSION"; fi
+}
+
 if [ -n "$COMPOSE_FILE_SRC" ]; then
   [ -f "$COMPOSE_FILE_SRC" ] || die "no such compose file: $COMPOSE_FILE_SRC"
   cp "$COMPOSE_FILE_SRC" "$COMPOSE"
-else
-  if [ "$VERSION" = latest ]; then base="https://github.com/$REPO/releases/latest/download"
-  else base="https://github.com/$REPO/releases/download/$VERSION"; fi
+elif [ "$FROM_SOURCE" -eq 0 ]; then
   say "Downloading docker-compose.prod.yml ($VERSION)"
-  curl -fsSL "$base/docker-compose.prod.yml" -o "$COMPOSE.tmp"
-  mv "$COMPOSE.tmp" "$COMPOSE"
+  if ! curl -fsSL "$(release_base)/docker-compose.prod.yml" -o "$COMPOSE.tmp"; then
+    rm -f "$COMPOSE.tmp"
+    [ "$VERSION" = latest ] || die "release $VERSION not found at github.com/$REPO"
+    warn "no published release yet: building from source ($SOURCE_REF) instead (first run takes several minutes)"
+    FROM_SOURCE=1
+  else
+    mv "$COMPOSE.tmp" "$COMPOSE"
+  fi
 fi
 
-# `aethera`: status, logs, update, backup and restore on this machine; the updater container runs the same script.
-CTL_BIN=/usr/local/bin/aethera
-if [ -n "$COMPOSE_FILE_SRC" ] && [ -f "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" ]; then
-  install -m 0755 "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" "$CTL_BIN"
-else
-  if [ "$VERSION" = latest ]; then base="https://github.com/$REPO/releases/latest/download"
-  else base="https://github.com/$REPO/releases/download/$VERSION"; fi
-  curl -fsSL "$base/aethera-ctl.sh" -o "$CTL_BIN.tmp" && chmod 0755 "$CTL_BIN.tmp" && mv "$CTL_BIN.tmp" "$CTL_BIN" || warn "could not install the aethera command"
+if [ "$FROM_SOURCE" -eq 1 ] && [ -z "$COMPOSE_FILE_SRC" ]; then
+  command -v tar >/dev/null 2>&1 || die "tar is required for --from-source"
+  SRC="$DIR/src"
+  say "Fetching the source ($SOURCE_REF)"
+  rm -rf "$SRC.new" && mkdir -p "$SRC.new"
+  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$SOURCE_REF" | tar -xz --strip-components=1 -C "$SRC.new"     || die "could not download $SOURCE_REF of github.com/$REPO"
+  rm -rf "$SRC" && mv "$SRC.new" "$SRC"
+  COMPOSE="$SRC/deploy/docker-compose.yml"
+  [ -f "$COMPOSE" ] || die "the source has no deploy/docker-compose.yml"
+fi
+
+# `aethera`: status, logs, update, backup and restore on this machine; the updater container runs the same script. Release installs only.
+if [ "$FROM_SOURCE" -eq 0 ] || [ -n "$COMPOSE_FILE_SRC" ]; then
+  CTL_BIN=/usr/local/bin/aethera
+  if [ -n "$COMPOSE_FILE_SRC" ] && [ -f "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" ]; then
+    install -m 0755 "$(dirname "$COMPOSE_FILE_SRC")/aethera-ctl.sh" "$CTL_BIN"
+  else
+    curl -fsSL "$(release_base)/aethera-ctl.sh" -o "$CTL_BIN.tmp" && chmod 0755 "$CTL_BIN.tmp" && mv "$CTL_BIN.tmp" "$CTL_BIN" || warn "could not install the aethera command"
+  fi
 fi
 
 # The .env keeps the generated secrets. An existing one is the source of truth: re-running must never rotate the master key or the
@@ -140,8 +165,12 @@ env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 env_set AETHERA_VERSION "$VERSION"
 env_set AETHERA_DIR "$DIR"
 # The agent profile is added once this machine's agent is enrolled: an agent without a token would only restart in a loop.
-profiles="updater"
-[ -s /var/lib/aethera/enrollment.json ] && profiles="agent,updater"
+if [ "$FROM_SOURCE" -eq 1 ]; then
+  profiles=""  # the source stack has no profiles: its agent container waits for "Use this machine"
+else
+  profiles="updater"
+  [ -s /var/lib/aethera/enrollment.json ] && profiles="agent,updater"
+fi
 env_set COMPOSE_PROFILES "$profiles"
 env_set AETHERA_HTTP_PORT "$HTTP_PORT"
 env_set AETHERA_GRPC_PORT "$GRPC_PORT"
@@ -157,10 +186,16 @@ done
 dc() { docker compose -f "$COMPOSE" --env-file "$ENV_FILE" "$@"; }
 
 # ---- start ------------------------------------------------------------------------------------------------------------
-say "Pulling images"
-dc pull --quiet postgres redis aethera || warn "could not pull every image (building locally, or offline); continuing"
-say "Starting the control plane"
-dc up -d postgres redis aethera
+mkdir -p /var/lib/aethera
+if [ "$FROM_SOURCE" -eq 1 ]; then
+  say "Building and starting the stack (several minutes the first time)"
+  dc up -d --build
+else
+  say "Pulling images"
+  dc pull --quiet postgres redis aethera || warn "could not pull every image (building locally, or offline); continuing"
+  say "Starting the control plane"
+  dc up -d postgres redis aethera
+fi
 
 BASE="http://127.0.0.1:$HTTP_PORT"
 say "Waiting for the control plane"
@@ -199,7 +234,15 @@ else
   WITH_AGENT=0
 fi
 
-if [ "$WITH_AGENT" -eq 1 ]; then
+if [ "$WITH_AGENT" -eq 1 ] && [ "$FROM_SOURCE" -eq 1 ]; then
+  # The agent container is already up and waiting; the API makes the server record and hands it a join token (what "Use this machine" does).
+  say "Connecting this machine as a server"
+  api POST /system/local-server >/dev/null || warn "could not start the local agent; press 'Use this machine' on the Servers page"
+  for _ in $(seq 1 40); do
+    api GET /system/local-server 2>/dev/null | grep -q '"connected":true' && break
+    sleep 2
+  done
+elif [ "$WITH_AGENT" -eq 1 ]; then
   if [ -s /var/lib/aethera/enrollment.json ]; then
     say "This machine's agent is already enrolled"
     env_set COMPOSE_PROFILES "agent,updater"
@@ -222,8 +265,10 @@ if [ "$WITH_AGENT" -eq 1 ]; then
   fi
 fi
 
-say "Starting the updater"
-dc up -d updater || warn "the updater did not start; update with 'aethera update' on this machine instead"
+if [ "$FROM_SOURCE" -eq 0 ]; then
+  say "Starting the updater"
+  dc up -d updater || warn "the updater did not start; update with 'aethera update' on this machine instead"
+fi
 
 # ---- done -------------------------------------------------------------------------------------------------------------
 if [ -n "$DOMAIN" ]; then URL="https://$DOMAIN (after the proxy is set up and DNS points here)"; else URL="http://$PUBLIC_HOST:$HTTP_PORT"; fi
@@ -237,4 +282,8 @@ if [ -n "$ADMIN_EMAIL" ]; then
 else
   echo "    Next:        open the URL and register: the first account becomes the owner."
 fi
-echo "    Manage:      aethera status | logs | update | backup   (updates also work from Settings > System in the UI)"
+if [ "$FROM_SOURCE" -eq 1 ]; then
+  echo "    Manage:      docker compose -f $COMPOSE --env-file $ENV_FILE ps | logs -f   (update: run this installer again)"
+else
+  echo "    Manage:      aethera status | logs | update | backup   (updates also work from Settings > System in the UI)"
+fi
