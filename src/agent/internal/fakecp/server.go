@@ -33,6 +33,8 @@ type Server struct {
 	ServerID string
 	// Token is the single-use join token Enroll accepts.
 	Token string
+	// Advertised is the control plane address the Enroll answer carries (empty = Addr).
+	Advertised string
 
 	// Welcome parameters (zero values get test-friendly defaults).
 	HeartbeatInterval time.Duration
@@ -148,7 +150,7 @@ func (s *Server) Enroll(_ context.Context, req *agentv1.EnrollRequest) (*agentv1
 		ClientCertificatePem: certPEM,
 		CaChainPem:           string(s.CA.PEM),
 		CaFingerprintSha256:  s.CA.Fingerprint,
-		ControlPlaneEndpoint: s.Addr,
+		ControlPlaneEndpoint: cmpOr(s.Advertised, s.Addr),
 		CertificateNotAfter:  timestamppb.New(notAfter),
 		RenewBefore:          durationpb.New(10 * 24 * time.Hour),
 	}, nil
@@ -342,4 +344,11 @@ func (c *Conn) Count(pred func(*agentv1.AgentMessage) bool) int {
 		}
 	}
 	return n
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

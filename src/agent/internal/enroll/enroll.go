@@ -41,6 +41,9 @@ type Params struct {
 	Dir      state.Dir
 	Version  string
 	Timeout  time.Duration
+	// KeepEndpoint stores Endpoint as the control plane address instead of the one the control plane advertises in its answer. For an
+	// agent that reaches the control plane differently from everybody else (the agent container that shares its network namespace).
+	KeepEndpoint bool
 	// DialOptions are extra gRPC options (tests).
 	DialOptions []grpc.DialOption
 }
@@ -105,7 +108,7 @@ func Enroll(ctx context.Context, p Params) (*state.Identity, error) {
 	}
 
 	endpoint := resp.GetControlPlaneEndpoint()
-	if endpoint == "" {
+	if endpoint == "" || p.KeepEndpoint {
 		endpoint = p.Endpoint
 	}
 	renew := resp.GetRenewBefore().AsDuration()
