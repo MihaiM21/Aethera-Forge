@@ -41,6 +41,24 @@ wait_for_request() {
   done
 }
 
+# Enrolled under another control plane? The database of this installation was recreated (a new CA) while this state directory survived:
+# that enrollment can never connect. The control plane publishes its CA fingerprint in the shared folder every few seconds; when a fresh
+# one differs from the pinned CA, forget the enrollment and wait to be enrolled again. Without a fresh file (an older control plane, or
+# none running yet) after a minute, the enrollment is kept as it is.
+forget_foreign_enrollment() {
+  [ -s "$STATE_DIR/enrollment.json" ] && [ -n "${AETHERA_ENROLL_DIR:-}" ] && [ -n "${AETHERA_ENDPOINT:-}" ] || return 0
+  f="$AETHERA_ENROLL_DIR/ca-sha256"; want=""; tries=0
+  while [ "$tries" -lt 30 ]; do
+    if [ -s "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f") )) -lt 60 ]; then want="$(tr -d ' \r\n' < "$f" | tr 'A-F' 'a-f')"; break; fi
+    tries=$((tries + 1)); sleep 2
+  done
+  have="$(sed -n 's/.*"ca_sha256" *: *"\([^"]*\)".*/\1/p' "$STATE_DIR/enrollment.json" | head -n1 | tr 'A-F' 'a-f')"
+  if [ -n "$want" ] && [ -n "$have" ] && [ "$want" != "$have" ]; then
+    echo "aethera-agent: the enrollment belongs to another control plane (its CA changed); forgetting it"
+    rm -f "$STATE_DIR/enrollment.json" "$STATE_DIR/agent.crt" "$STATE_DIR/agent.key" "$STATE_DIR/ca.crt"
+  fi
+}
+forget_foreign_enrollment
 if [ ! -s "$STATE_DIR/enrollment.json" ]; then
   if [ -n "${AETHERA_JOIN_TOKEN:-}" ] && [ -n "${AETHERA_ENDPOINT:-}" ] && [ -n "${AETHERA_CA_SHA256:-}" ]; then
     aethera-agent enroll --state-dir "$STATE_DIR" --endpoint "$AETHERA_ENDPOINT" --ca-sha256 "$AETHERA_CA_SHA256" \
@@ -51,5 +69,10 @@ if [ ! -s "$STATE_DIR/enrollment.json" ]; then
     echo "aethera-agent: not enrolled. Set AETHERA_ENDPOINT, AETHERA_CA_SHA256 and AETHERA_JOIN_TOKEN (UI: Servers > Add server)." >&2
     exit 1
   fi
+fi
+# An enrollment made earlier (host network, or the endpoint the control plane advertises, e.g. localhost:9443 which resolves to ::1 here
+# while the gateway listens on IPv4) is pointed at the loopback endpoint this container is configured with.
+if [ -n "${AETHERA_ENROLL_DIR:-}" ] && [ -n "${AETHERA_ENDPOINT:-}" ] && [ -s "$STATE_DIR/enrollment.json" ]; then
+  sed -i "s|\"endpoint\": *\"[^\"]*\"|\"endpoint\": \"$AETHERA_ENDPOINT\"|" "$STATE_DIR/enrollment.json"
 fi
 exec aethera-agent run --state-dir "$STATE_DIR"
