@@ -18,14 +18,18 @@ curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/in
 
 No release published yet (or you want a branch)? The installer falls back to building the images from the repository on this machine, or do it explicitly with `--from-source [branch-or-tag]`. That mode has no updater container and no `aethera` command; run the installer again to update. On Windows or macOS (Docker Desktop) use `deploy/install.ps1`, which does the same for a local machine.
 
-Without `--admin-email` nothing is created: open `http://<server>:8080` and register, the first account becomes the owner. With it, the installer creates the owner (the generated password is printed once, change it in Settings), creates a server called `local`, enrolls the agent for this machine and starts it.
+**One server is enough.** The stack always contains an agent container for the machine it runs on, like Coolify's localhost: it waits, and as soon as the first owner exists the control plane creates the `local` server (roles master and build) with a one-time join token and hands it to that agent. Nothing to copy, nothing to click: a minute after you have registered, the machine is a deployment server and you can create applications on it. More servers are added later from **Servers > Add server**.
+
+Without `--admin-email` nothing is created by the installer: open `http://<server>:8080` and register, the first account becomes the owner (and the machine connects itself right after). With it, the installer creates the owner (the generated password is printed once, change it in Settings) and waits until the machine is connected.
+
+Do not want this machine to deploy anything (the control plane on its own, all work on other servers)? Install with `--no-agent`, or set `AETHERA_AUTO_LOCAL_SERVER=false` in the `.env` and stop the `agent` service. The automatic connection happens once, on a fresh installation: delete the `local` server and it stays deleted. **Servers > Use this machine** connects it on demand.
 
 What the installer does, in order:
 
 1. checks for root, Linux and `curl`, installs Docker if needed;
 2. creates `/opt/aethera` with `docker-compose.yml` and a `.env` (mode 0600) holding a generated **database password** and **master key**;
-3. pulls the images, starts PostgreSQL, Redis and the control plane and waits until `/ready` answers;
-4. creates the owner and enrolls the local agent (only with `--admin-email`);
+3. pulls the images, starts PostgreSQL, Redis, the control plane and the agent of this machine and waits until `/ready` answers;
+4. creates the owner (only with `--admin-email`) and waits for the control plane to connect the local agent;
 5. starts the updater and installs the `aethera` command (`/usr/local/bin/aethera`).
 
 > **Back up `/opt/aethera/.env`.** The master key encrypts every secret Aethera stores (registry passwords, SSH keys, environment secrets) and its internal certificate authority. Without it a restored database cannot be read. The installer never replaces an existing key or password, so running it again is safe.
@@ -40,7 +44,7 @@ What the installer does, in order:
 | `--domain <name>` | `AETHERA_DOMAIN` | none | serve the UI on `https://<name>` through Aethera's proxy |
 | `--acme-email <email>` | `AETHERA_ACME_EMAIL` | none | Let's Encrypt account for HTTPS certificates (also `AETHERA_ACME_STAGING=true` for the staging CA) |
 | `--admin-email`, `--admin-password`, `--admin-name`, `--org-name` | `AETHERA_ADMIN_*`, `AETHERA_ORG_NAME` | | the first owner; the password is generated and printed when omitted |
-| `--no-agent` | | | do not enroll an agent for this machine |
+| `--no-agent` | | | do not start an agent for this machine (the control plane alone) |
 | `--http-port`, `--grpc-port` | `AETHERA_HTTP_PORT`, `AETHERA_GRPC_PORT` | 8080, 9443 | host ports |
 
 Also read from the environment and written to the `.env`: `AETHERA_IMAGE`, `AETHERA_AGENT_IMAGE`, `AETHERA_UPDATER_IMAGE` (images from a private registry or mirror), `AETHERA_UPDATE_API_URL` (a GitHub mirror or Enterprise), `AETHERA_UPDATE_CHECK=false` (no release lookups, for air-gapped installs).

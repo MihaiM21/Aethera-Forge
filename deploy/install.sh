@@ -164,14 +164,10 @@ env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 [ -z "$ACME_EMAIL" ] || env_set AETHERA_ACME_EMAIL "$ACME_EMAIL"
 env_set AETHERA_VERSION "$VERSION"
 env_set AETHERA_DIR "$DIR"
-# The agent profile is added once this machine's agent is enrolled: an agent without a token would only restart in a loop.
-if [ "$FROM_SOURCE" -eq 1 ]; then
-  profiles=""  # the source stack has no profiles: its agent container waits for "Use this machine"
-else
-  profiles="updater"
-  [ -s /var/lib/aethera/enrollment.json ] && profiles="agent,updater"
-fi
+# The agent of this machine is part of the stack and waits for the control plane to enroll it; the updater is an opt-in profile.
+if [ "$FROM_SOURCE" -eq 1 ]; then profiles=""; else profiles="updater"; fi
 env_set COMPOSE_PROFILES "$profiles"
+if [ "$WITH_AGENT" -eq 1 ]; then env_set AETHERA_AUTO_LOCAL_SERVER ""; else env_set AETHERA_AUTO_LOCAL_SERVER false; fi
 env_set AETHERA_HTTP_PORT "$HTTP_PORT"
 env_set AETHERA_GRPC_PORT "$GRPC_PORT"
 
@@ -189,12 +185,13 @@ dc() { docker compose -f "$COMPOSE" --env-file "$ENV_FILE" "$@"; }
 mkdir -p /var/lib/aethera
 if [ "$FROM_SOURCE" -eq 1 ]; then
   say "Building and starting the stack (several minutes the first time)"
-  dc up -d --build
+  dc up -d --build --scale "agent=$WITH_AGENT"
 else
   say "Pulling images"
-  dc pull --quiet postgres redis aethera || warn "could not pull every image (building locally, or offline); continuing"
+  dc pull --quiet postgres redis aethera agent || warn "could not pull every image (building locally, or offline); continuing"
   say "Starting the control plane"
   dc up -d postgres redis aethera
+  [ "$WITH_AGENT" -eq 0 ] || dc up -d agent
 fi
 
 BASE="http://127.0.0.1:$HTTP_PORT"
@@ -234,35 +231,16 @@ else
   WITH_AGENT=0
 fi
 
-if [ "$WITH_AGENT" -eq 1 ] && [ "$FROM_SOURCE" -eq 1 ]; then
-  # The agent container is already up and waiting; the API makes the server record and hands it a join token (what "Use this machine" does).
+if [ "$WITH_AGENT" -eq 1 ] && [ -n "$ADMIN_EMAIL" ]; then
+  # The agent container is up and waiting. The control plane connects it as the "local" server by itself as soon as the owner exists
+  # (what Servers > "Use this machine" does by hand); this only waits for that.
   say "Connecting this machine as a server"
-  api POST /system/local-server >/dev/null || warn "could not start the local agent; press 'Use this machine' on the Servers page"
-  for _ in $(seq 1 40); do
-    api GET /system/local-server 2>/dev/null | grep -q '"connected":true' && break
+  connected=0
+  for _ in $(seq 1 60); do
+    if api GET /system/local-server 2>/dev/null | grep -q '"connected":true'; then connected=1; break; fi
     sleep 2
   done
-elif [ "$WITH_AGENT" -eq 1 ]; then
-  if [ -s /var/lib/aethera/enrollment.json ]; then
-    say "This machine's agent is already enrolled"
-    env_set COMPOSE_PROFILES "agent,updater"
-    dc up -d agent
-  else
-    say "Enrolling an agent for this machine"
-    server="$(api POST /servers "{\"name\":\"local\",\"host\":\"$PUBLIC_HOST\",\"roles\":[\"master\",\"build\"]}")" || die "could not create the server record"
-    server_id="$(printf '%s' "$server" | json_field id)"
-    [ -n "$server_id" ] || die "unexpected response creating the server: $server"
-    jt="$(api POST "/servers/$server_id/join-tokens" '{"ttlMinutes":30}')" || die "could not create a join token"
-    env_set AETHERA_JOIN_TOKEN "$(printf '%s' "$jt" | json_field token)"
-    env_set AETHERA_CA_SHA256 "$(printf '%s' "$jt" | json_field caFingerprintSha256)"
-    env_set AETHERA_AGENT_ENDPOINT "127.0.0.1:$GRPC_PORT"
-    mkdir -p /var/lib/aethera
-    env_set COMPOSE_PROFILES "agent,updater"
-    dc up -d agent
-    # The token is single use and only needed for the first start: take it out of the .env again.
-    sleep 5
-    env_set AETHERA_JOIN_TOKEN ""
-  fi
+  [ "$connected" -eq 1 ] || warn "the agent of this machine is not connected yet (docker compose -f $COMPOSE logs agent); the Servers page has 'Use this machine'"
 fi
 
 if [ "$FROM_SOURCE" -eq 0 ]; then

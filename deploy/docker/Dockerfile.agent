@@ -13,7 +13,11 @@ LABEL org.opencontainers.image.title="Aethera agent" \
       org.opencontainers.image.source="https://github.com/MihaiM21/aethera-forge" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}"
-RUN apk add --no-cache ca-certificates
+# The agent shells out to these (builds: git, docker with buildx, nixpacks; deployments: docker compose; private repos: ssh).
+RUN apk add --no-cache ca-certificates git openssh-client docker-cli docker-cli-buildx docker-cli-compose
+ARG NIXPACKS_VERSION=1.41.0
+ARG TARGETARCH
+RUN case "${TARGETARCH:-amd64}" in arm64) a=aarch64 ;; *) a=x86_64 ;; esac && wget -qO- "https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/nixpacks-v${NIXPACKS_VERSION}-${a}-unknown-linux-musl.tar.gz" | tar -xz -C /usr/local/bin nixpacks && nixpacks --version
 COPY --from=build /out/aethera-agent /usr/local/bin/aethera-agent
 COPY deploy/docker/agent-entrypoint.sh /usr/local/bin/aethera-agent-entrypoint
 RUN chmod +x /usr/local/bin/aethera-agent-entrypoint

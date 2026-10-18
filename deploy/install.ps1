@@ -83,7 +83,7 @@ if (-not $ready) { Die "the control plane did not become ready: docker compose -
 Write-Host ""
 Say "Aethera is running."
 Write-Host "    URL:       $base   (the first account you register becomes the owner)"
-Write-Host "    Server:    open Servers > 'Use this machine' to deploy applications on this computer"
+Write-Host "    Server:    this computer becomes a deployment server by itself once you have registered (Servers page)"
 Write-Host "    Files:     $deploy  (.env holds the generated secrets: back it up)"
 Write-Host "    Logs:      docker compose -f `"$deploy/docker-compose.yml`" --env-file `"$envFile`" logs -f"
 Write-Host "    Update:    run this script again"

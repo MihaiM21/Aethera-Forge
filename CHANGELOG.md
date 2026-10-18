@@ -7,10 +7,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 First release (MVP). Everything below is new.
 
 ### Install and operate
-- One-line installer (`install.sh`): Docker if missing, generated database password and master key, control plane + PostgreSQL + Redis, optional first owner and an agent for the same machine. `/install-agent.sh` adds more servers (systemd service, checksum-verified download).
+- One-line installer (`install.sh`): Docker if missing, generated database password and master key, control plane + PostgreSQL + Redis, optional first owner and an agent for the same machine, connected automatically. `/install-agent.sh` adds more servers (systemd service, checksum-verified download).
 - `install.sh --from-source [ref]` (also the automatic fallback while no release exists) builds the stack from the repository; `install.ps1` does the same on Windows/macOS with Docker Desktop.
 - Release images on GHCR for linux/amd64 and linux/arm64 (`control-plane`, `agent`, `updater`), static agent binaries and `SHA256SUMS` as release assets.
 - Updates: the control plane checks the GitHub releases and shows the new version with its notes; one click (or `aethera update`) backs up the database, pulls the images, restarts and **rolls back with the database restored** if the new version does not start. Agents update themselves on request.
+- **One server is enough**: the stack contains an agent container for the machine it runs on. Once the first owner has registered, the control plane connects it as the `local` server by itself (a one-time join token handed over through a shared volume), so applications can be deployed right away. **Use this machine** on the Servers page does the same on demand; `AETHERA_AUTO_LOCAL_SERVER=false` / `--no-agent` opt out.
 - Database safety: a backup before every migration of an existing installation, a refusal to start on a database newer than the code, daily `pg_dump` backups (newest seven kept).
 - Housekeeping: log, event, session and audit-log retention, and a weekly prune of images, networks and build cache on every connected server (never volumes, rollback images kept). Settings > System shows the values, the backups and the last run, and can run it now.
 - The `aethera` command: `status`, `logs`, `update`, `backup`, `restore`.
