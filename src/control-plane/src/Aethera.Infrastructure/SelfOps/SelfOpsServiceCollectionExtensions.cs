@@ -23,11 +23,13 @@ public static class SelfOpsServiceCollectionExtensions
             sp.GetRequiredService<ILogger<ReleaseChecker>>()));
         services.TryAddSingleton<UpdaterControl>();
         services.TryAddSingleton<MaintenanceService>();
+        services.TryAddScoped<LocalServerEnabler>();
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, AgentUpdateJobHandler>());
 
         services.AddHostedService<UpdateCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<MaintenanceService>());
+        services.AddHostedService<LocalServerAutoEnroller>();
         return services;
     }
 }

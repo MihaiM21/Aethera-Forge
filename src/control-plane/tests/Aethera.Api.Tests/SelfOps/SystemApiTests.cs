@@ -5,6 +5,7 @@ using Aethera.Api.Tests.Agents;
 using Aethera.Api.Tests.Resources;
 using Aethera.Domain;
 using Aethera.Domain.Transport;
+using Aethera.Infrastructure.Agents;
 using Aethera.Infrastructure.Persistence;
 using Aethera.Infrastructure.SelfOps;
 using Aethera.Testing;
@@ -33,6 +34,7 @@ public sealed class SystemApiFixture : IDisposable
             builder.UseSetting("Aethera:Updates:ControlDirectory", ControlDirectory);
             builder.UseSetting("Aethera:Maintenance:BackupEnabled", "false");
             builder.UseSetting("Aethera:Maintenance:PruneEnabled", "false");
+            builder.UseSetting("Aethera:Agents:AutoLocalServer", "false"); // tests drive LocalServerAutoEnroller themselves
         }).WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IServerTransport>();
@@ -58,6 +60,13 @@ public sealed class SystemApiFixture : IDisposable
     {
         Directory.CreateDirectory(ControlDirectory);
         File.WriteAllText(Path.Combine(ControlDirectory, "alive"), "");
+    }
+
+    /// <summary>What the agent container of the compose project does while it waits to be enrolled.</summary>
+    public void MarkLocalAgentWaiting()
+    {
+        Directory.CreateDirectory(ControlDirectory);
+        File.WriteAllText(Path.Combine(ControlDirectory, "agent-alive"), "");
     }
 
     public void ResetUpdater()
@@ -325,5 +334,122 @@ public sealed class SystemApiTests(SystemApiFixture fixture)
     {
         var t = await fixture.NewTenantAsync();
         (await t.Admin.PostAsync($"/api/v1/servers/{Guid.NewGuid()}/agent/update", new { })).AssertProblemAsync(404, "server.not_found").GetAwaiter().GetResult();
+    }
+
+    // ================================================================ this machine as a server
+
+    [RequiresDatabaseFact]
+    public async Task Enabling_this_machine_without_a_waiting_agent_container_is_refused_and_creates_nothing()
+    {
+        var t = await fixture.NewTenantAsync();
+        fixture.ResetUpdater();
+
+        var response = await t.Admin.PostAsync("/api/v1/system/local-server", new { });
+
+        await response.AssertProblemAsync(409, "system.updater_unavailable");
+        var state = await t.Admin.GetJsonAsync("/api/v1/system/local-server");
+        Assert.False(state["updaterAvailable"]!.GetValue<bool>());
+        Assert.Null(state["serverId"]);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Enabling_this_machine_creates_the_server_and_hands_a_join_token_to_the_waiting_agent()
+    {
+        var t = await fixture.NewTenantAsync();
+        fixture.ResetUpdater();
+        fixture.MarkLocalAgentWaiting();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await t.Developer.PostAsync("/api/v1/system/local-server", new { })).StatusCode);
+        var started = await t.Admin.PostAsync("/api/v1/system/local-server", new { });
+        Assert.Equal(HttpStatusCode.Accepted, started.StatusCode);
+        var body = await started.ReadAsync();
+        Assert.Equal("requested", body["state"]!.GetValue<string>());
+        Assert.False(body["connected"]!.GetValue<bool>());
+
+        var request = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(fixture.ControlDirectory, "enable-agent.json")))!;
+        Assert.StartsWith("aeth_join_", request["joinToken"]!.GetValue<string>());
+        Assert.Equal("local", request["name"]!.GetValue<string>());
+        Assert.Matches("^[0-9a-f]{64}$", request["caSha256"]!.GetValue<string>());
+
+        var server = await t.Admin.GetJsonAsync($"/api/v1/servers/{body["serverId"]!.GetValue<string>()}");
+        Assert.Equal("local", server["name"]!.GetValue<string>());
+        Assert.Contains("master", server["roles"]!.AsArray().Select(r => r!.GetValue<string>()));
+        Assert.Contains("build", server["roles"]!.AsArray().Select(r => r!.GetValue<string>()));
+
+        // The request is waiting: a second click does not issue a second token.
+        await (await t.Admin.PostAsync("/api/v1/system/local-server", new { })).AssertProblemAsync(409, "system.local_server_in_progress");
+        Assert.Single(await t.AuditAsync(action: "system.local_server_requested"));
+    }
+}
+
+// ================================================================ automatic enrollment of this machine
+
+[CollectionDefinition(Name)]
+public sealed class LocalServerAutoEnrollCollection : ICollectionFixture<SystemApiFixture>
+{
+    public const string Name = "local-server-auto-enroll";
+}
+
+[CollectionDefinition(Name)]
+public sealed class LocalServerAutoEnrollSkippedCollection : ICollectionFixture<SystemApiFixture>
+{
+    public const string Name = "local-server-auto-enroll-skipped";
+}
+
+/// <summary>The first organization of a fresh database, with the agent container waiting: the machine connects itself, once.</summary>
+[Collection(LocalServerAutoEnrollCollection.Name)]
+public sealed class LocalServerAutoEnrollTests(SystemApiFixture fixture)
+{
+    [RequiresDatabaseFact]
+    public async Task A_fresh_installation_connects_its_own_machine_once_the_owner_exists_and_only_once()
+    {
+        fixture.ResetUpdater();
+        var enroller = new LocalServerAutoEnroller(
+            fixture.Factory.Services.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AgentGatewayOptions()), NullLogger<LocalServerAutoEnroller>.Instance);
+        var request = Path.Combine(fixture.ControlDirectory, "enable-agent.json");
+
+        // Nobody has registered yet: nothing to do, whether or not the agent container is up.
+        fixture.MarkLocalAgentWaiting();
+        Assert.False(await enroller.RunOnceAsync(CancellationToken.None));
+
+        // An owner exists but no agent container is waiting (not up yet, or not part of this installation): try again later.
+        var t = await fixture.NewTenantAsync();
+        fixture.ResetUpdater();
+        Assert.False(await enroller.RunOnceAsync(CancellationToken.None));
+        Assert.False(File.Exists(request));
+
+        fixture.MarkLocalAgentWaiting();
+        Assert.True(await enroller.RunOnceAsync(CancellationToken.None));
+        var token = JsonNode.Parse(await File.ReadAllTextAsync(request))!["joinToken"]!.GetValue<string>();
+        Assert.StartsWith("aeth_join_", token);
+        var servers = await t.Admin.GetJsonAsync("/api/v1/servers");
+        Assert.Contains("local", servers["items"]!.AsArray().Select(x => x!["name"]!.GetValue<string>()));
+        Assert.Single(await t.AuditAsync(action: "system.local_server_requested"));
+
+        // The agent took the request; even if the server is deleted afterwards, the decision stands.
+        File.Delete(request);
+        Assert.True(await enroller.RunOnceAsync(CancellationToken.None));
+        Assert.False(File.Exists(request));
+        Assert.Single(await t.AuditAsync(action: "system.local_server_requested"));
+    }
+}
+
+/// <summary>An organization that already has a server (added by hand): the machine is left alone.</summary>
+[Collection(LocalServerAutoEnrollSkippedCollection.Name)]
+public sealed class LocalServerAutoEnrollSkippedTests(SystemApiFixture fixture)
+{
+    [RequiresDatabaseFact]
+    public async Task An_installation_that_already_has_a_server_is_left_alone()
+    {
+        fixture.ResetUpdater();
+        fixture.MarkLocalAgentWaiting();
+        var t = await fixture.NewTenantAsync();
+        var created = await t.Admin.PostAsync("/api/v1/servers", new { name = "edge-1", host = "10.0.0.5" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var enroller = new LocalServerAutoEnroller(
+            fixture.Factory.Services.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AgentGatewayOptions()), NullLogger<LocalServerAutoEnroller>.Instance);
+
+        Assert.True(await enroller.RunOnceAsync(CancellationToken.None));
+        Assert.False(File.Exists(Path.Combine(fixture.ControlDirectory, "enable-agent.json")));
     }
 }

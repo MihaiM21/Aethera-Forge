@@ -7,6 +7,7 @@ using Aethera.Domain;
 using Aethera.Infrastructure.Persistence;
 using Aethera.Infrastructure.SelfOps;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 
 namespace Aethera.Api.Features.SystemOps;
 
@@ -33,6 +34,9 @@ public sealed record MaintenanceReportDto(
 
 public sealed record MaintenanceDto(
     MaintenanceSettingsDto Settings, bool BackupAvailable, IReadOnlyList<BackupDto> Backups, DateTimeOffset? LastBackupAt, DateTimeOffset? LastPruneAt, MaintenanceReportDto? LastRun);
+
+/// <summary>The machine the control plane runs on as a deployment server. <c>state</c>: idle, requested, starting, done or failed; <c>serverId</c> is null until the first request.</summary>
+public sealed record LocalServerDto(bool UpdaterAvailable, string State, string? Message, Guid? ServerId, bool Connected);
 
 public sealed record UpdateAgentRequest(string? Version = null);
 
@@ -62,6 +66,15 @@ internal static class SystemEndpoints
         system.MapPost("/maintenance/run", RunMaintenance).WithName("runSystemMaintenance")
             .WithSummary("Run maintenance now: retention, a database backup and a prune of every connected server")
             .RequireAdmin(Scopes.Admin).Produces<MaintenanceReportDto>();
+
+        system.MapGet("/local-server", GetLocalServer).WithName("getLocalServer")
+            .WithSummary("Whether this machine (the one the control plane runs on) is a deployment server yet")
+            .RequireRead().Produces<LocalServerDto>();
+        system.MapPost("/local-server", EnableLocalServer).WithName("enableLocalServer")
+            .WithSummary("Make this machine a deployment server")
+            .WithDescription("Creates the `local` server (roles master and build) and a one-time join token, and hands it to the agent container of this machine, which waits next to the control plane (it is also done automatically after the first owner registers). Poll `GET /system/local-server` until `connected`.")
+            .RequireAdmin(Scopes.ServersWrite).Produces<LocalServerDto>(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         api.MapPost("/servers/{id:guid}/agent/update", UpdateAgent).WithName("updateServerAgent").WithTags("Servers")
             .WithSummary("Update the agent on a server to the newest release")
@@ -116,6 +129,33 @@ internal static class SystemEndpoints
         }
         await audit.RecordAsync("system.update_requested", "system", null, new { from = checker.CurrentVersion, to = latest.Version }, ct);
         return Results.Accepted("/api/v1/system/version", (await updater.GetStatusAsync(ct)) is var s ? new UpdaterDto(s.Available, s.State, s.TargetVersion, s.Message, s.UpdatedAt) : null);
+    }
+
+    private static async Task<LocalServerDto> BuildLocalServer(AetheraDbContext db, ICurrentActor actor, UpdaterControl updater, CancellationToken ct)
+    {
+        var status = await updater.GetLocalAgentStatusAsync(ct);
+        var server = await db.Servers.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == actor.Org() && s.Name == LocalServerEnabler.ServerName, ct);
+        var connected = server?.AgentStatus == AgentStatus.Connected;
+        // Once the agent is connected the request is over, whatever the agent container last wrote.
+        var state = connected ? "done" : status.State;
+        return new LocalServerDto(status.Available, state, status.Message, server?.Id, connected);
+    }
+
+    private static async Task<Ok<LocalServerDto>> GetLocalServer(AetheraDbContext db, ICurrentActor actor, UpdaterControl updater, CancellationToken ct) =>
+        TypedResults.Ok(await BuildLocalServer(db, actor, updater, ct));
+
+    private static async Task<IResult> EnableLocalServer(AetheraDbContext db, ICurrentActor actor, UpdaterControl updater, LocalServerEnabler enabler, CancellationToken ct)
+    {
+        var result = await enabler.EnableAsync(actor.Org(), actor.UserId, automatic: false, ct);
+        return result switch
+        {
+            LocalServerEnableResult.Requested => Results.Accepted("/api/v1/system/local-server", await BuildLocalServer(db, actor, updater, ct)),
+            LocalServerEnableResult.InProgress => new ApiProblem(StatusCodes.Status409Conflict, "system.local_server_in_progress", "This machine is already being connected."),
+            LocalServerEnableResult.AlreadyConnected => new ApiProblem(StatusCodes.Status409Conflict, "system.local_server_connected", "This machine is already a connected server."),
+            LocalServerEnableResult.NotWritable => new ApiProblem(StatusCodes.Status409Conflict, "system.updater_unavailable", "The request could not be handed to the agent container: the shared folder is not writable."),
+            _ => new ApiProblem(StatusCodes.Status409Conflict, "system.updater_unavailable",
+                "No agent container is waiting next to the control plane (the `agent` service of the compose project). Start it, or add this machine like any other server."),
+        };
     }
 
     private static async Task<Ok<MaintenanceDto>> GetMaintenance(MaintenanceService maintenance, Microsoft.Extensions.Options.IOptions<MaintenanceOptions> options, CancellationToken ct)
