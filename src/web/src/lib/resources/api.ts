@@ -37,6 +37,7 @@ import type {
   ServiceSummary,
   ServiceTemplate,
   SystemVersion,
+  LocalServer,
   UpdateApplicationRequest,
   UpdateServiceRequest,
   UpdaterState,
@@ -231,6 +232,10 @@ export function createResourcesApi(client: ApiClient) {
       checkVersion: () => client.post<SystemVersion>("/system/version/check"),
       /** Hands the update to the updater container; the API restarts, so poll `version` until it answers again. */
       startUpdate: () => client.post<UpdaterState>("/system/update", {}),
+      /** Whether the machine the control plane runs on is a deployment server yet. */
+      localServer: (o: Signal = {}) => client.get<LocalServer>("/system/local-server", o),
+      /** Makes this machine a deployment server: creates it and has the updater container start its agent. Poll `localServer`. */
+      enableLocalServer: () => client.post<LocalServer>("/system/local-server", {}),
       maintenance: (o: Signal = {}) => client.get<Maintenance>("/system/maintenance", o),
       runMaintenance: () => client.post<MaintenanceReport>("/system/maintenance/run"),
     },

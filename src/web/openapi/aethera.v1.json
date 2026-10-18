@@ -13442,6 +13442,135 @@
         ],
         "x-required-scope": "admin"
       }
+    },
+    "/api/v1/system/local-server": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Whether this machine (the one the control plane runs on) is a deployment server yet",
+        "operationId": "getLocalServer",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalServerDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Make this machine a deployment server",
+        "description": "Creates the `local` server (roles master and build) and a one-time join token, and hands it to the agent container of this machine, which waits next to the control plane (it is also done automatically after the first owner registers). Poll `GET /system/local-server` until `connected`.",
+        "operationId": "enableLocalServer",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalServerDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
     }
   },
   "components": {
@@ -17277,6 +17406,40 @@
             "format": "date-time"
           },
           "stale": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LocalServerDto": {
+        "required": [
+          "updaterAvailable",
+          "state",
+          "message",
+          "serverId",
+          "connected"
+        ],
+        "type": "object",
+        "properties": {
+          "updaterAvailable": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "connected": {
             "type": "boolean"
           }
         }

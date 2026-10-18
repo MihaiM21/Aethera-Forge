@@ -18,6 +18,7 @@ import { describeHealth } from "@/lib/servers/status";
 import type { LatestMetrics, Server, ServerHealth } from "@/lib/servers/types";
 import { usePolled } from "@/lib/servers/use-polled";
 import { ErrorPanel, NativeSelect } from "./common";
+import { LocalServerCard } from "./local-server-card";
 import { ServerStatusBadges } from "./status-badges";
 
 export const LIST_POLL_MS = 10_000;
@@ -183,6 +184,8 @@ export function ServersView({ api = serversApi, pollMs = LIST_POLL_MS }: { api?:
           </>
         }
       />
+
+      <LocalServerCard onConnected={() => void refresh()} />
 
       {rows.length > 0 && (
         <div className="flex flex-wrap items-end gap-3">
