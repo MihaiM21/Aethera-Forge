@@ -30,6 +30,8 @@ public static class SelfOpsServiceCollectionExtensions
         services.AddHostedService<UpdateCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<MaintenanceService>());
         services.AddHostedService<LocalServerAutoEnroller>();
+        services.TryAddSingleton<LocalAgentBeacon>();
+        services.AddHostedService(sp => sp.GetRequiredService<LocalAgentBeacon>());
         return services;
     }
 }

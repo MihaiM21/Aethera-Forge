@@ -126,6 +126,18 @@ public sealed class UpdaterControl(IOptions<UpdateOptions> options, IClock clock
         File.Move(temp, AgentRequestPath, overwrite: true);
     }
 
+    /// <summary>
+    /// Tells the agent container which control plane it is next to: the fingerprint of this installation's CA, rewritten every few seconds
+    /// (so a stale file left by an earlier installation is recognizable by its age). The agent forgets an enrollment made under another CA.
+    /// </summary>
+    public void PublishCaFingerprint(string fingerprintSha256)
+    {
+        Directory.CreateDirectory(Dir);
+        var temp = Path.Combine(Dir, "ca-sha256.tmp");
+        File.WriteAllText(temp, fingerprintSha256 + "\n");
+        File.Move(temp, Path.Combine(Dir, "ca-sha256"), overwrite: true);
+    }
+
     private static async Task<T?> ReadAsync<T>(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);

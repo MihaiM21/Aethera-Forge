@@ -434,6 +434,24 @@ public sealed class LocalServerAutoEnrollTests(SystemApiFixture fixture)
     }
 }
 
+[Collection(SystemApiCollection.Name)]
+public sealed class LocalAgentBeaconTests(SystemApiFixture fixture)
+{
+    [RequiresDatabaseFact]
+    public async Task The_ca_fingerprint_is_published_next_to_the_updater_files_for_the_agent_container()
+    {
+        fixture.ResetUpdater();
+        var beacon = fixture.Factory.Services.GetRequiredService<LocalAgentBeacon>();
+
+        await beacon.PublishOnceAsync(CancellationToken.None);
+
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var info = await scope.ServiceProvider.GetRequiredService<Aethera.Infrastructure.Agents.Pki.IInternalCa>().GetPublicInfoAsync(CancellationToken.None);
+        Assert.Equal(info.FingerprintSha256, (await File.ReadAllTextAsync(Path.Combine(fixture.ControlDirectory, "ca-sha256"))).Trim());
+        Assert.False(File.Exists(Path.Combine(fixture.ControlDirectory, "ca-sha256.tmp")));
+    }
+}
+
 /// <summary>An organization that already has a server (added by hand): the machine is left alone.</summary>
 [Collection(LocalServerAutoEnrollSkippedCollection.Name)]
 public sealed class LocalServerAutoEnrollSkippedTests(SystemApiFixture fixture)
