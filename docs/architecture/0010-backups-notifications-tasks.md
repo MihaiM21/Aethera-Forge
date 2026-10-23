@@ -43,7 +43,7 @@ key     = HKDF-SHA256(ikm = stream key, salt = salt, info = "aethera/backup/aeb1
 chunks  = AES-256-GCM(key, nonce = 11-byte big-endian counter | final flag (0x00 / 0x01), plaintext chunk of 65536 bytes, aad = header)
 ```
 
-The last chunk carries the final flag and may be shorter (or empty), so a truncated object fails to decrypt instead of restoring half a database. The stored object's SHA-256 is recorded on the run and checked before a restore. Go (agent) and .NET (control plane, for its own database and `aethera backup decrypt`) implement the same format against a shared test vector (`src/agent/internal/backup/testdata/aeb1-vector.json`).
+The last chunk carries the final flag, so a truncated object fails to decrypt instead of restoring half a database. Writers are canonical: the final chunk is empty only for an empty plaintext, and a plaintext that is an exact multiple of 65536 bytes ends with a full-size final chunk; readers also accept a trailing empty final chunk. Restores decrypt the whole downloaded object once before the sink sees a byte. The stored object's SHA-256 is recorded on the run and checked before a restore. Go (agent) and .NET (control plane, for its own database and `aethera backup decrypt`) implement the same format against a shared test vector (`src/agent/internal/backup/testdata/aeb1-vector.json`).
 
 **Keys.** The stream key is derived from the master key: `HKDF-SHA256(ikm = master key v, info = "aethera/backup/v1")`, id `mk<v>-<first 8 hex of SHA-256(stream key)>`. Rotating the master key keeps old versions in the keyring, so old backups stay readable. **Losing the master key loses the backups**: the UI and the install guide say so, and Settings > Backups shows how to copy it.
 
