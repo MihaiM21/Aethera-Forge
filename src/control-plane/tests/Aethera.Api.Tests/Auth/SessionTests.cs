@@ -227,7 +227,10 @@ public sealed class SessionTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 }
 
-/// <summary>Production: the cookie is the secure <c>__Host-</c> one whatever the request scheme says (TLS may be terminated by a proxy).</summary>
+/// <summary>
+/// Production: the cookie form follows the request scheme. A fresh install is used on <c>http://&lt;ip&gt;:8080</c>, where browsers drop
+/// <c>Secure</c> and <c>__Host-</c> cookies, so plain HTTP must get a usable, non-secure cookie.
+/// </summary>
 public sealed class ProductionCookieTests(ProductionAuthApiFactory factory) : IClassFixture<ProductionAuthApiFactory>, IAsyncLifetime
 {
     public async Task InitializeAsync()
@@ -237,15 +240,15 @@ public sealed class ProductionCookieTests(ProductionAuthApiFactory factory) : IC
 
     public Task DisposeAsync() => Task.CompletedTask;
 
+    private static object Setup => new { email = "owner@example.com", password = ApiClient.Password, displayName = "Owner", organizationName = "Acme" };
+
     [RequiresDatabaseTheory]
     [InlineData("https://localhost")]
-    [InlineData("http://localhost")] // behind a TLS-terminating proxy the app sees http
-    public async Task SessionCookie_IsAHostPrefixedSecureHttpOnlyLaxCookie(string baseAddress)
+    [InlineData("https://203.0.113.5:8443")]
+    public async Task OverHttps_TheCookieIsAHostPrefixedSecureHttpOnlyLaxCookie(string baseAddress)
     {
         var client = ApiClient.Create(factory, new Uri(baseAddress), cookieName: "__Host-aethera_session");
-        var response = await client.PostAsync("/api/v1/auth/setup",
-            new { email = "owner@example.com", password = ApiClient.Password, displayName = "Owner", organizationName = "Acme" }, csrf: false);
-        await client.ReadAsync(response, HttpStatusCode.Created);
+        await client.ReadAsync(await client.PostAsync("/api/v1/auth/setup", Setup, csrf: false), HttpStatusCode.Created);
 
         var cookie = client.LastSetCookie!.ToLowerInvariant();
         Assert.StartsWith("__host-aethera_session=", cookie);
@@ -257,9 +260,46 @@ public sealed class ProductionCookieTests(ProductionAuthApiFactory factory) : IC
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/auth/me")).StatusCode);
 
-        // The development cookie is not accepted here.
+        // Reading accepts either form: a session started over plain HTTP on this host is still valid when the HTTPS form is in use.
         var other = ApiClient.Create(factory, new Uri(baseAddress), cookieName: "aethera_session");
         other.SessionCookie = client.SessionCookie;
-        Assert.Equal(HttpStatusCode.Unauthorized, (await other.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync("/api/v1/auth/me")).StatusCode);
+    }
+
+    [RequiresDatabaseTheory]
+    [InlineData("http://203.0.113.5:8080")] // the install URL: a non-loopback address, where a browser would drop a Secure cookie
+    [InlineData("http://aethera.example.com")]
+    [InlineData("http://localhost")]
+    public async Task OverPlainHttp_TheCookieIsUsable_NotSecureAndNotHostPrefixed(string baseAddress)
+    {
+        var client = ApiClient.Create(factory, new Uri(baseAddress), cookieName: "aethera_session");
+        await client.ReadAsync(await client.PostAsync("/api/v1/auth/setup", Setup, csrf: false), HttpStatusCode.Created);
+
+        var cookie = client.LastSetCookie!.ToLowerInvariant();
+        Assert.StartsWith("aethera_session=", cookie);
+        Assert.Contains("httponly", cookie);
+        Assert.Contains("samesite=lax", cookie);
+        Assert.Contains("path=/", cookie);
+        Assert.DoesNotContain("secure", cookie);
+        Assert.DoesNotContain("domain=", cookie);
+
+        // It signs the browser in (which a Secure cookie would not over http://<ip>), and the CSRF protection is unchanged.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/auth/me")).StatusCode);
+        await client.LoadCsrfAsync();
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(HttpMethod.Post, "/api/v1/auth/logout", csrf: false)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/v1/auth/logout")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/auth/me")).StatusCode);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task ASecureNamedCookie_IsAlsoAcceptedOverPlainHttp()
+    {
+        // E.g. a proxy that is not trusted for X-Forwarded-Proto: the app sees http while the browser holds the __Host- cookie.
+        var https = ApiClient.Create(factory, new Uri("https://203.0.113.5:8443"), cookieName: "__Host-aethera_session");
+        await https.ReadAsync(await https.PostAsync("/api/v1/auth/setup", Setup, csrf: false), HttpStatusCode.Created);
+
+        var http = ApiClient.Create(factory, new Uri("http://203.0.113.5:8080"), cookieName: "__Host-aethera_session");
+        http.SessionCookie = https.SessionCookie;
+        Assert.Equal(HttpStatusCode.OK, (await http.GetAsync("/api/v1/auth/me")).StatusCode);
     }
 }
