@@ -77,7 +77,7 @@ internal static class ChannelRules
 
     public static void Recipients<T>(IRuleBuilderInitial<T, List<string>?> rule) =>
         rule.Must(r => r is null || r.Count <= MaxRecipients).WithErrorCode("too_long").WithMessage($"At most {MaxRecipients} addresses.")
-            .Must(r => r is null || r.All(NotificationRules.IsEmail)).WithErrorCode("email").WithMessage("Every recipient must be an email address.");
+            .Must(r => r is null || r.All(a => NotificationRules.IsEmail(a?.Trim()))).WithErrorCode("email").WithMessage("Every recipient must be an email address.");
 
     public static IRuleBuilderOptions<T, string?> WebhookUrl<T>(IRuleBuilder<T, string?> rule, IOptions<NotificationOptions> options) =>
         rule.MaximumLength(2000).Must(url => WebhookTargetPolicy.Check(url, options.Value.AllowPrivateWebhookTargets) is null).WithErrorCode("pattern")
