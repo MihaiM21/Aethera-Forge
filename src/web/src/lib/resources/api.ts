@@ -34,6 +34,7 @@ import type {
   ProjectFromTemplate,
   ProjectTemplate,
   Registry,
+  RegistryTestResult,
   RuntimeLogs,
   Secret,
   Service,
@@ -205,6 +206,8 @@ export function createResourcesApi(client: ApiClient) {
       create: (body: CreateRegistryRequest) => client.post<Registry>("/registries", body),
       update: (id: string, body: Partial<CreateRegistryRequest>) => client.patch<Registry>(`/registries/${enc(id)}`, body),
       remove: (id: string) => client.delete<void>(`/registries/${enc(id)}`),
+      /** The control plane calls the registry's v2 API with the stored credentials: result is ok, unauthorized or unreachable. */
+      test: (id: string) => client.post<RegistryTestResult>(`/registries/${enc(id)}/test`),
     },
 
     gitCredentials: {

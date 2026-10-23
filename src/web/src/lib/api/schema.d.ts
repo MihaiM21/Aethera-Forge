@@ -866,6 +866,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /**
+         * Test the connection to a registry
+         * @description The control plane calls the registry's Docker Registry HTTP API v2 (GET /v2/, following the Bearer or Basic challenge with the stored credentials) and reports ok, unauthorized or unreachable. Loopback and link-local addresses are refused. The answer is 200 in all three cases.
+         */
         post: operations["testRegistry"];
         delete?: never;
         options?: never;
@@ -4073,6 +4077,12 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        RegistryTestResponse: {
+            result: string;
+            message: string;
+            /** Format: int32 */
+            httpStatus: null | number | string;
         };
         ReleaseDto: {
             version: string;
@@ -9454,6 +9464,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryTestResponse"];
+                };
+            };
             /** @description Not authenticated (auth.unauthenticated). */
             401: {
                 headers: {
@@ -9474,15 +9493,6 @@ export interface operations {
             };
             /** @description Unexpected error (internal.error). */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };

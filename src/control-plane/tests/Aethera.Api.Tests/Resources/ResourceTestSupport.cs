@@ -18,9 +18,16 @@ public sealed class ResourcesFixture : IDisposable
     {
         Base = new AetheraApiFactory();
         Dns = new FakeDnsResolver();
+        Registries = new FakeRegistryTester();
         Factory = Base.WithWebHostBuilder(builder =>
-            builder.ConfigureTestServices(services => services.AddSingleton<Aethera.Api.Features.Resources.DomainNames.IDnsResolver>(Dns)));
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<Aethera.Api.Features.Resources.DomainNames.IDnsResolver>(Dns);
+                services.AddSingleton<Aethera.Infrastructure.Registries.IRegistryConnectionTester>(Registries);
+            }));
     }
+
+    public FakeRegistryTester Registries { get; }
 
     public AetheraApiFactory Base { get; }
 
@@ -38,6 +45,21 @@ public sealed class ResourcesFixture : IDisposable
 public sealed class ResourcesCollection : ICollectionFixture<ResourcesFixture>
 {
     public const string Name = "resources";
+}
+
+/// <summary>Records what the registry test endpoint hands to the tester (the decrypted credential included) and answers with a canned verdict.</summary>
+public sealed class FakeRegistryTester : Aethera.Infrastructure.Registries.IRegistryConnectionTester
+{
+    public Aethera.Infrastructure.Registries.RegistryTestResult Result { get; set; } =
+        new(Aethera.Infrastructure.Registries.RegistryTestOutcome.Ok, "Reachable; the stored credentials were accepted.", 200);
+
+    public (string Url, string? Username, string? Password)? LastCall { get; private set; }
+
+    public Task<Aethera.Infrastructure.Registries.RegistryTestResult> TestAsync(string url, string? username, string? password, CancellationToken cancellationToken)
+    {
+        LastCall = (url, username, password);
+        return Task.FromResult(Result);
+    }
 }
 
 public sealed class FakeDnsResolver : Aethera.Api.Features.Resources.DomainNames.IDnsResolver

@@ -5,6 +5,7 @@ using Aethera.Api.Http.Pagination;
 using Aethera.Api.Security;
 using Aethera.Domain;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Registries;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,21 @@ public sealed record UpdateRegistryRequest
 /// <summary>A registry. The credential is write-only: only <c>hasCredentials</c> tells whether one is stored.</summary>
 public sealed record RegistryResponse(
     Guid Id, string Name, string Url, string? Username, bool HasCredentials, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// The verdict of <c>POST /registries/{id}/test</c>. <c>result</c> is <c>ok</c> (the registry answered and accepted the stored credentials, or
+/// needs none), <c>unauthorized</c> (reachable, credentials missing or rejected) or <c>unreachable</c> (no usable answer). <c>message</c>
+/// is for people and holds no secret; <c>httpStatus</c> is the last status the registry answered, when there was one.
+/// </summary>
+public sealed record RegistryTestResponse(string Result, string Message, int? HttpStatus)
+{
+    internal static string ResultName(RegistryTestOutcome outcome) => outcome switch
+    {
+        RegistryTestOutcome.Ok => "ok",
+        RegistryTestOutcome.Unauthorized => "unauthorized",
+        _ => "unreachable",
+    };
+}
 
 public static partial class RegistryRules
 {
@@ -91,7 +107,10 @@ internal static class RegistryEndpoints
             .ValidatePatch<UpdateRegistryRequest>().RequireAdmin().RequireScope(Scopes.SecretsWrite);
         group.MapDelete("/{id:guid}", Delete).WithName("deleteRegistry").RequireAdmin().RequireScope(Scopes.SecretsWrite);
         group.MapPost("/{id:guid}/test", Test).WithName("testRegistry").RequireAdmin()
-            .ProducesProblem(StatusCodes.Status501NotImplemented);
+            .WithSummary("Test the connection to a registry")
+            .WithDescription(
+                "The control plane calls the registry's Docker Registry HTTP API v2 (GET /v2/, following the Bearer or Basic challenge with the stored " +
+                "credentials) and reports ok, unauthorized or unreachable. Loopback and link-local addresses are refused. The answer is 200 in all three cases.");
     }
 
     private static async Task<Ok<Page<RegistryResponse>>> List(
@@ -202,11 +221,18 @@ internal static class RegistryEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<IResult> Test(Guid id, AetheraDbContext db, ICurrentActor actor, CancellationToken ct)
+    private static async Task<Ok<RegistryTestResponse>> Test(
+        Guid id, AetheraDbContext db, ICurrentActor actor, SecretVault vault, IRegistryConnectionTester tester, IAuditLog audit, CancellationToken ct)
     {
-        await db.GetRegistryAsync(actor.Org(), id, tracking: false, ct);
-        return new ApiProblem(StatusCodes.Status501NotImplemented, ResourceProblemCodes.NotImplemented,
-            "Testing registry credentials needs a server connection and arrives with the deployment engine (Phase 3).", "Not implemented");
+        var registry = await db.RegistriesOf(actor.Org()).AsNoTracking().Include(r => r.PasswordSecret).FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new ApiProblemException(ApiProblems.NotFound("registry", id));
+        string? password = null;
+        if (registry.PasswordSecret is { } secret) password = (await vault.RevealAsync(secret, null, ct)).Value;
+
+        var result = await tester.TestAsync(registry.Url, registry.Username, password, ct);
+        // The audit record has the verdict only: no message (it names the host), never the credential.
+        await audit.RecordAsync("registry.tested", "registry", id, new { result = RegistryTestResponse.ResultName(result.Outcome) }, ct);
+        return TypedResults.Ok(new RegistryTestResponse(RegistryTestResponse.ResultName(result.Outcome), result.Message, result.HttpStatus));
     }
 
     private static Secret CreateCredential(SecretVault vault, Guid org, Registry registry, string password)

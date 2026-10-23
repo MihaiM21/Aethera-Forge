@@ -41,6 +41,7 @@ public static class ResourcesModule
 
         services.TryAddScoped<SecretVault>();
         services.TryAddSingleton<IDnsResolver, SystemDnsResolver>();
+        services.TryAddSingleton<Aethera.Infrastructure.Registries.IRegistryConnectionTester, Aethera.Infrastructure.Registries.RegistryConnectionTester>();
         return services;
     }
 

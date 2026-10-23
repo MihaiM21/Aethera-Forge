@@ -78,6 +78,7 @@ export type UpdateServiceRequest = S["UpdateServiceRequest"];
 export type Secret = S["SecretResponse"];
 export type CreateSecretRequest = S["CreateSecretRequest"];
 export type Registry = S["RegistryResponse"];
+export type RegistryTestResult = S["RegistryTestResponse"];
 export type CreateRegistryRequest = S["CreateRegistryRequest"];
 export type User = S["UserResponse"];
 export type CreateUserRequest = S["CreateUserRequest"];
