@@ -26,6 +26,19 @@ public sealed class DeployJobHandler : IJobHandler
 
     public async Task ExecuteAsync(JobContext context, CancellationToken cancellationToken)
     {
+        try
+        {
+            await ExecuteDeploymentAsync(context, cancellationToken);
+        }
+        finally
+        {
+            // Notifications (ADR 0010): reads the stored outcome, publishes deployment.succeeded / deployment.failed, never throws.
+            await Notifications.DeploymentNotifications.PublishOutcomeAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
+        }
+    }
+
+    private async Task ExecuteDeploymentAsync(JobContext context, CancellationToken cancellationToken)
+    {
         var sp = context.Services;
         var db = sp.GetRequiredService<AetheraDbContext>();
         var clock = sp.GetRequiredService<IClock>();
