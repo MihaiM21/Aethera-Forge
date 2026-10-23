@@ -3231,7 +3231,7 @@ export interface components {
             name: null | string;
         };
         /** @enum {unknown} */
-        SecretPurpose: "user" | "registryCredential" | "sshCredential" | "gitCredential" | "serviceGenerated";
+        SecretPurpose: "user" | "registryCredential" | "sshCredential" | "gitCredential" | "serviceGenerated" | "backupCredential" | "notificationCredential" | "dnsCredential" | "basicAuth";
         SecretResponse: {
             /** Format: uuid */
             id: string;

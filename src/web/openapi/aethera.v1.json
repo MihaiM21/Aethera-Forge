@@ -19257,7 +19257,11 @@
           "registryCredential",
           "sshCredential",
           "gitCredential",
-          "serviceGenerated"
+          "serviceGenerated",
+          "backupCredential",
+          "notificationCredential",
+          "dnsCredential",
+          "basicAuth"
         ]
       },
       "SecretResponse": {

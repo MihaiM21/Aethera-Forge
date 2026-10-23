@@ -71,6 +71,18 @@ public sealed class AetheraDbContext(DbContextOptions<AetheraDbContext> options,
     public DbSet<InstanceSetting> Settings => Set<InstanceSetting>();
     public DbSet<MetricSample> MetricSamples => Set<MetricSample>();
 
+    // Backups, notifications, scheduled tasks, DNS providers (R1, ADR 0010)
+    public DbSet<BackupDestination> BackupDestinations => Set<BackupDestination>();
+    public DbSet<BackupPolicy> BackupPolicies => Set<BackupPolicy>();
+    public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
+    public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
+    public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
+    public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+    public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
+    public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
+    public DbSet<DnsProvider> DnsProviders => Set<DnsProvider>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // timestamptz only accepts offset 0; normalise whatever offset callers supply.

@@ -3043,7 +3043,8 @@ type ComposeProject struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Compose project name (-p). [a-z0-9][a-z0-9_-]*
 	ProjectName string `protobuf:"bytes,1,opt,name=project_name,json=projectName,proto3" json:"project_name,omitempty"`
-	// Contents of the user's compose file, kept verbatim.
+	// Contents of the user's compose file, kept verbatim. Empty when `git` is
+	// set: the file then comes from the repository.
 	// SENSITIVE: may contain user-embedded secrets; log length/hash only.
 	ComposeFile string `protobuf:"bytes,2,opt,name=compose_file,json=composeFile,proto3" json:"compose_file,omitempty"`
 	// Contents of the Aethera-generated override file (labels, networks).
@@ -3054,6 +3055,17 @@ type ComposeProject struct {
 	Profiles []string  `protobuf:"bytes,5,rep,name=profiles,proto3" json:"profiles,omitempty"`
 	// Registry credentials available to pull/build in this project.
 	RegistryAuths []*RegistryAuth `protobuf:"bytes,6,rep,name=registry_auths,json=registryAuths,proto3" json:"registry_auths,omitempty"`
+	// Repository the project lives in. When set, the agent checks it out into
+	// the project directory (same validation and credential handling as
+	// BuildRequest.git) and uses `compose_path` from it, so `build:` contexts
+	// resolve inside the checkout. Exactly one of git / compose_file is set.
+	Git *GitSource `protobuf:"bytes,7,opt,name=git,proto3" json:"git,omitempty"`
+	// Compose file path relative to the repository root (no "..", not
+	// absolute). Empty = "docker-compose.yml", then "compose.yaml".
+	ComposePath string `protobuf:"bytes,8,opt,name=compose_path,json=composePath,proto3" json:"compose_path,omitempty"`
+	// Build arguments passed to every `build:` service (`--build-arg NAME`,
+	// values through the process environment like BuildRequest.build_args).
+	BuildArgs     []*EnvVar `protobuf:"bytes,9,rep,name=build_args,json=buildArgs,proto3" json:"build_args,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3126,6 +3138,27 @@ func (x *ComposeProject) GetProfiles() []string {
 func (x *ComposeProject) GetRegistryAuths() []*RegistryAuth {
 	if x != nil {
 		return x.RegistryAuths
+	}
+	return nil
+}
+
+func (x *ComposeProject) GetGit() *GitSource {
+	if x != nil {
+		return x.Git
+	}
+	return nil
+}
+
+func (x *ComposeProject) GetComposePath() string {
+	if x != nil {
+		return x.ComposePath
+	}
+	return ""
+}
+
+func (x *ComposeProject) GetBuildArgs() []*EnvVar {
+	if x != nil {
+		return x.BuildArgs
 	}
 	return nil
 }
@@ -3508,9 +3541,11 @@ func (x *ComposeServiceStatus) GetPorts() []*PortMapping {
 
 // Result of ComposeUp / ComposePs (and ComposeDown, with empty services).
 type ComposeResult struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	ProjectName   string                  `protobuf:"bytes,1,opt,name=project_name,json=projectName,proto3" json:"project_name,omitempty"`
-	Services      []*ComposeServiceStatus `protobuf:"bytes,2,rep,name=services,proto3" json:"services,omitempty"`
+	state       protoimpl.MessageState  `protogen:"open.v1"`
+	ProjectName string                  `protobuf:"bytes,1,opt,name=project_name,json=projectName,proto3" json:"project_name,omitempty"`
+	Services    []*ComposeServiceStatus `protobuf:"bytes,2,rep,name=services,proto3" json:"services,omitempty"`
+	// Commit that was checked out when the project came from `git`.
+	CommitSha     string `protobuf:"bytes,3,opt,name=commit_sha,json=commitSha,proto3" json:"commit_sha,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3559,11 +3594,373 @@ func (x *ComposeResult) GetServices() []*ComposeServiceStatus {
 	return nil
 }
 
+func (x *ComposeResult) GetCommitSha() string {
+	if x != nil {
+		return x.CommitSha
+	}
+	return ""
+}
+
+// ComposeInspect resolves the project (checking out `git` when set) and
+// reports its services without starting anything, so the control plane can
+// offer per-service domains and validate the file before a deployment.
+type ComposeInspect struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Project       *ComposeProject        `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComposeInspect) Reset() {
+	*x = ComposeInspect{}
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComposeInspect) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComposeInspect) ProtoMessage() {}
+
+func (x *ComposeInspect) ProtoReflect() protoreflect.Message {
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComposeInspect.ProtoReflect.Descriptor instead.
+func (*ComposeInspect) Descriptor() ([]byte, []int) {
+	return file_aethera_agent_v1_docker_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *ComposeInspect) GetProject() *ComposeProject {
+	if x != nil {
+		return x.Project
+	}
+	return nil
+}
+
+type ComposeServiceSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Image reference; empty when the service only has `build:`.
+	Image    string `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
+	HasBuild bool   `protobuf:"varint,3,opt,name=has_build,json=hasBuild,proto3" json:"has_build,omitempty"`
+	// Container ports from `ports:` and `expose:`.
+	Ports         []uint32 `protobuf:"varint,4,rep,packed,name=ports,proto3" json:"ports,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComposeServiceSpec) Reset() {
+	*x = ComposeServiceSpec{}
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComposeServiceSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComposeServiceSpec) ProtoMessage() {}
+
+func (x *ComposeServiceSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComposeServiceSpec.ProtoReflect.Descriptor instead.
+func (*ComposeServiceSpec) Descriptor() ([]byte, []int) {
+	return file_aethera_agent_v1_docker_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *ComposeServiceSpec) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ComposeServiceSpec) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *ComposeServiceSpec) GetHasBuild() bool {
+	if x != nil {
+		return x.HasBuild
+	}
+	return false
+}
+
+func (x *ComposeServiceSpec) GetPorts() []uint32 {
+	if x != nil {
+		return x.Ports
+	}
+	return nil
+}
+
+type ComposeInspectResult struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Services  []*ComposeServiceSpec  `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`
+	CommitSha string                 `protobuf:"bytes,2,opt,name=commit_sha,json=commitSha,proto3" json:"commit_sha,omitempty"`
+	// SHA-256 (hex) of the resolved compose file.
+	ComposeSha256 string `protobuf:"bytes,3,opt,name=compose_sha256,json=composeSha256,proto3" json:"compose_sha256,omitempty"`
+	// Policy findings that would make ComposeUp fail (privileged, host binds
+	// outside the allowed prefixes, network_mode: host, ...). Empty = valid.
+	Violations    []string `protobuf:"bytes,4,rep,name=violations,proto3" json:"violations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComposeInspectResult) Reset() {
+	*x = ComposeInspectResult{}
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComposeInspectResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComposeInspectResult) ProtoMessage() {}
+
+func (x *ComposeInspectResult) ProtoReflect() protoreflect.Message {
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComposeInspectResult.ProtoReflect.Descriptor instead.
+func (*ComposeInspectResult) Descriptor() ([]byte, []int) {
+	return file_aethera_agent_v1_docker_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *ComposeInspectResult) GetServices() []*ComposeServiceSpec {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *ComposeInspectResult) GetCommitSha() string {
+	if x != nil {
+		return x.CommitSha
+	}
+	return ""
+}
+
+func (x *ComposeInspectResult) GetComposeSha256() string {
+	if x != nil {
+		return x.ComposeSha256
+	}
+	return ""
+}
+
+func (x *ComposeInspectResult) GetViolations() []string {
+	if x != nil {
+		return x.Violations
+	}
+	return nil
+}
+
+// ContainerExec runs a program inside an existing, running container
+// (`docker exec`). It never runs anything on the host: the process lives in
+// the container's namespaces with the container's image and user. Output
+// (stdout and stderr) is streamed as LOG_SOURCE_DEPLOY chunks of the command.
+type ContainerExec struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Container string                 `protobuf:"bytes,1,opt,name=container,proto3" json:"container,omitempty"`
+	// Program and arguments, no shell interpolation by the agent. The control
+	// plane sends ["sh", "-c", "<command>"] for a user command line.
+	Argv []string  `protobuf:"bytes,2,rep,name=argv,proto3" json:"argv,omitempty"`
+	Env  []*EnvVar `protobuf:"bytes,3,rep,name=env,proto3" json:"env,omitempty"`
+	// Empty = the container's user.
+	User string `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
+	// Empty = the container's working directory.
+	WorkingDir string `protobuf:"bytes,5,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	// Bytes of output (end of the output) returned in the result; 0 = 16 KiB,
+	// capped at 64 KiB.
+	OutputTailBytes uint32 `protobuf:"varint,6,opt,name=output_tail_bytes,json=outputTailBytes,proto3" json:"output_tail_bytes,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ContainerExec) Reset() {
+	*x = ContainerExec{}
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerExec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerExec) ProtoMessage() {}
+
+func (x *ContainerExec) ProtoReflect() protoreflect.Message {
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerExec.ProtoReflect.Descriptor instead.
+func (*ContainerExec) Descriptor() ([]byte, []int) {
+	return file_aethera_agent_v1_docker_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *ContainerExec) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *ContainerExec) GetArgv() []string {
+	if x != nil {
+		return x.Argv
+	}
+	return nil
+}
+
+func (x *ContainerExec) GetEnv() []*EnvVar {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *ContainerExec) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+func (x *ContainerExec) GetWorkingDir() string {
+	if x != nil {
+		return x.WorkingDir
+	}
+	return ""
+}
+
+func (x *ContainerExec) GetOutputTailBytes() uint32 {
+	if x != nil {
+		return x.OutputTailBytes
+	}
+	return 0
+}
+
+// The command SUCCEEDS whenever the process ran to completion, whatever its
+// exit code; the exit code decides whether the task succeeded. It FAILS when
+// the container is missing or not running (NOT_FOUND / CONFLICT) and
+// TIMED_OUT when the deadline passes (the process is killed).
+type ContainerExecResult struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ExitCode int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	// Last output_tail_bytes of the combined output, secrets masked.
+	OutputTail      []byte               `protobuf:"bytes,2,opt,name=output_tail,json=outputTail,proto3" json:"output_tail,omitempty"`
+	OutputTruncated bool                 `protobuf:"varint,3,opt,name=output_truncated,json=outputTruncated,proto3" json:"output_truncated,omitempty"`
+	Duration        *durationpb.Duration `protobuf:"bytes,4,opt,name=duration,proto3" json:"duration,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ContainerExecResult) Reset() {
+	*x = ContainerExecResult{}
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerExecResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerExecResult) ProtoMessage() {}
+
+func (x *ContainerExecResult) ProtoReflect() protoreflect.Message {
+	mi := &file_aethera_agent_v1_docker_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerExecResult.ProtoReflect.Descriptor instead.
+func (*ContainerExecResult) Descriptor() ([]byte, []int) {
+	return file_aethera_agent_v1_docker_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *ContainerExecResult) GetExitCode() int32 {
+	if x != nil {
+		return x.ExitCode
+	}
+	return 0
+}
+
+func (x *ContainerExecResult) GetOutputTail() []byte {
+	if x != nil {
+		return x.OutputTail
+	}
+	return nil
+}
+
+func (x *ContainerExecResult) GetOutputTruncated() bool {
+	if x != nil {
+		return x.OutputTruncated
+	}
+	return false
+}
+
+func (x *ContainerExecResult) GetDuration() *durationpb.Duration {
+	if x != nil {
+		return x.Duration
+	}
+	return nil
+}
+
 var File_aethera_agent_v1_docker_proto protoreflect.FileDescriptor
 
 const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\n" +
-	"\x1daethera/agent/v1/docker.proto\x12\x10aethera.agent.v1\x1a\x1daethera/agent/v1/common.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xab\x02\n" +
+	"\x1daethera/agent/v1/docker.proto\x12\x10aethera.agent.v1\x1a\x1caethera/agent/v1/build.proto\x1a\x1daethera/agent/v1/common.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xab\x02\n" +
 	"\x0fHealthcheckSpec\x12\x12\n" +
 	"\x04test\x18\x01 \x03(\tR\x04test\x125\n" +
 	"\binterval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\binterval\x123\n" +
@@ -3840,14 +4237,18 @@ const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\fNetworkPrune\x12#\n" +
 	"\rlabel_filters\x18\x01 \x03(\tR\flabelFilters\x128\n" +
 	"\n" +
-	"older_than\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\tolderThan\"\x8a\x02\n" +
+	"older_than\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\tolderThan\"\x95\x03\n" +
 	"\x0eComposeProject\x12!\n" +
 	"\fproject_name\x18\x01 \x01(\tR\vprojectName\x12!\n" +
 	"\fcompose_file\x18\x02 \x01(\tR\vcomposeFile\x12#\n" +
 	"\roverride_file\x18\x03 \x01(\tR\foverrideFile\x12*\n" +
 	"\x03env\x18\x04 \x03(\v2\x18.aethera.agent.v1.EnvVarR\x03env\x12\x1a\n" +
 	"\bprofiles\x18\x05 \x03(\tR\bprofiles\x12E\n" +
-	"\x0eregistry_auths\x18\x06 \x03(\v2\x1e.aethera.agent.v1.RegistryAuthR\rregistryAuths\"\xdf\x02\n" +
+	"\x0eregistry_auths\x18\x06 \x03(\v2\x1e.aethera.agent.v1.RegistryAuthR\rregistryAuths\x12-\n" +
+	"\x03git\x18\a \x01(\v2\x1b.aethera.agent.v1.GitSourceR\x03git\x12!\n" +
+	"\fcompose_path\x18\b \x01(\tR\vcomposePath\x127\n" +
+	"\n" +
+	"build_args\x18\t \x03(\v2\x18.aethera.agent.v1.EnvVarR\tbuildArgs\"\xdf\x02\n" +
 	"\tComposeUp\x12:\n" +
 	"\aproject\x18\x01 \x01(\v2 .aethera.agent.v1.ComposeProjectR\aproject\x12\x1a\n" +
 	"\bservices\x18\x02 \x03(\tR\bservices\x12D\n" +
@@ -3877,10 +4278,41 @@ const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\x05state\x18\x05 \x01(\x0e2 .aethera.agent.v1.ContainerStateR\x05state\x129\n" +
 	"\x06health\x18\x06 \x01(\x0e2!.aethera.agent.v1.ContainerHealthR\x06health\x12\x1b\n" +
 	"\texit_code\x18\a \x01(\x05R\bexitCode\x123\n" +
-	"\x05ports\x18\b \x03(\v2\x1d.aethera.agent.v1.PortMappingR\x05ports\"v\n" +
+	"\x05ports\x18\b \x03(\v2\x1d.aethera.agent.v1.PortMappingR\x05ports\"\x95\x01\n" +
 	"\rComposeResult\x12!\n" +
 	"\fproject_name\x18\x01 \x01(\tR\vprojectName\x12B\n" +
-	"\bservices\x18\x02 \x03(\v2&.aethera.agent.v1.ComposeServiceStatusR\bservices*\x98\x01\n" +
+	"\bservices\x18\x02 \x03(\v2&.aethera.agent.v1.ComposeServiceStatusR\bservices\x12\x1d\n" +
+	"\n" +
+	"commit_sha\x18\x03 \x01(\tR\tcommitSha\"L\n" +
+	"\x0eComposeInspect\x12:\n" +
+	"\aproject\x18\x01 \x01(\v2 .aethera.agent.v1.ComposeProjectR\aproject\"q\n" +
+	"\x12ComposeServiceSpec\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05image\x18\x02 \x01(\tR\x05image\x12\x1b\n" +
+	"\thas_build\x18\x03 \x01(\bR\bhasBuild\x12\x14\n" +
+	"\x05ports\x18\x04 \x03(\rR\x05ports\"\xbe\x01\n" +
+	"\x14ComposeInspectResult\x12@\n" +
+	"\bservices\x18\x01 \x03(\v2$.aethera.agent.v1.ComposeServiceSpecR\bservices\x12\x1d\n" +
+	"\n" +
+	"commit_sha\x18\x02 \x01(\tR\tcommitSha\x12%\n" +
+	"\x0ecompose_sha256\x18\x03 \x01(\tR\rcomposeSha256\x12\x1e\n" +
+	"\n" +
+	"violations\x18\x04 \x03(\tR\n" +
+	"violations\"\xce\x01\n" +
+	"\rContainerExec\x12\x1c\n" +
+	"\tcontainer\x18\x01 \x01(\tR\tcontainer\x12\x12\n" +
+	"\x04argv\x18\x02 \x03(\tR\x04argv\x12*\n" +
+	"\x03env\x18\x03 \x03(\v2\x18.aethera.agent.v1.EnvVarR\x03env\x12\x12\n" +
+	"\x04user\x18\x04 \x01(\tR\x04user\x12\x1f\n" +
+	"\vworking_dir\x18\x05 \x01(\tR\n" +
+	"workingDir\x12*\n" +
+	"\x11output_tail_bytes\x18\x06 \x01(\rR\x0foutputTailBytes\"\xb5\x01\n" +
+	"\x13ContainerExecResult\x12\x1b\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x1f\n" +
+	"\voutput_tail\x18\x02 \x01(\fR\n" +
+	"outputTail\x12)\n" +
+	"\x10output_truncated\x18\x03 \x01(\bR\x0foutputTruncated\x125\n" +
+	"\bduration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\bduration*\x98\x01\n" +
 	"\x11ComposePullPolicy\x12#\n" +
 	"\x1fCOMPOSE_PULL_POLICY_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bCOMPOSE_PULL_POLICY_MISSING\x10\x01\x12\x1e\n" +
@@ -3901,7 +4333,7 @@ func file_aethera_agent_v1_docker_proto_rawDescGZIP() []byte {
 }
 
 var file_aethera_agent_v1_docker_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_aethera_agent_v1_docker_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
+var file_aethera_agent_v1_docker_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_aethera_agent_v1_docker_proto_goTypes = []any{
 	(ComposePullPolicy)(0),         // 0: aethera.agent.v1.ComposePullPolicy
 	(*HealthcheckSpec)(nil),        // 1: aethera.agent.v1.HealthcheckSpec
@@ -3955,101 +4387,113 @@ var file_aethera_agent_v1_docker_proto_goTypes = []any{
 	(*ComposePull)(nil),            // 49: aethera.agent.v1.ComposePull
 	(*ComposeServiceStatus)(nil),   // 50: aethera.agent.v1.ComposeServiceStatus
 	(*ComposeResult)(nil),          // 51: aethera.agent.v1.ComposeResult
-	nil,                            // 52: aethera.agent.v1.LogConfig.OptionsEntry
-	nil,                            // 53: aethera.agent.v1.ContainerSpec.LabelsEntry
-	nil,                            // 54: aethera.agent.v1.ContainerInfo.LabelsEntry
-	nil,                            // 55: aethera.agent.v1.ImageInfo.LabelsEntry
-	nil,                            // 56: aethera.agent.v1.VolumeInfo.LabelsEntry
-	nil,                            // 57: aethera.agent.v1.VolumeCreate.DriverOptionsEntry
-	nil,                            // 58: aethera.agent.v1.VolumeCreate.LabelsEntry
-	nil,                            // 59: aethera.agent.v1.NetworkInfo.LabelsEntry
-	nil,                            // 60: aethera.agent.v1.NetworkCreate.OptionsEntry
-	nil,                            // 61: aethera.agent.v1.NetworkCreate.LabelsEntry
-	(*durationpb.Duration)(nil),    // 62: google.protobuf.Duration
-	(*EnvVar)(nil),                 // 63: aethera.agent.v1.EnvVar
-	(*PortMapping)(nil),            // 64: aethera.agent.v1.PortMapping
-	(*VolumeMount)(nil),            // 65: aethera.agent.v1.VolumeMount
-	(*NetworkAttachment)(nil),      // 66: aethera.agent.v1.NetworkAttachment
-	(*ResourceLimits)(nil),         // 67: aethera.agent.v1.ResourceLimits
-	(*RestartPolicy)(nil),          // 68: aethera.agent.v1.RestartPolicy
-	(ContainerState)(0),            // 69: aethera.agent.v1.ContainerState
-	(ContainerHealth)(0),           // 70: aethera.agent.v1.ContainerHealth
-	(*timestamppb.Timestamp)(nil),  // 71: google.protobuf.Timestamp
-	(*RegistryAuth)(nil),           // 72: aethera.agent.v1.RegistryAuth
+	(*ComposeInspect)(nil),         // 52: aethera.agent.v1.ComposeInspect
+	(*ComposeServiceSpec)(nil),     // 53: aethera.agent.v1.ComposeServiceSpec
+	(*ComposeInspectResult)(nil),   // 54: aethera.agent.v1.ComposeInspectResult
+	(*ContainerExec)(nil),          // 55: aethera.agent.v1.ContainerExec
+	(*ContainerExecResult)(nil),    // 56: aethera.agent.v1.ContainerExecResult
+	nil,                            // 57: aethera.agent.v1.LogConfig.OptionsEntry
+	nil,                            // 58: aethera.agent.v1.ContainerSpec.LabelsEntry
+	nil,                            // 59: aethera.agent.v1.ContainerInfo.LabelsEntry
+	nil,                            // 60: aethera.agent.v1.ImageInfo.LabelsEntry
+	nil,                            // 61: aethera.agent.v1.VolumeInfo.LabelsEntry
+	nil,                            // 62: aethera.agent.v1.VolumeCreate.DriverOptionsEntry
+	nil,                            // 63: aethera.agent.v1.VolumeCreate.LabelsEntry
+	nil,                            // 64: aethera.agent.v1.NetworkInfo.LabelsEntry
+	nil,                            // 65: aethera.agent.v1.NetworkCreate.OptionsEntry
+	nil,                            // 66: aethera.agent.v1.NetworkCreate.LabelsEntry
+	(*durationpb.Duration)(nil),    // 67: google.protobuf.Duration
+	(*EnvVar)(nil),                 // 68: aethera.agent.v1.EnvVar
+	(*PortMapping)(nil),            // 69: aethera.agent.v1.PortMapping
+	(*VolumeMount)(nil),            // 70: aethera.agent.v1.VolumeMount
+	(*NetworkAttachment)(nil),      // 71: aethera.agent.v1.NetworkAttachment
+	(*ResourceLimits)(nil),         // 72: aethera.agent.v1.ResourceLimits
+	(*RestartPolicy)(nil),          // 73: aethera.agent.v1.RestartPolicy
+	(ContainerState)(0),            // 74: aethera.agent.v1.ContainerState
+	(ContainerHealth)(0),           // 75: aethera.agent.v1.ContainerHealth
+	(*timestamppb.Timestamp)(nil),  // 76: google.protobuf.Timestamp
+	(*RegistryAuth)(nil),           // 77: aethera.agent.v1.RegistryAuth
+	(*GitSource)(nil),              // 78: aethera.agent.v1.GitSource
 }
 var file_aethera_agent_v1_docker_proto_depIdxs = []int32{
-	62, // 0: aethera.agent.v1.HealthcheckSpec.interval:type_name -> google.protobuf.Duration
-	62, // 1: aethera.agent.v1.HealthcheckSpec.timeout:type_name -> google.protobuf.Duration
-	62, // 2: aethera.agent.v1.HealthcheckSpec.start_period:type_name -> google.protobuf.Duration
-	62, // 3: aethera.agent.v1.HealthcheckSpec.start_interval:type_name -> google.protobuf.Duration
-	52, // 4: aethera.agent.v1.LogConfig.options:type_name -> aethera.agent.v1.LogConfig.OptionsEntry
-	63, // 5: aethera.agent.v1.ContainerSpec.env:type_name -> aethera.agent.v1.EnvVar
-	53, // 6: aethera.agent.v1.ContainerSpec.labels:type_name -> aethera.agent.v1.ContainerSpec.LabelsEntry
-	64, // 7: aethera.agent.v1.ContainerSpec.ports:type_name -> aethera.agent.v1.PortMapping
-	65, // 8: aethera.agent.v1.ContainerSpec.mounts:type_name -> aethera.agent.v1.VolumeMount
-	66, // 9: aethera.agent.v1.ContainerSpec.networks:type_name -> aethera.agent.v1.NetworkAttachment
-	67, // 10: aethera.agent.v1.ContainerSpec.resources:type_name -> aethera.agent.v1.ResourceLimits
-	68, // 11: aethera.agent.v1.ContainerSpec.restart_policy:type_name -> aethera.agent.v1.RestartPolicy
+	67, // 0: aethera.agent.v1.HealthcheckSpec.interval:type_name -> google.protobuf.Duration
+	67, // 1: aethera.agent.v1.HealthcheckSpec.timeout:type_name -> google.protobuf.Duration
+	67, // 2: aethera.agent.v1.HealthcheckSpec.start_period:type_name -> google.protobuf.Duration
+	67, // 3: aethera.agent.v1.HealthcheckSpec.start_interval:type_name -> google.protobuf.Duration
+	57, // 4: aethera.agent.v1.LogConfig.options:type_name -> aethera.agent.v1.LogConfig.OptionsEntry
+	68, // 5: aethera.agent.v1.ContainerSpec.env:type_name -> aethera.agent.v1.EnvVar
+	58, // 6: aethera.agent.v1.ContainerSpec.labels:type_name -> aethera.agent.v1.ContainerSpec.LabelsEntry
+	69, // 7: aethera.agent.v1.ContainerSpec.ports:type_name -> aethera.agent.v1.PortMapping
+	70, // 8: aethera.agent.v1.ContainerSpec.mounts:type_name -> aethera.agent.v1.VolumeMount
+	71, // 9: aethera.agent.v1.ContainerSpec.networks:type_name -> aethera.agent.v1.NetworkAttachment
+	72, // 10: aethera.agent.v1.ContainerSpec.resources:type_name -> aethera.agent.v1.ResourceLimits
+	73, // 11: aethera.agent.v1.ContainerSpec.restart_policy:type_name -> aethera.agent.v1.RestartPolicy
 	1,  // 12: aethera.agent.v1.ContainerSpec.healthcheck:type_name -> aethera.agent.v1.HealthcheckSpec
 	2,  // 13: aethera.agent.v1.ContainerSpec.log_config:type_name -> aethera.agent.v1.LogConfig
-	62, // 14: aethera.agent.v1.ContainerSpec.stop_timeout:type_name -> google.protobuf.Duration
-	69, // 15: aethera.agent.v1.ContainerInfo.state:type_name -> aethera.agent.v1.ContainerState
-	70, // 16: aethera.agent.v1.ContainerInfo.health:type_name -> aethera.agent.v1.ContainerHealth
-	71, // 17: aethera.agent.v1.ContainerInfo.created_at:type_name -> google.protobuf.Timestamp
-	71, // 18: aethera.agent.v1.ContainerInfo.started_at:type_name -> google.protobuf.Timestamp
-	71, // 19: aethera.agent.v1.ContainerInfo.finished_at:type_name -> google.protobuf.Timestamp
-	54, // 20: aethera.agent.v1.ContainerInfo.labels:type_name -> aethera.agent.v1.ContainerInfo.LabelsEntry
-	64, // 21: aethera.agent.v1.ContainerInfo.ports:type_name -> aethera.agent.v1.PortMapping
-	65, // 22: aethera.agent.v1.ContainerInfo.mounts:type_name -> aethera.agent.v1.VolumeMount
+	67, // 14: aethera.agent.v1.ContainerSpec.stop_timeout:type_name -> google.protobuf.Duration
+	74, // 15: aethera.agent.v1.ContainerInfo.state:type_name -> aethera.agent.v1.ContainerState
+	75, // 16: aethera.agent.v1.ContainerInfo.health:type_name -> aethera.agent.v1.ContainerHealth
+	76, // 17: aethera.agent.v1.ContainerInfo.created_at:type_name -> google.protobuf.Timestamp
+	76, // 18: aethera.agent.v1.ContainerInfo.started_at:type_name -> google.protobuf.Timestamp
+	76, // 19: aethera.agent.v1.ContainerInfo.finished_at:type_name -> google.protobuf.Timestamp
+	59, // 20: aethera.agent.v1.ContainerInfo.labels:type_name -> aethera.agent.v1.ContainerInfo.LabelsEntry
+	69, // 21: aethera.agent.v1.ContainerInfo.ports:type_name -> aethera.agent.v1.PortMapping
+	70, // 22: aethera.agent.v1.ContainerInfo.mounts:type_name -> aethera.agent.v1.VolumeMount
 	4,  // 23: aethera.agent.v1.ContainerInfo.networks:type_name -> aethera.agent.v1.ContainerNetworkInfo
 	3,  // 24: aethera.agent.v1.ContainerCreate.spec:type_name -> aethera.agent.v1.ContainerSpec
-	72, // 25: aethera.agent.v1.ContainerCreate.pull_auth:type_name -> aethera.agent.v1.RegistryAuth
-	69, // 26: aethera.agent.v1.ContainerCreateResult.state:type_name -> aethera.agent.v1.ContainerState
-	62, // 27: aethera.agent.v1.ContainerStop.timeout:type_name -> google.protobuf.Duration
-	62, // 28: aethera.agent.v1.ContainerRestart.timeout:type_name -> google.protobuf.Duration
+	77, // 25: aethera.agent.v1.ContainerCreate.pull_auth:type_name -> aethera.agent.v1.RegistryAuth
+	74, // 26: aethera.agent.v1.ContainerCreateResult.state:type_name -> aethera.agent.v1.ContainerState
+	67, // 27: aethera.agent.v1.ContainerStop.timeout:type_name -> google.protobuf.Duration
+	67, // 28: aethera.agent.v1.ContainerRestart.timeout:type_name -> google.protobuf.Duration
 	5,  // 29: aethera.agent.v1.ContainerStateResult.container:type_name -> aethera.agent.v1.ContainerInfo
 	5,  // 30: aethera.agent.v1.ContainerInspectResult.container:type_name -> aethera.agent.v1.ContainerInfo
 	5,  // 31: aethera.agent.v1.ContainerListResult.containers:type_name -> aethera.agent.v1.ContainerInfo
-	71, // 32: aethera.agent.v1.ImageInfo.created_at:type_name -> google.protobuf.Timestamp
-	55, // 33: aethera.agent.v1.ImageInfo.labels:type_name -> aethera.agent.v1.ImageInfo.LabelsEntry
-	72, // 34: aethera.agent.v1.ImagePull.auth:type_name -> aethera.agent.v1.RegistryAuth
+	76, // 32: aethera.agent.v1.ImageInfo.created_at:type_name -> google.protobuf.Timestamp
+	60, // 33: aethera.agent.v1.ImageInfo.labels:type_name -> aethera.agent.v1.ImageInfo.LabelsEntry
+	77, // 34: aethera.agent.v1.ImagePull.auth:type_name -> aethera.agent.v1.RegistryAuth
 	17, // 35: aethera.agent.v1.ImageListResult.images:type_name -> aethera.agent.v1.ImageInfo
 	17, // 36: aethera.agent.v1.ImageInspectResult.image:type_name -> aethera.agent.v1.ImageInfo
-	62, // 37: aethera.agent.v1.ImagePrune.older_than:type_name -> google.protobuf.Duration
-	56, // 38: aethera.agent.v1.VolumeInfo.labels:type_name -> aethera.agent.v1.VolumeInfo.LabelsEntry
-	71, // 39: aethera.agent.v1.VolumeInfo.created_at:type_name -> google.protobuf.Timestamp
-	57, // 40: aethera.agent.v1.VolumeCreate.driver_options:type_name -> aethera.agent.v1.VolumeCreate.DriverOptionsEntry
-	58, // 41: aethera.agent.v1.VolumeCreate.labels:type_name -> aethera.agent.v1.VolumeCreate.LabelsEntry
+	67, // 37: aethera.agent.v1.ImagePrune.older_than:type_name -> google.protobuf.Duration
+	61, // 38: aethera.agent.v1.VolumeInfo.labels:type_name -> aethera.agent.v1.VolumeInfo.LabelsEntry
+	76, // 39: aethera.agent.v1.VolumeInfo.created_at:type_name -> google.protobuf.Timestamp
+	62, // 40: aethera.agent.v1.VolumeCreate.driver_options:type_name -> aethera.agent.v1.VolumeCreate.DriverOptionsEntry
+	63, // 41: aethera.agent.v1.VolumeCreate.labels:type_name -> aethera.agent.v1.VolumeCreate.LabelsEntry
 	27, // 42: aethera.agent.v1.VolumeCreateResult.volume:type_name -> aethera.agent.v1.VolumeInfo
 	27, // 43: aethera.agent.v1.VolumeListResult.volumes:type_name -> aethera.agent.v1.VolumeInfo
 	34, // 44: aethera.agent.v1.NetworkInfo.ipam:type_name -> aethera.agent.v1.IpamConfig
-	59, // 45: aethera.agent.v1.NetworkInfo.labels:type_name -> aethera.agent.v1.NetworkInfo.LabelsEntry
-	71, // 46: aethera.agent.v1.NetworkInfo.created_at:type_name -> google.protobuf.Timestamp
+	64, // 45: aethera.agent.v1.NetworkInfo.labels:type_name -> aethera.agent.v1.NetworkInfo.LabelsEntry
+	76, // 46: aethera.agent.v1.NetworkInfo.created_at:type_name -> google.protobuf.Timestamp
 	35, // 47: aethera.agent.v1.NetworkInfo.endpoints:type_name -> aethera.agent.v1.NetworkEndpoint
 	34, // 48: aethera.agent.v1.NetworkCreate.ipam:type_name -> aethera.agent.v1.IpamConfig
-	60, // 49: aethera.agent.v1.NetworkCreate.options:type_name -> aethera.agent.v1.NetworkCreate.OptionsEntry
-	61, // 50: aethera.agent.v1.NetworkCreate.labels:type_name -> aethera.agent.v1.NetworkCreate.LabelsEntry
+	65, // 49: aethera.agent.v1.NetworkCreate.options:type_name -> aethera.agent.v1.NetworkCreate.OptionsEntry
+	66, // 50: aethera.agent.v1.NetworkCreate.labels:type_name -> aethera.agent.v1.NetworkCreate.LabelsEntry
 	36, // 51: aethera.agent.v1.NetworkCreateResult.network:type_name -> aethera.agent.v1.NetworkInfo
 	36, // 52: aethera.agent.v1.NetworkListResult.networks:type_name -> aethera.agent.v1.NetworkInfo
-	62, // 53: aethera.agent.v1.NetworkPrune.older_than:type_name -> google.protobuf.Duration
-	63, // 54: aethera.agent.v1.ComposeProject.env:type_name -> aethera.agent.v1.EnvVar
-	72, // 55: aethera.agent.v1.ComposeProject.registry_auths:type_name -> aethera.agent.v1.RegistryAuth
-	45, // 56: aethera.agent.v1.ComposeUp.project:type_name -> aethera.agent.v1.ComposeProject
-	0,  // 57: aethera.agent.v1.ComposeUp.pull_policy:type_name -> aethera.agent.v1.ComposePullPolicy
-	62, // 58: aethera.agent.v1.ComposeUp.wait_timeout:type_name -> google.protobuf.Duration
-	45, // 59: aethera.agent.v1.ComposeDown.project:type_name -> aethera.agent.v1.ComposeProject
-	62, // 60: aethera.agent.v1.ComposeDown.timeout:type_name -> google.protobuf.Duration
-	45, // 61: aethera.agent.v1.ComposePs.project:type_name -> aethera.agent.v1.ComposeProject
-	45, // 62: aethera.agent.v1.ComposePull.project:type_name -> aethera.agent.v1.ComposeProject
-	69, // 63: aethera.agent.v1.ComposeServiceStatus.state:type_name -> aethera.agent.v1.ContainerState
-	70, // 64: aethera.agent.v1.ComposeServiceStatus.health:type_name -> aethera.agent.v1.ContainerHealth
-	64, // 65: aethera.agent.v1.ComposeServiceStatus.ports:type_name -> aethera.agent.v1.PortMapping
-	50, // 66: aethera.agent.v1.ComposeResult.services:type_name -> aethera.agent.v1.ComposeServiceStatus
-	67, // [67:67] is the sub-list for method output_type
-	67, // [67:67] is the sub-list for method input_type
-	67, // [67:67] is the sub-list for extension type_name
-	67, // [67:67] is the sub-list for extension extendee
-	0,  // [0:67] is the sub-list for field type_name
+	67, // 53: aethera.agent.v1.NetworkPrune.older_than:type_name -> google.protobuf.Duration
+	68, // 54: aethera.agent.v1.ComposeProject.env:type_name -> aethera.agent.v1.EnvVar
+	77, // 55: aethera.agent.v1.ComposeProject.registry_auths:type_name -> aethera.agent.v1.RegistryAuth
+	78, // 56: aethera.agent.v1.ComposeProject.git:type_name -> aethera.agent.v1.GitSource
+	68, // 57: aethera.agent.v1.ComposeProject.build_args:type_name -> aethera.agent.v1.EnvVar
+	45, // 58: aethera.agent.v1.ComposeUp.project:type_name -> aethera.agent.v1.ComposeProject
+	0,  // 59: aethera.agent.v1.ComposeUp.pull_policy:type_name -> aethera.agent.v1.ComposePullPolicy
+	67, // 60: aethera.agent.v1.ComposeUp.wait_timeout:type_name -> google.protobuf.Duration
+	45, // 61: aethera.agent.v1.ComposeDown.project:type_name -> aethera.agent.v1.ComposeProject
+	67, // 62: aethera.agent.v1.ComposeDown.timeout:type_name -> google.protobuf.Duration
+	45, // 63: aethera.agent.v1.ComposePs.project:type_name -> aethera.agent.v1.ComposeProject
+	45, // 64: aethera.agent.v1.ComposePull.project:type_name -> aethera.agent.v1.ComposeProject
+	74, // 65: aethera.agent.v1.ComposeServiceStatus.state:type_name -> aethera.agent.v1.ContainerState
+	75, // 66: aethera.agent.v1.ComposeServiceStatus.health:type_name -> aethera.agent.v1.ContainerHealth
+	69, // 67: aethera.agent.v1.ComposeServiceStatus.ports:type_name -> aethera.agent.v1.PortMapping
+	50, // 68: aethera.agent.v1.ComposeResult.services:type_name -> aethera.agent.v1.ComposeServiceStatus
+	45, // 69: aethera.agent.v1.ComposeInspect.project:type_name -> aethera.agent.v1.ComposeProject
+	53, // 70: aethera.agent.v1.ComposeInspectResult.services:type_name -> aethera.agent.v1.ComposeServiceSpec
+	68, // 71: aethera.agent.v1.ContainerExec.env:type_name -> aethera.agent.v1.EnvVar
+	67, // 72: aethera.agent.v1.ContainerExecResult.duration:type_name -> google.protobuf.Duration
+	73, // [73:73] is the sub-list for method output_type
+	73, // [73:73] is the sub-list for method input_type
+	73, // [73:73] is the sub-list for extension type_name
+	73, // [73:73] is the sub-list for extension extendee
+	0,  // [0:73] is the sub-list for field type_name
 }
 
 func init() { file_aethera_agent_v1_docker_proto_init() }
@@ -4057,6 +4501,7 @@ func file_aethera_agent_v1_docker_proto_init() {
 	if File_aethera_agent_v1_docker_proto != nil {
 		return
 	}
+	file_aethera_agent_v1_build_proto_init()
 	file_aethera_agent_v1_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4064,7 +4509,7 @@ func file_aethera_agent_v1_docker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aethera_agent_v1_docker_proto_rawDesc), len(file_aethera_agent_v1_docker_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   61,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

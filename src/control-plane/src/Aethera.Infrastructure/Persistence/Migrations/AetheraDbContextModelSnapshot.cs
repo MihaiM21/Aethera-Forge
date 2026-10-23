@@ -105,6 +105,110 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.ToTable("agent_certificates", (string)null);
                 });
 
+            modelBuilder.Entity("Aethera.Domain.Alert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("acknowledged_at");
+
+                    b.Property<Guid?>("AcknowledgedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("acknowledged_by_user_id");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("dedup_key");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details");
+
+                    b.Property<DateTimeOffset?>("LastNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_notified_at");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("message");
+
+                    b.Property<int>("NotificationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("notification_count");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resource_id");
+
+                    b.Property<string>("ResourceType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("resource_type");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("severity");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alerts");
+
+                    b.HasIndex("OrganizationId", "DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_alerts_organization_id_dedup_key")
+                        .HasFilter("state = 'open'");
+
+                    b.HasIndex("ResourceType", "ResourceId")
+                        .HasDatabaseName("ix_alerts_resource_type_resource_id");
+
+                    b.HasIndex("OrganizationId", "State", "OpenedAt")
+                        .HasDatabaseName("ix_alerts_organization_id_state_opened_at");
+
+                    b.ToTable("alerts", (string)null);
+                });
+
             modelBuilder.Entity("Aethera.Domain.ApiToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -278,6 +382,335 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_audit_events_resource_type_resource_id");
 
                     b.ToTable("audit_events", (string)null);
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupDestination", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccessKeyId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("access_key_id");
+
+                    b.Property<string>("Bucket")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("bucket");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<bool>("ForcePathStyle")
+                        .HasColumnType("boolean")
+                        .HasColumnName("force_path_style");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("LastTestError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_test_error");
+
+                    b.Property<DateTimeOffset?>("LastTestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_tested_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("PathPrefix")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("path_prefix");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("region");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid?>("SecretAccessKeySecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("secret_access_key_secret_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_backup_destinations");
+
+                    b.HasIndex("SecretAccessKeySecretId")
+                        .HasDatabaseName("ix_backup_destinations_secret_access_key_secret_id");
+
+                    b.HasIndex("OrganizationId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_backup_destinations_organization_id_name")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("backup_destinations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_backup_destinations_s3", "kind <> 's3' OR (endpoint IS NOT NULL AND bucket IS NOT NULL AND access_key_id IS NOT NULL AND secret_access_key_secret_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DestinationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<int>("KeepDaily")
+                        .HasColumnType("integer")
+                        .HasColumnName("keep_daily");
+
+                    b.Property<int>("KeepMonthly")
+                        .HasColumnType("integer")
+                        .HasColumnName("keep_monthly");
+
+                    b.Property<int>("KeepWeekly")
+                        .HasColumnType("integer")
+                        .HasColumnName("keep_weekly");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at");
+
+                    b.Property<DateTimeOffset?>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Schedule")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("schedule");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("VolumeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("volume_id");
+
+                    b.Property<Guid?>("WorkloadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workload_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_backup_policies");
+
+                    b.HasIndex("DestinationId")
+                        .HasDatabaseName("ix_backup_policies_destination_id");
+
+                    b.HasIndex("NextRunAt")
+                        .HasDatabaseName("ix_backup_policies_next_run_at")
+                        .HasFilter("enabled");
+
+                    b.HasIndex("VolumeId")
+                        .HasDatabaseName("ix_backup_policies_volume_id");
+
+                    b.HasIndex("WorkloadId")
+                        .HasDatabaseName("ix_backup_policies_workload_id");
+
+                    b.HasIndex("OrganizationId", "WorkloadId", "Kind", "VolumeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_backup_policies_organization_id_workload_id_kind_volume_id");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrganizationId", "WorkloadId", "Kind", "VolumeId"), false);
+
+                    b.ToTable("backup_policies", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_backup_policies_retention", "keep_daily >= 0 AND keep_weekly >= 0 AND keep_monthly >= 0 AND keep_daily + keep_weekly + keep_monthly >= 1");
+
+                            t.HasCheckConstraint("ck_backup_policies_target", "(kind = 'controlPlane' AND workload_id IS NULL AND volume_id IS NULL) OR (kind = 'database' AND workload_id IS NOT NULL AND volume_id IS NULL) OR (kind = 'volume' AND workload_id IS NOT NULL AND volume_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("DestinationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_id");
+
+                    b.Property<string>("Engine")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("engine");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("KeyId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("ObjectKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("object_key");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("policy_id");
+
+                    b.Property<DateTimeOffset?>("PrunedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pruned_at");
+
+                    b.Property<long?>("RawSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("raw_size_bytes");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoredSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("stored_sha256");
+
+                    b.Property<long?>("StoredSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("stored_size_bytes");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
+                    b.Property<Guid?>("WorkloadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workload_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_backup_runs");
+
+                    b.HasIndex("DestinationId")
+                        .HasDatabaseName("ix_backup_runs_destination_id");
+
+                    b.HasIndex("JobId")
+                        .HasDatabaseName("ix_backup_runs_job_id");
+
+                    b.HasIndex("WorkloadId")
+                        .HasDatabaseName("ix_backup_runs_workload_id");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_backup_runs_organization_id_created_at");
+
+                    b.HasIndex("PolicyId", "CreatedAt")
+                        .HasDatabaseName("ix_backup_runs_policy_id_created_at");
+
+                    b.ToTable("backup_runs", (string)null);
                 });
 
             modelBuilder.Entity("Aethera.Domain.Build", b =>
@@ -834,6 +1267,179 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasName("pk_deployment_steps");
 
                     b.ToTable("deployment_steps", (string)null);
+                });
+
+            modelBuilder.Entity("Aethera.Domain.DnsProvider", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApiTokenSecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("api_token_secret_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_verified_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.PrimitiveCollection<List<string>>("Zones")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("zones");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dns_providers");
+
+                    b.HasIndex("ApiTokenSecretId")
+                        .HasDatabaseName("ix_dns_providers_api_token_secret_id");
+
+                    b.HasIndex("OrganizationId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_dns_providers_organization_id_name")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("dns_providers", (string)null);
+                });
+
+            modelBuilder.Entity("Aethera.Domain.EmailSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("from_address");
+
+                    b.Property<string>("FromName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("from_name");
+
+                    b.Property<string>("LastTestError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_test_error");
+
+                    b.Property<DateTimeOffset?>("LastTestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_tested_at");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid?>("ResendApiKeySecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resend_api_key_secret_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("SmtpEncryption")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("smtp_encryption");
+
+                    b.Property<string>("SmtpHost")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("smtp_host");
+
+                    b.Property<Guid?>("SmtpPasswordSecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("smtp_password_secret_id");
+
+                    b.Property<int?>("SmtpPort")
+                        .HasColumnType("integer")
+                        .HasColumnName("smtp_port");
+
+                    b.Property<string>("SmtpUsername")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("smtp_username");
+
+                    b.Property<string>("Transport")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("transport");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_email_settings");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_email_settings_organization_id");
+
+                    b.HasIndex("ResendApiKeySecretId")
+                        .HasDatabaseName("ix_email_settings_resend_api_key_secret_id");
+
+                    b.HasIndex("SmtpPasswordSecretId")
+                        .HasDatabaseName("ix_email_settings_smtp_password_secret_id");
+
+                    b.ToTable("email_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_email_settings_port", "smtp_port IS NULL OR smtp_port BETWEEN 1 AND 65535");
+                        });
                 });
 
             modelBuilder.Entity("Aethera.Domain.EnvironmentVariable", b =>
@@ -1644,6 +2250,158 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.ToTable("networks", (string)null);
                 });
 
+            modelBuilder.Entity("Aethera.Domain.NotificationChannel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.PrimitiveCollection<List<string>>("EmailRecipients")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("email_recipients");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<Guid?>("EnvironmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("environment_id");
+
+                    b.PrimitiveCollection<List<string>>("Events")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("events");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<bool>("SendToMembers")
+                        .HasColumnType("boolean")
+                        .HasColumnName("send_to_members");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("WebhookSecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("webhook_secret_id");
+
+                    b.Property<string>("WebhookUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("webhook_url");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_channels");
+
+                    b.HasIndex("EnvironmentId")
+                        .HasDatabaseName("ix_notification_channels_environment_id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_notification_channels_project_id");
+
+                    b.HasIndex("WebhookSecretId")
+                        .HasDatabaseName("ix_notification_channels_webhook_secret_id");
+
+                    b.HasIndex("OrganizationId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notification_channels_organization_id_name")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("notification_channels", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_channels_webhook", "kind <> 'webhook' OR (webhook_url IS NOT NULL AND webhook_secret_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Aethera.Domain.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AlertId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("alert_id");
+
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("channel_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_type");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_deliveries");
+
+                    b.HasIndex("AlertId")
+                        .HasDatabaseName("ix_notification_deliveries_alert_id");
+
+                    b.HasIndex("ChannelId", "CreatedAt")
+                        .HasDatabaseName("ix_notification_deliveries_channel_id_created_at");
+
+                    b.HasIndex("OrganizationId", "CreatedAt")
+                        .HasDatabaseName("ix_notification_deliveries_organization_id_created_at");
+
+                    b.ToTable("notification_deliveries", (string)null);
+                });
+
             modelBuilder.Entity("Aethera.Domain.Organization", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1975,6 +2733,176 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.ToTable("resource_events", (string)null);
                 });
 
+            modelBuilder.Entity("Aethera.Domain.ScheduledTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Command")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("command");
+
+                    b.Property<string>("ComposeService")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("compose_service");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Schedule")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("schedule");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("timeout_seconds");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("WorkloadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workload_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scheduled_tasks");
+
+                    b.HasIndex("NextRunAt")
+                        .HasDatabaseName("ix_scheduled_tasks_next_run_at")
+                        .HasFilter("enabled AND deleted_at IS NULL");
+
+                    b.HasIndex("WorkloadId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_scheduled_tasks_workload_id_name")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("scheduled_tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_scheduled_tasks_timeout", "timeout_seconds BETWEEN 1 AND 86400");
+                        });
+                });
+
+            modelBuilder.Entity("Aethera.Domain.ScheduledTaskRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<int?>("ExitCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("exit_code");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("OutputTail")
+                        .HasMaxLength(70000)
+                        .HasColumnType("character varying(70000)")
+                        .HasColumnName("output_tail");
+
+                    b.Property<bool>("OutputTruncated")
+                        .HasColumnType("boolean")
+                        .HasColumnName("output_truncated");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger");
+
+                    b.Property<Guid>("WorkloadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workload_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scheduled_task_runs");
+
+                    b.HasIndex("JobId")
+                        .HasDatabaseName("ix_scheduled_task_runs_job_id");
+
+                    b.HasIndex("WorkloadId")
+                        .HasDatabaseName("ix_scheduled_task_runs_workload_id");
+
+                    b.HasIndex("TaskId", "CreatedAt")
+                        .HasDatabaseName("ix_scheduled_task_runs_task_id_created_at");
+
+                    b.ToTable("scheduled_task_runs", (string)null);
+                });
+
             modelBuilder.Entity("Aethera.Domain.Secret", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2063,7 +2991,7 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
                     b.ToTable("secrets", null, t =>
                         {
-                            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated')");
+                            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated', 'backupCredential', 'notificationCredential', 'dnsCredential', 'basicAuth')");
 
                             t.HasCheckConstraint("ck_secrets_single_scope", "num_nonnulls(project_id, environment_id, workload_id) <= 1");
                         });
@@ -2774,6 +3702,13 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("current_deployment_id");
 
+                    b.Property<Dictionary<string, string>>("CustomLabels")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("custom_labels")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
@@ -2951,6 +3886,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("BasicAuthSecretId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("basic_auth_secret_id");
+
                     b.Property<string>("CertificateError")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -2966,6 +3905,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("certificate_status");
 
+                    b.Property<string>("ComposeService")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("compose_service");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -2977,6 +3921,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DnsCheckedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("dns_checked_at");
+
+                    b.Property<Guid?>("DnsProviderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dns_provider_id");
 
                     b.PrimitiveCollection<List<string>>("DnsResolvedIps")
                         .IsRequired()
@@ -3014,6 +3962,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("proxy_route_name");
 
+                    b.Property<string>("RedirectTo")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("redirect_to");
+
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -3023,6 +3976,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ServerId")
                         .HasColumnType("uuid")
                         .HasColumnName("server_id");
+
+                    b.Property<bool>("StripPathPrefix")
+                        .HasColumnType("boolean")
+                        .HasColumnName("strip_path_prefix");
 
                     b.Property<int?>("TargetPort")
                         .HasColumnType("integer")
@@ -3038,6 +3995,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_domains");
+
+                    b.HasIndex("BasicAuthSecretId")
+                        .HasDatabaseName("ix_domains_basic_auth_secret_id");
+
+                    b.HasIndex("DnsProviderId")
+                        .HasDatabaseName("ix_domains_dns_provider_id");
 
                     b.HasIndex("ServerId")
                         .HasDatabaseName("ix_domains_server_id");
@@ -3214,6 +4177,16 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Navigation("Server");
                 });
 
+            modelBuilder.Entity("Aethera.Domain.Alert", b =>
+                {
+                    b.HasOne("Aethera.Domain.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_alerts_organizations_organization_id");
+                });
+
             modelBuilder.Entity("Aethera.Domain.ApiToken", b =>
                 {
                     b.HasOne("Aethera.Domain.User", "CreatedByUser")
@@ -3243,6 +4216,86 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_audit_events_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupDestination", b =>
+                {
+                    b.HasOne("Aethera.Domain.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_backup_destinations_organizations_organization_id");
+
+                    b.HasOne("Aethera.Domain.Secret", "SecretAccessKeySecret")
+                        .WithMany()
+                        .HasForeignKey("SecretAccessKeySecretId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_backup_destinations_secrets_secret_access_key_secret_id");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("SecretAccessKeySecret");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupPolicy", b =>
+                {
+                    b.HasOne("Aethera.Domain.BackupDestination", "Destination")
+                        .WithMany()
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_backup_policies_backup_destinations_destination_id");
+
+                    b.HasOne("Aethera.Domain.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_backup_policies_organizations_organization_id");
+
+                    b.HasOne("Aethera.Domain.Volume", "Volume")
+                        .WithMany()
+                        .HasForeignKey("VolumeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_backup_policies_volumes_volume_id");
+
+                    b.HasOne("Aethera.Domain.Workload", "Workload")
+                        .WithMany()
+                        .HasForeignKey("WorkloadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_backup_policies_workloads_workload_id");
+
+                    b.Navigation("Destination");
+
+                    b.Navigation("Volume");
+
+                    b.Navigation("Workload");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.BackupRun", b =>
+                {
+                    b.HasOne("Aethera.Domain.BackupDestination", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_backup_runs_backup_destinations_destination_id");
+
+                    b.HasOne("Aethera.Domain.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_backup_runs_jobs_job_id");
+
+                    b.HasOne("Aethera.Domain.BackupPolicy", "Policy")
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_backup_runs_backup_policies_policy_id");
+
+                    b.Navigation("Policy");
                 });
 
             modelBuilder.Entity("Aethera.Domain.Build", b =>
@@ -3357,6 +4410,49 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_deployment_steps_deployments_deployment_id");
 
                     b.Navigation("Deployment");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.DnsProvider", b =>
+                {
+                    b.HasOne("Aethera.Domain.Secret", null)
+                        .WithMany()
+                        .HasForeignKey("ApiTokenSecretId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_dns_providers_secrets_api_token_secret_id");
+
+                    b.HasOne("Aethera.Domain.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_dns_providers_organizations_organization_id");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.EmailSettings", b =>
+                {
+                    b.HasOne("Aethera.Domain.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_email_settings_organizations_organization_id");
+
+                    b.HasOne("Aethera.Domain.Secret", null)
+                        .WithMany()
+                        .HasForeignKey("ResendApiKeySecretId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_email_settings_secrets_resend_api_key_secret_id");
+
+                    b.HasOne("Aethera.Domain.Secret", null)
+                        .WithMany()
+                        .HasForeignKey("SmtpPasswordSecretId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_email_settings_secrets_smtp_password_secret_id");
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Aethera.Domain.EnvironmentVariable", b =>
@@ -3553,6 +4649,52 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Navigation("Server");
                 });
 
+            modelBuilder.Entity("Aethera.Domain.NotificationChannel", b =>
+                {
+                    b.HasOne("Aethera.Domain.ProjectEnvironment", null)
+                        .WithMany()
+                        .HasForeignKey("EnvironmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_notification_channels_environments_environment_id");
+
+                    b.HasOne("Aethera.Domain.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_channels_organizations_organization_id");
+
+                    b.HasOne("Aethera.Domain.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_notification_channels_projects_project_id");
+
+                    b.HasOne("Aethera.Domain.Secret", null)
+                        .WithMany()
+                        .HasForeignKey("WebhookSecretId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_notification_channels_secrets_webhook_secret_id");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.NotificationDelivery", b =>
+                {
+                    b.HasOne("Aethera.Domain.Alert", null)
+                        .WithMany()
+                        .HasForeignKey("AlertId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_notification_deliveries_alerts_alert_id");
+
+                    b.HasOne("Aethera.Domain.NotificationChannel", null)
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_deliveries_notification_channels_channel_id");
+                });
+
             modelBuilder.Entity("Aethera.Domain.OrganizationMember", b =>
                 {
                     b.HasOne("Aethera.Domain.Organization", "Organization")
@@ -3616,6 +4758,36 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Navigation("Organization");
 
                     b.Navigation("PasswordSecret");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.ScheduledTask", b =>
+                {
+                    b.HasOne("Aethera.Domain.Workload", "Workload")
+                        .WithMany()
+                        .HasForeignKey("WorkloadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scheduled_tasks_workloads_workload_id");
+
+                    b.Navigation("Workload");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.ScheduledTaskRun", b =>
+                {
+                    b.HasOne("Aethera.Domain.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scheduled_task_runs_jobs_job_id");
+
+                    b.HasOne("Aethera.Domain.ScheduledTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scheduled_task_runs_scheduled_tasks_task_id");
+
+                    b.Navigation("Task");
                 });
 
             modelBuilder.Entity("Aethera.Domain.Secret", b =>
@@ -3799,6 +4971,18 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Aethera.Domain.WorkloadDomain", b =>
                 {
+                    b.HasOne("Aethera.Domain.Secret", null)
+                        .WithMany()
+                        .HasForeignKey("BasicAuthSecretId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_domains_secrets_basic_auth_secret_id");
+
+                    b.HasOne("Aethera.Domain.DnsProvider", "DnsProvider")
+                        .WithMany()
+                        .HasForeignKey("DnsProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_domains_dns_providers_dns_provider_id");
+
                     b.HasOne("Aethera.Domain.Server", "Server")
                         .WithMany()
                         .HasForeignKey("ServerId")
@@ -3812,6 +4996,8 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_domains_workloads_workload_id");
+
+                    b.Navigation("DnsProvider");
 
                     b.Navigation("Server");
 

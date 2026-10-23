@@ -67,6 +67,7 @@ Dependency direction in the control plane: `Api -> Infrastructure, Engine -> Dom
 | [0007](0007-build-and-deploy.md) | Build engines, the deploy engine, Traefik, Git integration |
 | [0008](0008-product-ui.md) | Product UI, services as workloads, the YAML template format |
 | [0009](0009-packaging-and-self-ops.md) | Packaging, installation, updates, backups, retention |
+| [0010](0010-backups-notifications-tasks.md) | Backups of workloads, email notifications and alerts, scheduled tasks, compose from Git, DNS-01 and domain options |
 
 ## Guides
 

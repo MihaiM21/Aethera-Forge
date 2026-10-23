@@ -127,7 +127,17 @@ public sealed record ComposeServiceInfo(
     string Service, string ContainerId, string ContainerName, string Image, ContainerRunState State, ContainerHealthState Health, int ExitCode,
     IReadOnlyList<PortMappingSpec> Ports);
 
-public sealed record ComposeOutcome(string ProjectName, IReadOnlyList<ComposeServiceInfo> Services);
+/// <param name="CommitSha">The commit that was checked out when the project came from Git.</param>
+public sealed record ComposeOutcome(string ProjectName, IReadOnlyList<ComposeServiceInfo> Services, string? CommitSha = null);
+
+/// <summary>One service of a resolved compose file (<see cref="ComposeInspectCommand"/>).</summary>
+public sealed record ComposeServiceDefinition(string Name, string Image, bool HasBuild, IReadOnlyList<int> Ports);
+
+/// <param name="Violations">Agent policy findings that would make <c>compose.up</c> fail; empty = valid.</param>
+public sealed record ComposeInspection(IReadOnlyList<ComposeServiceDefinition> Services, string CommitSha, string ComposeSha256, IReadOnlyList<string> Violations);
+
+/// <summary>A program that ran to completion inside a container; <see cref="ExitCode"/> decides success (ADR 0010).</summary>
+public sealed record ContainerExecOutcome(int ExitCode, string OutputTail, bool OutputTruncated, TimeSpan Duration);
 
 public sealed record LogStreamStarted(string StreamId, bool Started);
 
@@ -214,6 +224,15 @@ public sealed record ComposeProjectSpec(string ProjectName, string ComposeFile)
     public IReadOnlyList<EnvVarSpec>? Env { get; init; }
     public IReadOnlyList<string>? Profiles { get; init; }
     public IReadOnlyList<RegistryCredentials>? RegistryAuths { get; init; }
+
+    /// <summary>Repository the project lives in; when set, <see cref="ComposeFile"/> is empty and the file comes from <see cref="ComposePath"/>.</summary>
+    public GitSourceSpec? Git { get; init; }
+
+    /// <summary>Compose file path inside the repository; null = <c>docker-compose.yml</c>, then <c>compose.yaml</c>.</summary>
+    public string? ComposePath { get; init; }
+
+    /// <summary>Build arguments for every <c>build:</c> service.</summary>
+    public IReadOnlyList<EnvVarSpec>? BuildArgs { get; init; }
 }
 
 public enum ComposePullPolicyKind { Missing = 1, Always = 2, Never = 3 }
@@ -225,3 +244,40 @@ public sealed record HttpProbeTarget(string Url, string? Method = null, IReadOnl
 public sealed record TcpProbeTarget(string Host, int Port) : ProbeTarget;
 
 public sealed record ContainerHealthProbeTarget(string Container) : ProbeTarget;
+
+// ---- backups (ADR 0010) --------------------------------------------------------------------------------------------------------------
+
+/// <summary>Where a backup stream comes from.</summary>
+public abstract record BackupSourceSpec;
+
+/// <summary>Runs <paramref name="Argv"/> inside the running container; its stdout is the backup stream.</summary>
+public sealed record ExecDumpSource(string Container, IReadOnlyList<string> Argv, IReadOnlyList<EnvVarSpec>? Env = null, string? User = null) : BackupSourceSpec;
+
+/// <summary>A gzipped tar of a named volume, made by a helper container that mounts it read-only.</summary>
+public sealed record VolumeArchiveSource(string Volume, string? HelperImage = null) : BackupSourceSpec;
+
+/// <summary>Where a restored stream goes.</summary>
+public abstract record BackupSinkSpec;
+
+/// <summary>Runs <paramref name="Argv"/> inside the running container with the decrypted stream on stdin.</summary>
+public sealed record ExecRestoreSink(string Container, IReadOnlyList<string> Argv, IReadOnlyList<EnvVarSpec>? Env = null, string? User = null) : BackupSinkSpec;
+
+/// <summary>Unpacks a <see cref="VolumeArchiveSource"/> archive into a named volume (the workload is stopped first).</summary>
+public sealed record VolumeRestoreSink(string Volume, string? HelperImage = null, bool ClearFirst = false) : BackupSinkSpec;
+
+/// <summary>A stored backup object.</summary>
+public abstract record BackupLocationSpec;
+
+/// <summary>An object in an S3-compatible store (S3, R2, B2, MinIO).</summary>
+public sealed record S3LocationSpec(
+    string Endpoint, string? Region, string Bucket, string Key, string AccessKeyId, SecretValue SecretAccessKey, bool ForcePathStyle = false) : BackupLocationSpec;
+
+/// <summary>A file in the agent's own backup directory; <paramref name="Path"/> is relative.</summary>
+public sealed record LocalBackupLocationSpec(string Path) : BackupLocationSpec;
+
+/// <summary>The 32-byte stream key (base64) and its id (format AEB1, ADR 0010).</summary>
+public sealed record BackupEncryptionSpec(SecretValue Key, string KeyId);
+
+public sealed record BackupRunOutcome(string BackupId, long RawSizeBytes, long StoredSizeBytes, string StoredSha256, TimeSpan Duration);
+
+public sealed record BackupRestoreOutcome(long RestoredBytes, TimeSpan Duration);

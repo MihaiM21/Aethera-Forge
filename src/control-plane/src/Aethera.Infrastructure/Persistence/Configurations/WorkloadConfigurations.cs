@@ -50,6 +50,8 @@ internal sealed class WorkloadConfiguration : IEntityTypeConfiguration<Workload>
             });
         });
 
+        b.Property(x => x.CustomLabels).HasColumnType("jsonb").HasDefaultValueSql("'{}'::jsonb");
+
         b.HasIndex(x => new { x.EnvironmentId, x.Slug }).IsUnique().HasFilter("deleted_at IS NULL");
         b.HasIndex(x => x.ServerId);
         b.HasIndex(x => x.CurrentDeploymentId);
@@ -214,6 +216,11 @@ internal sealed class WorkloadDomainConfiguration : IEntityTypeConfiguration<Wor
         b.Property(x => x.PathPrefix).HasMaxLength(500);
         b.Property(x => x.CertificateError).HasMaxLength(1000);
         b.Property(x => x.ProxyRouteName).HasMaxLength(200);
+        b.Property(x => x.ComposeService).HasMaxLength(200);
+        b.Property(x => x.RedirectTo).HasMaxLength(253);
+        b.HasOne<Secret>().WithMany().HasForeignKey(x => x.BasicAuthSecretId).OnDelete(DeleteBehavior.SetNull);
+        b.HasOne(x => x.DnsProvider).WithMany().HasForeignKey(x => x.DnsProviderId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => x.DnsProviderId);
         b.HasOne(x => x.Workload).WithMany(x => x.Domains).HasForeignKey(x => x.WorkloadId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Server).WithMany().HasForeignKey(x => x.ServerId).OnDelete(DeleteBehavior.Restrict);
 

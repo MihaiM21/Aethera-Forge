@@ -1,0 +1,147 @@
+// Backups (ADR 0010). The agent produces a byte stream from a workload
+// (a dump program run inside the database container, or an archive of a
+// named volume made by a short-lived helper container), encrypts it and
+// streams it to the target without staging the whole stream on disk.
+// Restore is the reverse. Nothing here runs on the host itself.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "aethera/agent/v1/common.proto";
+import "google/protobuf/duration.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+// ExecDump runs `argv` inside the running `container` (like ContainerExec);
+// its stdout is the backup stream, its stderr goes to the command's log.
+message ExecDump {
+  string container = 1;
+  repeated string argv = 2;
+  repeated EnvVar env = 3;
+  string user = 4;
+}
+
+// VolumeArchive is a gzipped tar of a named volume, made by a helper
+// container that mounts the volume read-only at /data.
+message VolumeArchive {
+  // Named Docker volume (bind mounts are not archived).
+  string volume = 1;
+  // Helper image with `tar` and `gzip`; empty = the agent default (busybox).
+  string helper_image = 2;
+}
+
+message BackupSource {
+  oneof kind {
+    ExecDump exec = 1;
+    VolumeArchive volume = 2;
+  }
+}
+
+// ExecRestore runs `argv` inside the running `container` with the decrypted
+// backup stream on stdin.
+message ExecRestore {
+  string container = 1;
+  repeated string argv = 2;
+  repeated EnvVar env = 3;
+  string user = 4;
+}
+
+// VolumeRestore unpacks a VolumeArchive into a named volume with a helper
+// container. The control plane stops the workload first.
+message VolumeRestore {
+  string volume = 1;
+  string helper_image = 2;
+  // Delete the volume's current contents before unpacking.
+  bool clear_first = 3;
+}
+
+message BackupSink {
+  oneof kind {
+    ExecRestore exec = 1;
+    VolumeRestore volume = 2;
+  }
+}
+
+// S3Location is an object in an S3-compatible store (AWS S3, Cloudflare R2,
+// Backblaze B2, MinIO).
+message S3Location {
+  // https URL of the endpoint, e.g. "https://<account>.r2.cloudflarestorage.com".
+  // http is only accepted for loopback/private addresses (local MinIO).
+  string endpoint = 1;
+  // Empty = "auto" (R2) / "us-east-1".
+  string region = 2;
+  string bucket = 3;
+  // Full object key, e.g. "aethera/<org>/<workload>/2026-10-23T030000Z.pgdump.aeb".
+  string key = 4;
+  string access_key_id = 5;
+  // SECRET: never log
+  SecretValue secret_access_key = 6;
+  bool force_path_style = 7;
+}
+
+// LocalLocation is a file in the agent's backup directory
+// (<state dir>/backups). `path` is relative; ".." and absolute paths are
+// rejected.
+message LocalLocation {
+  string path = 1;
+}
+
+message BackupLocation {
+  oneof kind {
+    S3Location s3 = 1;
+    LocalLocation local = 2;
+  }
+}
+
+// BackupEncryption is the key the stream is encrypted with (format
+// "AEB1", ADR 0010: per-object key from HKDF-SHA256 over a random salt,
+// AES-256-GCM in 64 KiB chunks with a final-chunk flag).
+message BackupEncryption {
+  // 32 raw bytes, base64 (standard, padded).
+  // SECRET: never log
+  SecretValue key = 1;
+  // Identifies the key for rotation; written into the object header.
+  string key_id = 2;
+}
+
+message BackupRun {
+  // Control-plane backup run id (UUIDv7).
+  string backup_id = 1;
+  BackupSource source = 2;
+  BackupLocation target = 3;
+  BackupEncryption encryption = 4;
+}
+
+message BackupRunResult {
+  string backup_id = 1;
+  // Bytes produced by the source (before encryption).
+  int64 raw_size_bytes = 2;
+  // Bytes stored (after encryption).
+  int64 stored_size_bytes = 3;
+  // SHA-256 (hex) of the stored object.
+  string stored_sha256 = 4;
+  google.protobuf.Duration duration = 5;
+}
+
+message BackupRestore {
+  // The backup run being restored (for logs).
+  string backup_id = 1;
+  BackupLocation source = 2;
+  BackupEncryption encryption = 3;
+  BackupSink sink = 4;
+  // SHA-256 (hex) the stored object must have; empty = not checked.
+  string expected_sha256 = 5;
+}
+
+message BackupRestoreResult {
+  // Bytes written to the sink (after decryption).
+  int64 restored_bytes = 1;
+  google.protobuf.Duration duration = 2;
+}
+
+// BackupDelete removes stored objects (retention). Missing objects are not an
+// error.
+message BackupDelete {
+  repeated BackupLocation locations = 1;
+}

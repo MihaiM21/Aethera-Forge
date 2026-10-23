@@ -32,8 +32,10 @@ import { DomainsTab, CertBadge, DnsBadge } from "./domains-tab";
 import { EnvTab } from "./env-tab";
 import { StorageTab } from "./storage-tab";
 import { navigateTo } from "@/lib/navigate";
+import { WorkloadBackupsTab } from "@/components/backups/workload-backups-tab";
+import { ScheduledTasksTab } from "@/components/tasks/scheduled-tasks-tab";
 
-export const APP_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "networking", "resources", "build", "health", "settings"] as const;
+export const APP_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "networking", "resources", "build", "health", "backups", "tasks", "settings"] as const;
 export type AppTab = (typeof APP_TABS)[number];
 
 const TAB_LABEL: Record<AppTab, string> = {
@@ -47,6 +49,8 @@ const TAB_LABEL: Record<AppTab, string> = {
   resources: "Resources",
   build: "Build",
   health: "Health",
+  backups: "Backups",
+  tasks: "Scheduled tasks",
   settings: "Settings",
 };
 
@@ -376,6 +380,8 @@ export function ApplicationDetailView({ api = resourcesApi, servers = serversApi
         <TabsContent value="networking">{tab === "networking" && <NetworkingTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="resources">{tab === "resources" && <ResourcesTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="build">{tab === "build" && <BuildTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
+        <TabsContent value="backups">{tab === "backups" && <WorkloadBackupsTab kind="applications" id={a.id} />}</TabsContent>
+        <TabsContent value="tasks">{tab === "tasks" && <ScheduledTasksTab kind="applications" id={a.id} />}</TabsContent>
         <TabsContent value="health">{tab === "health" && <HealthTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="settings">{tab === "settings" && <SettingsTab app={a} api={api} servers={servers} onSaved={() => void app.refresh()} />}</TabsContent>
       </Tabs>

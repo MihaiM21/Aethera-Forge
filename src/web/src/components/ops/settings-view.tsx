@@ -14,6 +14,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SystemTab } from "./system-tab";
+import { BackupsSettingsTab } from "@/components/backups/backups-settings-tab";
+import { DnsProvidersSettingsTab } from "@/components/dns/dns-providers-settings-tab";
+import { NotificationsSettingsTab } from "@/components/notifications/notifications-settings-tab";
 import { useAuth } from "@/lib/auth/auth-context";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { ApiToken, AuditEvent, GitCredential, OrganizationRole, User } from "@/lib/resources/types";
@@ -543,13 +546,13 @@ function AuditTab({ api }: { api: ResourcesApi }) {
 
 // ------------------------------------------------------------------------------------------------ Page
 
-export const SETTINGS_TABS = ["account", "members", "tokens", "git", "audit", "system"] as const;
+export const SETTINGS_TABS = ["account", "members", "tokens", "git", "notifications", "backups", "dns", "audit", "system"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export function settingsTabFromHash(hash: string, admin: boolean): SettingsTab {
   const h = hash.replace(/^#/, "");
   const known = (SETTINGS_TABS as readonly string[]).includes(h) ? (h as SettingsTab) : "account";
-  return !admin && (known === "members" || known === "audit" || known === "git" || known === "system") ? "account" : known;
+  return !admin && known !== "account" && known !== "tokens" ? "account" : known;
 }
 
 /** Settings: your account and tokens for everyone; members, git credentials, the audit log and system (updates, backups) for administrators. */
@@ -586,6 +589,9 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           {admin && <TabsTrigger value="members">Members</TabsTrigger>}
           <TabsTrigger value="tokens">API tokens</TabsTrigger>
           {admin && <TabsTrigger value="git">Git credentials</TabsTrigger>}
+          {admin && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
+          {admin && <TabsTrigger value="backups">Backups</TabsTrigger>}
+          {admin && <TabsTrigger value="dns">DNS</TabsTrigger>}
           {admin && <TabsTrigger value="audit">Audit log</TabsTrigger>}
           {admin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
@@ -595,6 +601,9 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
         {admin && <TabsContent value="members">{tab === "members" && <MembersTab api={api} />}</TabsContent>}
         <TabsContent value="tokens">{tab === "tokens" && <TokensTab api={api} admin={admin} />}</TabsContent>
         {admin && <TabsContent value="git">{tab === "git" && <GitTab api={api} />}</TabsContent>}
+        {admin && <TabsContent value="notifications">{tab === "notifications" && <NotificationsSettingsTab />}</TabsContent>}
+        {admin && <TabsContent value="backups">{tab === "backups" && <BackupsSettingsTab />}</TabsContent>}
+        {admin && <TabsContent value="dns">{tab === "dns" && <DnsProvidersSettingsTab />}</TabsContent>}
         {admin && <TabsContent value="audit">{tab === "audit" && <AuditTab api={api} />}</TabsContent>}
         {admin && <TabsContent value="system">{tab === "system" && <SystemTab api={api} />}</TabsContent>}
       </Tabs>

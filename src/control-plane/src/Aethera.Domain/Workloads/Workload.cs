@@ -109,6 +109,9 @@ public abstract class Workload : SoftDeletableEntity
 
     public RuntimeConfig Runtime { get; set; } = new();
 
+    /// <summary>Extra container labels (e.g. Traefik middlewares), merged over the generated ones. Administrators only (ADR 0010).</summary>
+    public Dictionary<string, string> CustomLabels { get; set; } = [];
+
     public List<WorkloadPort> Ports { get; set; } = [];
     public List<EnvironmentVariable> EnvironmentVariables { get; set; } = [];
     public List<Volume> Volumes { get; set; } = [];

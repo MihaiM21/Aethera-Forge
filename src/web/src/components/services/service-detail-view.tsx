@@ -29,8 +29,10 @@ import type { Service, ServiceTemplate } from "@/lib/resources/types";
 import { formatAgo, toNum } from "@/lib/servers/format";
 import { usePolled } from "@/lib/servers/use-polled";
 import { useResourceId } from "@/lib/use-resource-id";
+import { WorkloadBackupsTab } from "@/components/backups/workload-backups-tab";
+import { ScheduledTasksTab } from "@/components/tasks/scheduled-tasks-tab";
 
-export const SERVICE_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "settings"] as const;
+export const SERVICE_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "backups", "tasks", "settings"] as const;
 export type ServiceTab = (typeof SERVICE_TABS)[number];
 
 const TAB_LABEL: Record<ServiceTab, string> = {
@@ -40,6 +42,8 @@ const TAB_LABEL: Record<ServiceTab, string> = {
   environment: "Environment",
   domains: "Domains",
   storage: "Storage",
+  backups: "Backups",
+  tasks: "Scheduled tasks",
   settings: "Settings",
 };
 
@@ -316,6 +320,8 @@ export function ServiceDetailView({ api = resourcesApi, id: idProp }: { api?: Re
         <TabsContent value="environment">{tab === "environment" && <EnvTab kind="services" id={s.id} slug={s.slug} api={api} />}</TabsContent>
         <TabsContent value="domains">{tab === "domains" && <DomainsTab kind="services" id={s.id} api={api} />}</TabsContent>
         <TabsContent value="storage">{tab === "storage" && <StorageTab kind="services" id={s.id} api={api} />}</TabsContent>
+        <TabsContent value="backups">{tab === "backups" && <WorkloadBackupsTab kind="services" id={s.id} />}</TabsContent>
+        <TabsContent value="tasks">{tab === "tasks" && <ScheduledTasksTab kind="services" id={s.id} />}</TabsContent>
         <TabsContent value="settings">{tab === "settings" && <ServiceSettings service={s} template={template} api={api} onSaved={() => void svc.refresh()} />}</TabsContent>
       </Tabs>
     </div>

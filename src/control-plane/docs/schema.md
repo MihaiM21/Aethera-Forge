@@ -86,6 +86,12 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
 - `metric_samples.resolution` is `raw` (agent samples every 10 s, kept 24 h), `fiveMinutes` (kept 14 days) or `oneHour` (kept 365 days); a background pass rolls rows up and deletes them (gauges averaged, network counters keep their maximum; see ADR 0002, appendix). Host rows have a null `container_id`.
 - `settings` keys under `agent.` belong to the agent gateway: `agent.discovery.<serverId>` holds the server's last full discovery report (JSON). A settings UI must not list them.
 
+**Backups, notifications, scheduled tasks, DNS providers** (`AddR1BackupsNotificationsTasks`, ADR 0010)
+- `backup_destinations` (S3-compatible or local; the secret access key is a managed `backupCredential` secret), `backup_policies` (one per workload and kind, per volume for volume backups, one `controlPlane` policy per organization; cron + IANA time zone, `next_run_at` drives the scheduler, retention counts), `backup_runs` (history; `pruned_at` when retention removed the object, `stored_sha256` checked before a restore).
+- `email_settings` (one per organization: SMTP or Resend, credentials as `notificationCredential` secrets), `notification_channels` (email or signed webhook, subscribed `events text[]`, optional project/environment filter), `alerts` (at most one open per `(organization_id, dedup_key)`, partial unique index), `notification_deliveries` (one row per send attempt).
+- `scheduled_tasks` (command run as `sh -c` inside the workload's container, optional `compose_service`, cron + time zone, timeout) and `scheduled_task_runs` (exit code, output tail; full output in the job's log stream).
+- `dns_providers` (Cloudflare API token as a `dnsCredential` secret, visible zones). `domains` gained `compose_service`, `redirect_to`, `strip_path_prefix`, `basic_auth_secret_id` (`basicAuth` secret with htpasswd lines) and `dns_provider_id` (DNS-01); `workloads.custom_labels jsonb` holds administrator-set container labels.
+
 ## Why a single `workloads` table (TPH) instead of TPT
 
 Application and Service share almost everything the engine cares about: server, environment, runtime config, ports, env vars, volumes,

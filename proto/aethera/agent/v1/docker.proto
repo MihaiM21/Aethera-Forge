@@ -8,6 +8,7 @@ syntax = "proto3";
 
 package aethera.agent.v1;
 
+import "aethera/agent/v1/build.proto";
 import "aethera/agent/v1/common.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
@@ -388,7 +389,8 @@ message NetworkPrune {
 message ComposeProject {
   // Compose project name (-p). [a-z0-9][a-z0-9_-]*
   string project_name = 1;
-  // Contents of the user's compose file, kept verbatim.
+  // Contents of the user's compose file, kept verbatim. Empty when `git` is
+  // set: the file then comes from the repository.
   // SENSITIVE: may contain user-embedded secrets; log length/hash only.
   string compose_file = 2;
   // Contents of the Aethera-generated override file (labels, networks).
@@ -399,6 +401,17 @@ message ComposeProject {
   repeated string profiles = 5;
   // Registry credentials available to pull/build in this project.
   repeated RegistryAuth registry_auths = 6;
+  // Repository the project lives in. When set, the agent checks it out into
+  // the project directory (same validation and credential handling as
+  // BuildRequest.git) and uses `compose_path` from it, so `build:` contexts
+  // resolve inside the checkout. Exactly one of git / compose_file is set.
+  GitSource git = 7;
+  // Compose file path relative to the repository root (no "..", not
+  // absolute). Empty = "docker-compose.yml", then "compose.yaml".
+  string compose_path = 8;
+  // Build arguments passed to every `build:` service (`--build-arg NAME`,
+  // values through the process environment like BuildRequest.build_args).
+  repeated EnvVar build_args = 9;
 }
 
 enum ComposePullPolicy {
@@ -455,4 +468,67 @@ message ComposeServiceStatus {
 message ComposeResult {
   string project_name = 1;
   repeated ComposeServiceStatus services = 2;
+  // Commit that was checked out when the project came from `git`.
+  string commit_sha = 3;
+}
+
+// ComposeInspect resolves the project (checking out `git` when set) and
+// reports its services without starting anything, so the control plane can
+// offer per-service domains and validate the file before a deployment.
+message ComposeInspect {
+  ComposeProject project = 1;
+}
+
+message ComposeServiceSpec {
+  string name = 1;
+  // Image reference; empty when the service only has `build:`.
+  string image = 2;
+  bool has_build = 3;
+  // Container ports from `ports:` and `expose:`.
+  repeated uint32 ports = 4;
+}
+
+message ComposeInspectResult {
+  repeated ComposeServiceSpec services = 1;
+  string commit_sha = 2;
+  // SHA-256 (hex) of the resolved compose file.
+  string compose_sha256 = 3;
+  // Policy findings that would make ComposeUp fail (privileged, host binds
+  // outside the allowed prefixes, network_mode: host, ...). Empty = valid.
+  repeated string violations = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Exec (scheduled tasks, ADR 0010)
+// ---------------------------------------------------------------------------
+
+// ContainerExec runs a program inside an existing, running container
+// (`docker exec`). It never runs anything on the host: the process lives in
+// the container's namespaces with the container's image and user. Output
+// (stdout and stderr) is streamed as LOG_SOURCE_DEPLOY chunks of the command.
+message ContainerExec {
+  string container = 1;
+  // Program and arguments, no shell interpolation by the agent. The control
+  // plane sends ["sh", "-c", "<command>"] for a user command line.
+  repeated string argv = 2;
+  repeated EnvVar env = 3;
+  // Empty = the container's user.
+  string user = 4;
+  // Empty = the container's working directory.
+  string working_dir = 5;
+  // Bytes of output (end of the output) returned in the result; 0 = 16 KiB,
+  // capped at 64 KiB.
+  uint32 output_tail_bytes = 6;
+}
+
+// The command SUCCEEDS whenever the process ran to completion, whatever its
+// exit code; the exit code decides whether the task succeeded. It FAILS when
+// the container is missing or not running (NOT_FOUND / CONFLICT) and
+// TIMED_OUT when the deadline passes (the process is killed).
+message ContainerExecResult {
+  int32 exit_code = 1;
+  // Last output_tail_bytes of the combined output, secrets masked.
+  bytes output_tail = 2;
+  bool output_truncated = 3;
+  google.protobuf.Duration duration = 4;
 }
