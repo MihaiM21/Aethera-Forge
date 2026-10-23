@@ -38,6 +38,9 @@ public static class ManagedSecrets
         foreach (var d in await db.Domains.AsNoTracking().Where(d => d.BasicAuthSecretId != null && ids.Contains(d.BasicAuthSecretId.Value))
                      .Select(d => new { Secret = d.BasicAuthSecretId!.Value, d.Id, d.Hostname }).ToListAsync(ct))
             owners.TryAdd(d.Secret, new SecretOwnerResponse("domain", d.Id, d.Hostname));
+        foreach (var d in await db.BackupDestinations.AsNoTracking().Where(d => d.SecretAccessKeySecretId != null && ids.Contains(d.SecretAccessKeySecretId.Value))
+                     .Select(d => new { Secret = d.SecretAccessKeySecretId!.Value, d.Id, d.Name }).ToListAsync(ct))
+            owners.TryAdd(d.Secret, new SecretOwnerResponse("backupDestination", d.Id, d.Name));
 
         var workloadIds = managed.Where(s => s.Purpose == SecretPurpose.ServiceGenerated && s.WorkloadId is not null).Select(s => s.WorkloadId!.Value).ToList();
         if (workloadIds.Count > 0)
@@ -64,6 +67,7 @@ public static class ManagedSecrets
             { Type: "server" } => $"Use PATCH /api/v1/servers/{owner.Id} to replace the SSH credential.",
             { Type: "gitCredential" } => $"Use PATCH /api/v1/git-credentials/{owner.Id}.",
             { Type: "domain" } => $"It holds the basic auth users of /api/v1/domains/{owner.Id}; change them there.",
+            { Type: "backupDestination" } => $"Use PATCH /api/v1/backup-destinations/{owner.Id} (an Administrator changes the access key there).",
             { Type: "service" } =>$"It was generated for /api/v1/services/{owner.Id} and is managed through that service.",
             _ => "Use the endpoint of the resource it belongs to.",
         };

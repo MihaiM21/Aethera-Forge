@@ -15,6 +15,10 @@ using Aethera.Api.Web;
 using Aethera.Infrastructure.Persistence;
 using Aethera.Infrastructure.SelfOps;
 
+// Host tools that run instead of the web application (`dotnet Aethera.Api.dll backup-decrypt <in> <out>`, see docs/backups.md).
+if (args is [BackupDecryptCommand.Name, ..])
+    return await BackupDecryptCommand.RunAsync(args[1..], Console.Error);
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddAetheraPersistence(builder.Configuration);
@@ -58,6 +62,7 @@ app.MapAgentGateway();         // WP2.2: AgentService + EnrollmentService (gRPC,
 app.UseAetheraStaticWeb();     // ADR 0005: the Next.js export, for every path no endpoint claimed
 
 app.Run();
+return 0;
 
 // Exposed so integration tests can use WebApplicationFactory<Program>.
 public partial class Program;

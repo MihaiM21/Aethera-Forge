@@ -6,6 +6,8 @@
 #   aethera update [--version v]   back up the database, pull the new images, restart; roll back if the new version does not come up
 #   aethera backup                 write a database backup (pg_dump -Fc) to <dir>/backups
 #   aethera restore <file>         restore a backup into the database (stops the control plane meanwhile)
+#   aethera backup-decrypt <in> <out>   decrypt a backup of Aethera's own database downloaded from a backup destination (AEB1);
+#                                       <out> can then be given to `aethera restore`. Needs the master key of this installation.
 #   aethera version                the installed version
 #
 # The same script runs inside the updater container ("daemon" mode): the UI's "Update" button writes a request file that it picks up.
@@ -191,6 +193,14 @@ case "$cmd" in
     dc up -d aethera
     say "Restored. The control plane is starting."
     ;;
+  backup-decrypt)
+    require_install
+    [ $# -eq 2 ] && [ -f "$1" ] || die "usage: aethera backup-decrypt <encrypted backup file> <output file>"
+    # Runs in the control plane container, which has the master key; the file is piped through, so nothing needs mounting.
+    dc exec -T aethera dotnet Aethera.Api.dll backup-decrypt - - < "$1" > "$2.partial" || { rm -f "$2.partial"; die "could not decrypt $1 (wrong master key, or the file is damaged or incomplete)"; }
+    mv "$2.partial" "$2"
+    say "Decrypted: $2 (restore it with: aethera restore $2)"
+    ;;
   update)
     target=""
     while [ $# -gt 0 ]; do
@@ -206,6 +216,6 @@ case "$cmd" in
     if [ "$target" = "$(env_get AETHERA_VERSION)" ]; then say "Already on $target."; exit 0; fi
     do_update "$target"
     ;;
-  help|-h|--help) sed -n '2,12p' "$0" ;;
+  help|-h|--help) sed -n '2,14p' "$0" ;;
   *) die "unknown command: $cmd (try 'aethera help')" ;;
 esac

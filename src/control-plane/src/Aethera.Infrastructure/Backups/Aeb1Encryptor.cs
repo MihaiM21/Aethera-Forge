@@ -13,10 +13,10 @@ public static class Aeb1Encryptor
 {
     /// <param name="salt">Random when null (always, outside tests).</param>
     public static async Task<Aeb1Result> EncryptAsync(
-        Stream plaintext, Stream ciphertext, ReadOnlyMemory<byte> streamKey, string keyId, ReadOnlyMemory<byte>? salt = null, CancellationToken cancellationToken = default)
+        Stream plaintext, Stream ciphertext, ReadOnlyMemory<byte> streamKey, string keyId, byte[]? salt = null, CancellationToken cancellationToken = default)
     {
         if (streamKey.Length != Aeb1.KeyLength) throw new ArgumentException($"The stream key must be {Aeb1.KeyLength} bytes.", nameof(streamKey));
-        var saltBytes = salt?.ToArray() ?? RandomNumberGenerator.GetBytes(Aeb1.SaltLength);
+        var saltBytes = salt ?? RandomNumberGenerator.GetBytes(Aeb1.SaltLength);
         var header = Aeb1.BuildHeader(keyId, saltBytes);
         var key = Aeb1.DeriveChunkKey(streamKey.Span, saltBytes);
 
