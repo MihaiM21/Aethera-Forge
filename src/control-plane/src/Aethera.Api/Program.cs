@@ -16,9 +16,11 @@ using Aethera.Api.Web;
 using Aethera.Infrastructure.Persistence;
 using Aethera.Infrastructure.SelfOps;
 
-// Host tools that run instead of the web application (`dotnet Aethera.Api.dll backup-decrypt <in> <out>`, see docs/backups.md).
+// Host tools that run instead of the web application (`aethera backup-decrypt`, `aethera reset-password` run them inside the container).
 if (args is [BackupDecryptCommand.Name, ..])
     return await BackupDecryptCommand.RunAsync(args[1..], Console.Error);
+if (await Aethera.Api.HostCommands.ResetPasswordCommand.TryRunAsync(args, Console.In, Console.Out, Console.Error) is { } hostCommandExit)
+    return hostCommandExit;
 
 var builder = WebApplication.CreateBuilder(args);
 
