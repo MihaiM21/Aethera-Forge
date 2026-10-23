@@ -40,9 +40,23 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP5.2 Self-ops (self-update, maintenance jobs, log retention)
 - [x] WP5.3 Docs (install, architecture, Coolify migration, CONTRIBUTING, CHANGELOG; details and known limits: `docs/architecture/0009-packaging-and-self-ops.md`; verified by `bash deploy/install-e2e.sh`)
 
-## Later phases
-- [ ] 6. Multi-server roles & resources
-- [ ] 7. Secure networking (WireGuard / Tailscale)
-- [ ] 8. Backups
-- [ ] 9. Alerts & notifications
-- [ ] 10. Scheduled jobs, CLI, config-as-code, environment promotion, blue/green & canary, OIDC, integrated registry
+## R1 — v0.1.0 beta (the Coolify cut-over; plan: [`release-0.1.md`](release-0.1.md))
+- [ ] R1.0 Contracts (proto, migration, seams, ADR 0010)
+- [ ] R1.1 Backups (S3/R2, Postgres/MongoDB/Redis/volumes, encryption, schedules, retention, restore) — Phase 8
+- [ ] R1.2 Email notifications & alerts (SMTP/Resend, webhook, per-event settings, alert store) — Phase 9
+- [ ] R1.3 Scheduled tasks (`container.exec`, cron, history) — part of Phase 10
+- [ ] R1.4 Compose from the repository (`build:`, domains per service)
+- [ ] R1.5 Domains & proxy (Cloudflare DNS-01, wildcards, www redirect, strip prefix, basic auth, custom labels)
+- [ ] R1.6 Hardening (bug hunt fixes, `aethera reset-password`, registry test, docs, beta labelling)
+- [ ] R1 verification, PR, `v0.1.0-rc.1`, owner test on the VPS, `v0.1.0`
+
+## R2 — v0.2.0 (two servers)
+- [ ] 6. Multi-server roles & resources (placement, limits, build quota, capacity view, build → registry → run elsewhere)
+- [ ] 7. Secure networking (WireGuard mesh, Tailscale option, private-network deploys)
+- [ ] PR preview deployments (wildcard domains, PR webhooks, cleanup on close)
+
+## R3 — v0.3+
+- [ ] CLI, config-as-code (`aethera.yaml`), environment promotion, blue/green & canary, OIDC/GitHub login, integrated registry
+- [ ] Discord/Slack/Telegram notifications, Cloudflare DNS record automation, Caddy proxy, email invitations and password reset
+
+v1.0.0 follows about a month of production use (a real restore, two servers, no data-loss bug).
