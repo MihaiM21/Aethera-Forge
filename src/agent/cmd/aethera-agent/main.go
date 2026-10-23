@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/mihaim21/aethera-forge/agent/internal/agent"
 	"github.com/mihaim21/aethera-forge/agent/internal/config"
@@ -196,6 +197,7 @@ func runAgent(args []string, stdout, stderr io.Writer) int {
 	a, err := agent.New(agent.Options{
 		Config: cfg, Dir: state.Dir(cfg.StateDir), Docker: dk, Collector: &metrics.Collector{Docker: dk},
 		Version: version.Version, Logger: log, Exe: exe, DeployTools: true, Restarter: &restarter{stop: stop}, LogForwarder: fwd,
+		ExitAfterOffline: exitAfterOffline(log),
 	})
 	if err != nil {
 		if errors.Is(err, state.ErrNotEnrolled) {
@@ -211,4 +213,19 @@ func runAgent(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// exitAfterOffline reads AETHERA_EXIT_AFTER_OFFLINE (a Go duration such as 10m): how long the control plane may stay unreachable before the
+// agent exits so a container restart policy starts it again. Unset or invalid: retry forever (the right behaviour under systemd).
+func exitAfterOffline(log *slog.Logger) time.Duration {
+	raw := strings.TrimSpace(os.Getenv("AETHERA_EXIT_AFTER_OFFLINE"))
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		log.Warn("ignoring invalid AETHERA_EXIT_AFTER_OFFLINE", "value", raw)
+		return 0
+	}
+	return d
 }

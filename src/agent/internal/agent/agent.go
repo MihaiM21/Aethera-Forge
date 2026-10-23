@@ -68,6 +68,9 @@ type Options struct {
 	WelcomeTimeout time.Duration
 	HealthyAfter   time.Duration
 	TLSRetry       time.Duration
+	// ExitAfterOffline makes Run fail (so a container restart policy starts the agent again) when the control plane could not be reached
+	// for this long. Zero retries forever, which is right under systemd; the container of this machine's agent sets it.
+	ExitAfterOffline time.Duration
 	StatusInterval time.Duration
 	RenewCheck     time.Duration
 	LogConfig      logstream.Config
@@ -173,7 +176,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.client = transport.New(transport.Options{
 		Endpoint: a.identity.Load().Endpoint, TLS: a.tlsConfig, Handler: h, Clock: a.o.Clock, Rand: a.o.Rand,
 		Logger: a.log, WelcomeTimeout: a.o.WelcomeTimeout, DialOptions: a.o.DialOptions, Keepalive: a.o.Keepalive,
-		HealthyAfter: a.o.HealthyAfter, TLSRetry: a.o.TLSRetry,
+		HealthyAfter: a.o.HealthyAfter, TLSRetry: a.o.TLSRetry, GiveUpAfter: a.o.ExitAfterOffline,
 	})
 	a.logs = logstream.NewManager(a.client, a.o.LogConfig)
 	if a.o.LogForwarder != nil {
