@@ -100,7 +100,7 @@ D docker run -d --name releases --network aethera_default --network-alias releas
 
 dsh 'test "$(stat -c %a /opt/aethera/.env)" = 600' || fail ".env is not mode 0600"
 dsh 'grep -q "^AETHERA_MASTER_KEY=.\{40,\}" /opt/aethera/.env && grep -q "^AETHERA_DB_PASSWORD=.\{16,\}" /opt/aethera/.env' || fail "secrets were not generated"
-dsh 'grep -q "^AETHERA_JOIN_TOKEN=$" /opt/aethera/.env' || fail "the single-use join token stayed in the .env"
+dsh '! grep -q "^AETHERA_JOIN_TOKEN=." /opt/aethera/.env' || fail "a single-use join token stayed in the .env"
 dsh 'test -x /usr/local/bin/aethera' || fail "the aethera command was not installed"
 ok ".env holds generated secrets with mode 0600, the join token is gone, aethera command installed"
 
