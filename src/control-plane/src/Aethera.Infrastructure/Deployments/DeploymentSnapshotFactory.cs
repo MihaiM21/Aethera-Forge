@@ -26,7 +26,7 @@ public static class DeploymentSnapshotFactory
     };
 
     /// <summary>The environment network every workload joins by default, so an application reaches a service of its environment by its slug.</summary>
-    public static string EnvironmentNetwork(Guid environmentId) => $"aethera-env-{environmentId.ToString("N")[..8]}";
+    public static string EnvironmentNetwork(Guid environmentId) => DeploymentPlanBuilder.EnvironmentNetwork(environmentId);
 
     public static DeploymentSnapshot Create(Service service)
     {
@@ -63,7 +63,10 @@ public static class DeploymentSnapshotFactory
     {
         var networks = w.Networks.Where(n => n.Network is not null).OrderBy(n => n.Network.DockerName, StringComparer.Ordinal)
             .Select(n => new NetworkEntry(n.Network.DockerName, n.Network.IsInternal, n.Aliases)).ToList();
-        if (networks.Count == 0) networks.Add(new NetworkEntry(EnvironmentNetwork(w.EnvironmentId), false, [w.Slug]));
+        // Every workload joins the environment network: custom networks come in addition to it, never instead (a database template and an
+        // application of the environment reach each other by name only there).
+        var environmentNetwork = EnvironmentNetwork(w.EnvironmentId);
+        if (networks.All(n => n.DockerName != environmentNetwork)) networks.Insert(0, new NetworkEntry(environmentNetwork, false, [w.Slug]));
         return new DeploymentSnapshot
         {
             WorkloadId = w.Id, EnvironmentId = w.EnvironmentId, Slug = w.Slug, SourceKind = kind,
@@ -73,8 +76,10 @@ public static class DeploymentSnapshotFactory
             Ports = w.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
             Volumes = w.Volumes.OrderBy(v => v.Name, StringComparer.Ordinal).Select(v => new VolumeEntry(v.Name, v.MountPath, v.HostPath, v.ReadOnly)).ToList(),
             Domains = w.Domains.Where(d => !d.IsDeleted).OrderBy(d => d.Hostname, StringComparer.Ordinal)
-                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort)).ToList(),
+                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort, d.ComposeService, d.RedirectTo, d.StripPathPrefix,
+                    d.BasicAuthSecretId, null, d.DnsProviderId)).ToList(),
             Networks = networks,
+            CustomLabels = w.CustomLabels.Count > 0 ? new Dictionary<string, string>(w.CustomLabels) : null,
         };
     }
 
@@ -90,9 +95,20 @@ public static class DeploymentSnapshotFactory
 
             case ApplicationSourceKind.Compose:
                 var compose = app.ComposeSource;
+                if (compose?.FilePath is { Length: > 0 } filePath)
+                {
+                    // The file is read from the repository by the agent (ADR 0010): the application's git source says where, which branch or commit.
+                    var composeGit = app.GitSource ?? throw new UnsupportedSourceException("source.not_configured",
+                        "A compose file in the repository needs the application's git source (repository, branch).");
+                    return s with
+                    {
+                        Git = new GitSnapshot(composeGit.RepositoryUrl, composeGit.Branch, composeGit.CommitPin, composeGit.GitCredentialId),
+                        Compose = new ComposeSnapshot("", null, filePath),
+                    };
+                }
+
                 if (compose?.InlineContent is not { Length: > 0 } content)
-                    throw new UnsupportedSourceException("source.unsupported",
-                        "Compose applications currently need the compose file pasted in (inline content); reading it from the repository is not supported yet.");
+                    throw new UnsupportedSourceException("source.not_configured", "The compose application has neither a file in the repository nor inline content.");
                 return s with { Compose = new ComposeSnapshot(content, null) };
 
             default:

@@ -78,6 +78,12 @@ public sealed record UpdateApplicationRequest
     [NotClearable] public ComposeSourceRequest? Compose { get; init; }
     public BuildConfigRequest? Build { get; init; }
     [NotClearable] public RuntimeRequest? Runtime { get; init; }
+
+    /// <summary>
+    /// Extra container labels (e.g. Traefik middlewares), merged over the generated ones. Replaces the whole map; null or <c>{}</c> clears it.
+    /// Administrators only. Names starting <c>aethera.</c> or <c>traefik.docker.network</c> are refused.
+    /// </summary>
+    public Dictionary<string, string>? CustomLabels { get; init; }
 }
 
 // ---- responses ------------------------------------------------------------------------------------------------------------------------
@@ -101,7 +107,7 @@ public sealed record WorkloadStatusResponse(
 public sealed record ApplicationResponse(
     Guid Id, string Name, string Slug, string? Description, Guid ProjectId, Guid EnvironmentId, Guid ServerId, ApplicationSourceKind SourceKind,
     WorkloadStatusResponse State, GitSourceResponse? GitSource, ImageSourceResponse? Image, ComposeSourceResponse? Compose,
-    BuildConfigResponse? Build, RuntimeResponse Runtime, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    BuildConfigResponse? Build, RuntimeResponse Runtime, System.Text.Json.Nodes.JsonObject CustomLabels, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 /// <summary>Lighter list shape (no build/runtime blobs).</summary>
 public sealed record ApplicationSummary(
@@ -288,5 +294,11 @@ public sealed class UpdateApplicationValidator : AbstractValidator<UpdateApplica
         RuleFor(x => x.Compose).SetValidator(new ComposeSourceValidator()!);
         RuleFor(x => x.Build).SetValidator(new BuildConfigValidator()!);
         RuleFor(x => x.Runtime).SetValidator(new RuntimeRequestValidator()!);
+        RuleFor(x => x.CustomLabels).Custom((labels, context) =>
+        {
+            if (labels is null) return;
+            foreach (var (key, message) in Aethera.Engine.Proxy.CustomLabelRules.Validate(labels))
+                context.AddFailure(new ValidationFailure("CustomLabels", key.Length > 0 ? $"{key}: {message}" : message) { ErrorCode = "invalid" });
+        });
     }
 }

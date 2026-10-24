@@ -89,6 +89,19 @@ public sealed class Tenant(WebApplicationFactory<Program> factory, SeededIdentit
 
     public static string Unique(string prefix = "x") => prefix + "-" + Guid.NewGuid().ToString("N")[..10];
 
+    /// <summary>A Cloudflare DNS provider row of this organization (straight in the database: the provider API belongs to another module); returns its id.</summary>
+    public async Task<string> SeedDnsProviderAsync(string token = "cf-token-value")
+    {
+        await using var scope = Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<Aethera.Infrastructure.Persistence.AetheraDbContext>();
+        var vault = scope.ServiceProvider.GetRequiredService<Aethera.Api.Features.Resources.Secrets.SecretVault>();
+        var secret = vault.Create(Identity.OrganizationId, Unique("dns"), null, token, purpose: SecretPurpose.DnsCredential);
+        var provider = new DnsProvider { OrganizationId = Identity.OrganizationId, Name = Unique("cf"), ApiTokenSecretId = secret.Id };
+        db.DnsProviders.Add(provider);
+        await db.SaveChangesAsync();
+        return provider.Id.ToString();
+    }
+
     public async Task<JsonNode> CreateServerAsync(string? name = null, string? publicIp = null)
     {
         var body = new { name = name ?? Unique("srv"), host = Unique("host") + ".example.com", publicIp, roles = new[] { "master", "worker" } };

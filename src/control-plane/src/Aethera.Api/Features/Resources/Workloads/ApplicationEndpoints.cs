@@ -26,6 +26,7 @@ internal static class ApplicationEndpoints
             .Accepts<UpdateApplicationRequest>("application/merge-patch+json", "application/json")
             .ValidatePatch<UpdateApplicationRequest>().RequireWrite();
         group.MapDelete("/{id:guid}", Delete).WithName("deleteApplication").RequireWrite();
+        ComposeEndpoints.Map(group);
     }
 
     // ---- handlers -------------------------------------------------------------------------------------------------------------------
@@ -106,6 +107,17 @@ internal static class ApplicationEndpoints
         if (patch.Has("runtime.ports")) TrustChecks.CheckPorts(actor, trust, body.Runtime?.Ports, app.Ports);
 
         var changed = new List<string>();
+        if (patch.Has("customLabels"))
+        {
+            // Custom labels can add Traefik routers and middlewares to the container: Administrators only (ADR 0010). An unchanged map passes.
+            var labels = body.CustomLabels ?? [];
+            if (!actor.IsAdmin() && !(labels.Count == app.CustomLabels.Count && labels.All(l => app.CustomLabels.TryGetValue(l.Key, out var v) && v == l.Value)))
+                throw new ApiProblemException(new ApiProblem(StatusCodes.Status403Forbidden, "labels.requires_admin",
+                    "Custom container labels can change how the proxy routes traffic and need the Administrator role."));
+            app.CustomLabels = new Dictionary<string, string>(labels);
+            changed.Add("customLabels");
+        }
+
         if (patch.Has("name") && body.Name is { } name) { app.Name = name.Trim(); changed.Add("name"); }
         if (patch.Has("description")) { app.Description = body.Description; changed.Add("description"); }
         if (patch.Has("serverId"))
@@ -180,7 +192,7 @@ internal static class ApplicationEndpoints
             ? new BuildConfigResponse(b.Engine, b.Context, b.DockerfilePath, b.DockerfileInline, b.InstallCommand, b.BuildCommand, b.StartCommand,
                 b.OutputDirectory, ToJson(b.BuildArgs), b.CacheEnabled, b.TargetPlatform)
             : null,
-        RuntimeMapper.ToResponse(a), a.CreatedAt, a.UpdatedAt);
+        RuntimeMapper.ToResponse(a), ToJson(a.CustomLabels), a.CreatedAt, a.UpdatedAt);
 
     // A JsonObject, not a dictionary: dictionary keys would be run through the camelCase policy, and build argument names are exact.
     private static JsonObject ToJson(IReadOnlyDictionary<string, string> values)

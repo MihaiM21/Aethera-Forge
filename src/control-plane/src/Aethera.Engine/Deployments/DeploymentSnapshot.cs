@@ -36,6 +36,9 @@ public sealed record DeploymentSnapshot
     public List<DomainEntry> Domains { get; init; } = [];
     public List<NetworkEntry> Networks { get; init; } = [];
 
+    /// <summary>Extra container labels of the workload (administrators only), merged over the generated ones. Null in snapshots from before ADR 0010.</summary>
+    public Dictionary<string, string>? CustomLabels { get; init; }
+
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
     public static DeploymentSnapshot FromJson(string json) =>
@@ -64,8 +67,12 @@ public sealed record BuildSnapshot(
 
 public sealed record ImageSnapshot(string Image, string Tag, ImagePullPolicy PullPolicy, Guid? RegistryId, IReadOnlyList<string>? Command = null);
 
-/// <summary>For compose applications. <see cref="Content"/> is the compose file read from the repository or inline at start time.</summary>
-public sealed record ComposeSnapshot(string Content, string? RoutedService);
+/// <summary>
+/// For compose applications. <see cref="Content"/> is the inline compose file (empty when the file comes from the repository: then
+/// <see cref="FilePath"/> is its path inside the application's git source). <see cref="RoutedService"/> is the service of domains from before
+/// ADR 0010 that name none (<see cref="DomainEntry.ComposeService"/>).
+/// </summary>
+public sealed record ComposeSnapshot(string Content, string? RoutedService, string? FilePath = null);
 
 public sealed record RuntimeSnapshot
 {
@@ -92,7 +99,13 @@ public sealed record PortEntry(int ContainerPort, PortProtocol Protocol, int? Pu
 
 public sealed record VolumeEntry(string Name, string MountPath, string? HostPath, bool ReadOnly);
 
-public sealed record DomainEntry(string Hostname, string PathPrefix, bool Https, int? TargetPort);
+/// <summary>
+/// A hostname routed to the workload. The later fields (ADR 0010) default so snapshots of earlier deployments still read. The basic auth
+/// secret is a pinned id and version, like an environment variable's: the htpasswd lines never enter the snapshot.
+/// </summary>
+public sealed record DomainEntry(
+    string Hostname, string PathPrefix, bool Https, int? TargetPort, string? ComposeService = null, string? RedirectTo = null,
+    bool StripPathPrefix = false, Guid? BasicAuthSecretId = null, int? BasicAuthSecretVersion = null, Guid? DnsProviderId = null);
 
 /// <summary>A managed network the workload joins: its Docker name and DNS aliases.</summary>
 public sealed record NetworkEntry(string DockerName, bool Internal, IReadOnlyList<string> Aliases);

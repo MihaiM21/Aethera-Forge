@@ -68,8 +68,8 @@ public class PlanBuilderTests
         Assert.Equal(["aethera-proxy", "proj-net"], c.Networks!.Select(n => n.Network));
         Assert.Equal(512L << 20, c.Resources!.MemoryLimitBytes);
         Assert.Equal(Wid.ToString(), c.Labels!["aethera.workload"]);
-        Assert.Equal("Host(`api.example.com`) || Host(`www.api.example.com`)", c.Labels["traefik.http.routers.api-https.rule"]);
-        Assert.Equal("8080", c.Labels["traefik.http.services.api.loadbalancer.server.port"]);
+        Assert.Equal("Host(`api.example.com`) || Host(`www.api.example.com`)", c.Labels["traefik.http.routers.api-11111111-https.rule"]);
+        Assert.Equal("8080", c.Labels["traefik.http.services.api-11111111.loadbalancer.server.port"]);
         Assert.Equal(["aethera-proxy", "proj-net"], plan.Networks.OrderBy(n => n == "proj-net").ThenBy(n => n));
     }
 
@@ -111,7 +111,7 @@ public class PlanBuilderTests
     {
         var snap = Snapshot(s => s with { Domains = [new("a.example.com", "/", true, 8080), new("b.example.com", "/", true, 9000)] });
         var labels = DeploymentPlanBuilder.Build(snap, Context()).Container.Labels!;
-        Assert.Equal("9000", labels["traefik.http.services.api-2.loadbalancer.server.port"]);
+        Assert.Equal("9000", labels["traefik.http.services.api-11111111-2.loadbalancer.server.port"]);
     }
 
     [Fact]
@@ -198,6 +198,39 @@ public class ComposeAndRollbackRunnerTests
         Assert.Equal(DeploymentRunResult.Running, await Runner(t).RunAsync(d, plan, (_, _) => Task.CompletedTask, default));
         Assert.Equal(["id-web", "id-db"], d.ContainerIds);
         Assert.Equal(["compose.up"], t.Names);
+    }
+
+    [Fact]
+    public async Task Compose_from_a_repository_creates_the_networks_builds_and_records_the_commit()
+    {
+        var d = Started();
+        var seen = new List<object>();
+        var t = new T(c =>
+        {
+            seen.Add(c);
+            return c switch
+            {
+                NetworkCreateCommand n => new DockerNetwork("n", n.Name, "bridge", "local", n.Internal, true, false, [], new Dictionary<string, string>(), null, []),
+                ComposeUpCommand => new ComposeOutcome("p", [Svc("web", ContainerRunState.Running)], "abc123def"),
+                _ => null,
+            };
+        });
+        var plan = new DeploymentPlan
+        {
+            ServerId = d.ServerId, Networks = ["aethera-env-1", "aethera-proxy"], InternalNetworks = new HashSet<string> { "aethera-env-1" },
+            Compose = new ComposeProjectSpec("p", "") { Git = new GitSourceSpec("https://github.com/a/b.git", "main"), ComposePath = "docker-compose.yml" },
+        };
+
+        Assert.Equal(DeploymentRunResult.Running, await Runner(t).RunAsync(d, plan, (_, _) => Task.CompletedTask, default));
+        Assert.Equal(["network.create", "network.create", "compose.up"], t.Names);
+        Assert.True(seen.OfType<ComposeUpCommand>().Single().Build);
+        Assert.Equal("abc123def", d.CommitSha);
+
+        var inline = Started();
+        var up = new List<ComposeUpCommand>();
+        var t2 = new T(c => { if (c is ComposeUpCommand u) up.Add(u); return c is ComposeUpCommand ? new ComposeOutcome("p", [Svc("web", ContainerRunState.Running)]) : null; });
+        await Runner(t2).RunAsync(inline, new DeploymentPlan { ServerId = inline.ServerId, Compose = new ComposeProjectSpec("p", "services: {}") }, (_, _) => Task.CompletedTask, default);
+        Assert.False(up.Single().Build);
     }
 
     [Fact]
