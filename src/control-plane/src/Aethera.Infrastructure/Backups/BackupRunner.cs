@@ -251,9 +251,9 @@ public sealed class BackupRunner(
                 var w = await db.Workloads.AsNoTracking().Where(x => x.Id == workloadId)
                     .Select(x => new { x.EnvironmentId, IsService = x is Service }).FirstOrDefaultAsync();
                 environmentId = w?.EnvironmentId;
-                path = $"/{(w?.IsService == true ? "services" : "applications")}/{workloadId}?tab=backups";
+                path = $"/{(w?.IsService == true ? "services" : "applications")}/{workloadId}#backups";
             }
-            else path = "/settings?tab=backups";
+            else path = "/settings#backups";
 
             var details = new Dictionary<string, string> { ["policyId"] = policy.Id.ToString(), ["runId"] = run.Id.ToString(), ["trigger"] = trigger.ToString().ToLowerInvariant() };
             if (run.StoredSizeBytes is { } size) details["size"] = Size(size);
