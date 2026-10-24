@@ -41,11 +41,11 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] WP5.3 Docs (install, architecture, Coolify migration, CONTRIBUTING, CHANGELOG; details and known limits: `docs/architecture/0009-packaging-and-self-ops.md`; verified by `bash deploy/install-e2e.sh`)
 
 ## R1 — v0.1.0 beta (the Coolify cut-over; plan: [`release-0.1.md`](release-0.1.md))
-- [ ] R1.0 Contracts (proto, migration, seams, ADR 0010)
-- [ ] R1.1 Backups (S3/R2, Postgres/MongoDB/Redis/volumes, encryption, schedules, retention, restore) — Phase 8
-- [ ] R1.2 Email notifications & alerts (SMTP/Resend, webhook, per-event settings, alert store) — Phase 9
-- [ ] R1.3 Scheduled tasks (`container.exec`, cron, history) — part of Phase 10
-- [ ] R1.4 Compose from the repository (`build:`, domains per service)
+- [x] R1.0 Contracts (proto, migration, seams, ADR 0010)
+- [x] R1.1 Backups (S3/R2, Postgres/MongoDB/Redis/volumes, encryption, schedules, retention, restore) — Phase 8
+- [x] R1.2 Email notifications & alerts (SMTP/Resend, webhook, per-event settings, alert store) — Phase 9
+- [x] R1.3 Scheduled tasks (`container.exec`, cron, history) — part of Phase 10
+- [x] R1.4 Compose from the repository (`build:`, domains per service)
 - [ ] R1.5 Domains & proxy (Cloudflare DNS-01, wildcards, www redirect, strip prefix, basic auth, custom labels)
 - [ ] R1.6 Hardening (bug hunt fixes, `aethera reset-password`, registry test, docs, beta labelling)
 - [ ] R1 verification, PR, `v0.1.0-rc.1`, owner test on the VPS, `v0.1.0`
