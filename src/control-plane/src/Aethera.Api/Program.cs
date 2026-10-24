@@ -4,6 +4,7 @@ using Aethera.Api.Features.Agents;
 using Aethera.Api.Features.Auth;
 using Aethera.Api.Features.Backups;
 using Aethera.Api.Features.Deployments;
+using Aethera.Api.Features.DnsProviders;
 using Aethera.Api.Features.Jobs;
 using Aethera.Api.Features.Notifications;
 using Aethera.Api.Features.Resources;
@@ -32,6 +33,7 @@ builder.Services.AddSelfOps(builder.Configuration);      // WP5.2: update checks
 builder.Services.AddNotifications(builder.Configuration);  // R1.2: email, channels, alerts (INotifier)
 builder.Services.AddBackups(builder.Configuration);        // R1.1: destinations, policies, runs, restores
 builder.Services.AddScheduledTasks(builder.Configuration); // R1.3: tasks run inside workload containers
+builder.Services.AddDns(builder.Configuration);            // R1.5: DNS providers (Cloudflare) and the DNS check
 
 var app = builder.Build();
 
@@ -55,6 +57,7 @@ api.MapSystem();               // WP5.2: version, updates, maintenance, agent up
 api.MapNotifications();        // R1.2
 api.MapBackups();              // R1.1
 api.MapScheduledTasks();       // R1.3
+api.MapDns();                  // R1.5: DNS providers
 api.MapContributors();         // test/extension seam
 app.MapGitWebhooks();          // WP3.4: POST /webhooks/git/{endpointId} (anonymous, signature-verified)
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root

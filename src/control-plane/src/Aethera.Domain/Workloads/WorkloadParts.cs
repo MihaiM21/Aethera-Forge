@@ -100,6 +100,9 @@ public enum DnsStatus
     Mismatch = 2,
     Missing = 3,
     Error = 4,
+
+    /// <summary>Every answer is a Cloudflare edge address (orange cloud): the origin cannot be verified without a DNS provider.</summary>
+    Proxied = 5,
 }
 
 /// <summary>A hostname (+ optional path prefix) routed to a workload by the reverse proxy.</summary>

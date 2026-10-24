@@ -1,5 +1,5 @@
-using System.Net;
 using System.Text.RegularExpressions;
+using Aethera.Api.Features.DnsProviders;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
@@ -83,10 +83,13 @@ public sealed record DomainResponse(
     string? ComposeService, string? RedirectTo, bool StripPathPrefix, IReadOnlyList<string> BasicAuthUsers, Guid? DnsProviderId,
     DomainCertificateResponse Certificate, DomainDnsResponse Dns, IReadOnlyList<string> Warnings, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
-/// <summary>Result of <c>POST /domains/{id}/verify-dns</c>: what the name resolves to versus what the server's address is.</summary>
+/// <summary>
+/// Result of <c>POST /domains/{id}/verify-dns</c>: what the name resolves to versus what the server's address is. <c>method</c> says how it
+/// was found: <c>resolver</c> (a DNS lookup) or <c>cloudflareApi</c> (the record read through a DNS provider, ADR 0010).
+/// </summary>
 public sealed record DnsCheckResponse(
     Guid DomainId, string Hostname, DnsStatus Status, IReadOnlyList<string> ExpectedIps, IReadOnlyList<string> ResolvedIps, DateTimeOffset CheckedAt,
-    string Message);
+    string Message, string Method);
 
 public static partial class DomainRules
 {
@@ -213,8 +216,6 @@ internal static class DomainEndpoints
 {
     private static readonly SortDefinition<WorkloadDomain> Sorts = new SortDefinition<WorkloadDomain>("hostname")
         .Add("hostname", d => d.Hostname).Add("createdAt", d => d.CreatedAt).Add("updatedAt", d => d.UpdatedAt);
-
-    private static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(5);
 
     public static void Map(IEndpointRouteBuilder api)
     {
@@ -486,54 +487,17 @@ internal static class DomainEndpoints
     }
 
     private static async Task<Ok<DnsCheckResponse>> VerifyDns(
-        Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IDnsResolver resolver, IClock clock, ILogger<IDnsResolver> logger,
-        CancellationToken ct)
+        Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DomainDnsChecker checker, IClock clock, CancellationToken ct)
     {
         var domain = await FindAsync(db, actor.Org(), id, tracking: true, ct);
-        var server = await db.Servers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == domain.ServerId, ct);
-
-        var expected = new SortedSet<string>(StringComparer.Ordinal);
-        if (server?.PublicIp is { } publicIp && IPAddress.TryParse(publicIp, out var parsedPublic)) expected.Add(parsedPublic.ToString());
-        if (server is not null && IPAddress.TryParse(server.Host, out var parsedHost)) expected.Add(parsedHost.ToString());
-
-        // A wildcard cannot be looked up itself: probe a name the wildcard covers.
-        var probe = domain.Hostname.StartsWith("*.", StringComparison.Ordinal) ? "aethera-dns-check." + domain.Hostname[2..] : domain.Hostname;
-        var resolved = new SortedSet<string>(StringComparer.Ordinal);
-        DnsStatus status;
-        string message;
-        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
-        {
-            timeout.CancelAfter(LookupTimeout);
-            try
-            {
-                foreach (var address in await resolver.ResolveAsync(probe, timeout.Token))
-                    resolved.Add(address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString());
-
-                (status, message) = Evaluate(expected, resolved);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-            {
-                logger.LogWarning("DNS lookup for domain {DomainId} failed: {ExceptionType}", id, ex.GetType().Name);
-                status = DnsStatus.Error;
-                message = "The DNS lookup failed or timed out. Try again later.";
-            }
-        }
+        var outcome = await checker.CheckAsync(actor.Org(), domain, ct);
 
         var now = clock.UtcNow;
-        domain.DnsStatus = status;
+        domain.DnsStatus = outcome.Status;
         domain.DnsCheckedAt = now;
-        domain.DnsResolvedIps = resolved.ToList();
-        await audit.RecordAsync("domain.dns_verified", "domain", id, new { hostname = domain.Hostname, status }, ct);
-        return TypedResults.Ok(new DnsCheckResponse(id, domain.Hostname, status, expected.ToList(), resolved.ToList(), now, message));
-    }
-
-    private static (DnsStatus Status, string Message) Evaluate(IReadOnlySet<string> expected, IReadOnlySet<string> resolved)
-    {
-        if (resolved.Count == 0) return (DnsStatus.Missing, "The name does not resolve to any address (no A/AAAA records).");
-        if (expected.Count == 0) return (DnsStatus.Unknown, "The server has no public IP recorded, so the result cannot be compared. Set publicIp on the server.");
-        return resolved.Overlaps(expected)
-            ? (DnsStatus.Ok, "The name resolves to the server.")
-            : (DnsStatus.Mismatch, "The name resolves, but not to the server's address.");
+        domain.DnsResolvedIps = outcome.Resolved.ToList();
+        await audit.RecordAsync("domain.dns_verified", "domain", id, new { hostname = domain.Hostname, status = outcome.Status, method = outcome.Method }, ct);
+        return TypedResults.Ok(new DnsCheckResponse(id, domain.Hostname, outcome.Status, outcome.Expected, outcome.Resolved, now, outcome.Message, outcome.Method));
     }
 
     // ---- helpers --------------------------------------------------------------------------------------------------------------------
