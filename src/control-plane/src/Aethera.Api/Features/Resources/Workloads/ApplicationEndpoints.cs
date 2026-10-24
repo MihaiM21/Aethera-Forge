@@ -254,12 +254,13 @@ internal static class ApplicationEndpoints
             if (existing is null)
             {
                 if (string.IsNullOrWhiteSpace(image.Image)) throw Required("/image/image");
-                existing = app.ImageSource = new ImageSource { ApplicationId = app.Id, Application = app, Image = image.Image };
+                // Pull on every deployment unless told otherwise: redeploying a mutable tag (latest, 1) must fetch the new image.
+                existing = app.ImageSource = new ImageSource { ApplicationId = app.Id, Application = app, Image = image.Image, PullPolicy = ImagePullPolicy.Always };
             }
 
             if (has("image.image") && image.Image is { } reference) existing.Image = reference;
             if (has("image.tag")) existing.Tag = image.Tag ?? "latest";
-            if (has("image.pullPolicy")) existing.PullPolicy = EnumText.Parse<ImagePullPolicy>(image.PullPolicy) ?? ImagePullPolicy.IfNotPresent;
+            if (has("image.pullPolicy")) existing.PullPolicy = EnumText.Parse<ImagePullPolicy>(image.PullPolicy) ?? ImagePullPolicy.Always;
             if (has("image.registryId"))
             {
                 if (image.RegistryId is { } registryId) await db.RequireRegistryAsync(org, registryId, "/image/registryId", ct);

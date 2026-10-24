@@ -448,17 +448,27 @@ export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
   const [cache, setCache] = React.useState(b?.cacheEnabled ?? true);
   const [image, setImage] = React.useState(app.image?.image ?? "");
   const [tag, setTag] = React.useState(app.image?.tag ?? "");
+  const [pullPolicy, setPullPolicy] = React.useState<string>(app.image?.pullPolicy ?? "always");
   const [compose, setCompose] = React.useState(app.compose?.inlineContent ?? "");
   const { act, save } = usePatch(api, app, onSaved);
   const engine = b?.engine ?? "";
 
   if (app.sourceKind === "dockerImage") {
     return (
-      <form className="grid max-w-3xl gap-5" onSubmit={(e) => { e.preventDefault(); void save({ image: { image: image.trim(), tag: tag.trim() } }); }}>
+      <form className="grid max-w-3xl gap-5" onSubmit={(e) => { e.preventDefault(); void save({ image: { image: image.trim(), tag: tag.trim(), pullPolicy } }); }}>
         <SectionTitle index="01">Image</SectionTitle>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Image" className="sm:col-span-2" error={fieldError(act.fields, "image")}>{(c) => <Input {...c} className="font-mono" value={image} onChange={(e) => setImage(e.target.value)} />}</Field>
           <Field label="Tag" error={fieldError(act.fields, "tag")}>{(c) => <Input {...c} className="font-mono" value={tag} onChange={(e) => setTag(e.target.value)} />}</Field>
+          <Field label="Pull" hint="Always fetches a new image for tags like latest on every deployment." error={fieldError(act.fields, "pullPolicy")}>
+            {(c) => (
+              <NativeSelect {...c} value={pullPolicy} onChange={(e) => setPullPolicy(e.target.value)}>
+                <option value="always">On every deployment</option>
+                <option value="ifNotPresent">Only when missing on the server</option>
+                <option value="never">Never (the image must be on the server)</option>
+              </NativeSelect>
+            )}
+          </Field>
         </div>
         <FormError message={act.error} />
         <div><SaveButton pending={act.pending} /></div>

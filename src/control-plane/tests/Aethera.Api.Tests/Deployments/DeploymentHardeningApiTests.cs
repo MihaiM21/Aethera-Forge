@@ -180,7 +180,7 @@ public sealed partial class DeploymentApiTests
     public async Task An_unexpected_exception_ends_the_deployment_and_the_application_failed_without_leaking_it()
     {
         Healthy().On<ImageInspectCommand, DockerImage>(_ => throw new InvalidOperationException("connection string password=hunter2"));
-        var (t, appId) = await ImageAppAsync();
+        var (t, appId) = await ImageAppAsync(IfNotPresent);
 
         var d = await WaitForAsync((await DeployAsync(t, appId)).Id(), x => x.IsTerminal, "the deployment to end");
 
@@ -250,7 +250,7 @@ public sealed partial class DeploymentApiTests
             Interlocked.Increment(ref failures) <= 1
                 ? throw new ServerTransportException(TransportErrors.AgentUnavailable, "agent reconnecting")
                 : new DockerImage("sha256:img", [c.Image], [], 1, null, new Dictionary<string, string>(), "amd64", "linux", 0));
-        var (t, appId) = await ImageAppAsync();
+        var (t, appId) = await ImageAppAsync(IfNotPresent);
 
         var queued = await DeployAsync(t, appId);
         var d = await WaitForAsync(queued.Id(), x => x.IsTerminal || x.Status == DeploymentStatus.Running, "the retry to deploy it", 30000);
@@ -267,7 +267,7 @@ public sealed partial class DeploymentApiTests
     public async Task A_server_that_stays_unreachable_ends_the_deployment_failed_on_the_last_attempt()
     {
         Healthy().On<ImageInspectCommand, DockerImage>(_ => throw new ServerTransportException(TransportErrors.AgentUnavailable, "agent gone"));
-        var (t, appId) = await ImageAppAsync();
+        var (t, appId) = await ImageAppAsync(IfNotPresent);
 
         var queued = await DeployAsync(t, appId);
         var d = await WaitForAsync(queued.Id(), x => x.IsTerminal, "the deployment to fail", 30000);
@@ -317,7 +317,7 @@ public sealed partial class DeploymentApiTests
         });
         try
         {
-            var (t, appId) = await ImageAppAsync();
+            var (t, appId) = await ImageAppAsync(IfNotPresent);
             var running = await DeployAsync(t, appId);
             await GatewayFixture.EventuallyAsync(() => Task.FromResult(Received<ImageInspectCommand>().Any()), "the first deployment to start", timeoutMs: 15000);
             var queued = await DeployAsync(t, appId); // waits behind the first one (same lock)
@@ -363,13 +363,26 @@ public sealed partial class DeploymentApiTests
         Assert.NotNull(t);
     }
 
+    /// <summary>Hooks on <c>image.inspect</c> need the policy that inspects (new image apps pull on every deployment).</summary>
+    private static readonly object IfNotPresent = new { image = new { image = "nginx", tag = "1.27", pullPolicy = "ifNotPresent" } };
+
     // ---- pull policy (19) --------------------------------------------------------------------------------------------------------------
+
+    [RequiresDatabaseFact]
+    public async Task A_new_image_app_pulls_on_every_deployment_by_default()
+    {
+        Healthy();
+        var (t, appId) = await ImageAppAsync();
+        Assert.Equal("always", (await t.Developer.GetJsonAsync($"/api/v1/applications/{appId}"))["image"]!["pullPolicy"]!.GetValue<string>());
+        await WaitForAsync((await DeployAsync(t, appId)).Id(), Finished, "default");
+        Assert.Single(Received<ImagePullCommand>());
+    }
 
     [RequiresDatabaseFact]
     public async Task The_image_pull_policy_decides_whether_a_deployment_pulls()
     {
         Healthy();
-        var (t, ifNotPresent) = await ImageAppAsync();
+        var (t, ifNotPresent) = await ImageAppAsync(new { image = new { image = "nginx", tag = "1.27", pullPolicy = "ifNotPresent" } });
         await WaitForAsync((await DeployAsync(t, ifNotPresent)).Id(), Finished, "if-not-present");
         Assert.Empty(Received<ImagePullCommand>());
         Assert.NotEmpty(Received<ImageInspectCommand>());
