@@ -132,7 +132,7 @@ public sealed class BackupRestoreJobHandler : IJobHandler
         {
             var volume = await db.Volumes.AsNoTracking().FirstOrDefaultAsync(v => v.Id == policy.VolumeId && v.WorkloadId == target.Id, ct)
                          ?? throw JobFailedException.Permanent("backup.volume_not_found", "The volume of this backup no longer exists", failedStep: "restore");
-            sink = new VolumeRestoreSink(volume.Name, ClearFirst: true);
+            sink = new VolumeRestoreSink(Aethera.Engine.Deployments.VolumeNames.DockerName(target.Slug, target.Id, volume.Name), ClearFirst: true);
             stopFirst = true;
         }
 

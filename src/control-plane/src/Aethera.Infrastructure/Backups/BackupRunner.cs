@@ -117,7 +117,7 @@ public sealed class BackupRunner(
             var volume = await db.Volumes.AsNoTracking().FirstOrDefaultAsync(v => v.Id == policy.VolumeId && v.WorkloadId == workload.Id, ct)
                          ?? throw new BackupFailure("backup.volume_not_found", "The volume of this policy no longer exists.");
             if (volume.HostPath is { Length: > 0 }) throw new BackupFailure("backup.bind_mount", "Bind mounts are not backed up; only named volumes are.");
-            source = new VolumeArchiveSource(volume.Name);
+            source = new VolumeArchiveSource(Aethera.Engine.Deployments.VolumeNames.DockerName(workload.Slug, workload.Id, volume.Name));
             extension = "tar.gz";
             run.Engine = "volume";
             await context.Log.WriteSystemAsync($"Archiving volume {volume.Name} (mounted at {volume.MountPath}).", ct);
@@ -169,7 +169,7 @@ public sealed class BackupRunner(
             // an unreadable setting falls back to the template's default database
         }
 
-        return new BackupEngineContext(container, vars, database, service.Volumes.Select(v => new BackupVolumeInfo(v.Name, v.MountPath, v.HostPath is { Length: > 0 })).ToList());
+        return new BackupEngineContext(container, vars, database, service.Volumes.Select(v => new BackupVolumeInfo(Aethera.Engine.Deployments.VolumeNames.DockerName(service.Slug, service.Id, v.Name), v.MountPath, v.HostPath is { Length: > 0 })).ToList());
     }
 
     private async Task<string> DestinationSecretAsync(BackupDestination destination, JobContext context, CancellationToken ct) =>

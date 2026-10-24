@@ -4061,6 +4061,16 @@
           "204": {
             "description": "No Content"
           },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadDeletedResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Not authenticated (auth.unauthenticated).",
             "content": {
@@ -4601,6 +4611,16 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadDeletedResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Not authenticated (auth.unauthenticated).",
@@ -27816,6 +27836,25 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BackupTargetResponse"
+            }
+          }
+        }
+      },
+      "WorkloadDeletedResponse": {
+        "required": [
+          "jobId",
+          "volumesKept"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "volumesKept": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }

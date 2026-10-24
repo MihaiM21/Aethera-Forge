@@ -29,6 +29,12 @@ public sealed class LifecycleJobHandler : IJobHandler
         if (deployment is null || deployment.ContainerIds.Count == 0)
             throw JobFailedException.Permanent("application.not_deployed", "The application has no running deployment", failedStep: "start");
 
+        // Stopping and restarting give the container its grace period (SIGTERM, then SIGKILL): 30 s, 60 s for a database service.
+        var stopTimeout = TimeSpan.FromSeconds(
+            Engine.Deployments.DeploymentSnapshot.TryFromJson(deployment.ConfigSnapshotJson, out var snapshot) && snapshot is not null
+                ? Math.Max(1, snapshot.Runtime.StopTimeoutSeconds)
+                : Engine.Deployments.RuntimeSnapshot.DefaultStopTimeoutSeconds);
+
         foreach (var container in deployment.ContainerIds)
         {
             await context.Log.WriteSystemAsync($"{payload.Action} {container}", cancellationToken);
@@ -37,9 +43,9 @@ public sealed class LifecycleJobHandler : IJobHandler
                 var options = ServerJobSupport(context, $"{payload.Action}.{container}");
                 var outcome = payload.Action switch
                 {
-                    LifecycleAction.Stop => (await resolver.ExecuteAsync<ContainerStopCommand, DockerContainer>(app.ServerId, new ContainerStopCommand(container), options, cancellationToken)).Outcome.Succeeded,
+                    LifecycleAction.Stop => (await resolver.ExecuteAsync<ContainerStopCommand, DockerContainer>(app.ServerId, new ContainerStopCommand(container, stopTimeout), options, cancellationToken)).Outcome.Succeeded,
                     LifecycleAction.Start => (await resolver.ExecuteAsync<ContainerStartCommand, DockerContainer>(app.ServerId, new ContainerStartCommand(container), options, cancellationToken)).Outcome.Succeeded,
-                    _ => (await resolver.ExecuteAsync<ContainerRestartCommand, DockerContainer>(app.ServerId, new ContainerRestartCommand(container), options, cancellationToken)).Outcome.Succeeded,
+                    _ => (await resolver.ExecuteAsync<ContainerRestartCommand, DockerContainer>(app.ServerId, new ContainerRestartCommand(container, stopTimeout), options, cancellationToken)).Outcome.Succeeded,
                 };
                 if (!outcome) throw JobFailedException.Permanent("application.lifecycle_failed", $"Could not {payload.Action.ToString().ToLowerInvariant()} the application", $"The command failed for {container}.", payload.Action.ToString());
             }

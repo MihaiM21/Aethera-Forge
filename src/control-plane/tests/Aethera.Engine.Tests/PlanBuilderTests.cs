@@ -63,7 +63,7 @@ public class PlanBuilderTests
 
         Assert.Equal("api-11111111", c.Name);
         Assert.Equal([9000], c.Ports!.Select(p => p.HostPort));
-        Assert.Contains(c.Mounts!, m => m.Type == MountKind.Volume && m.Source == "data");
+        Assert.Contains(c.Mounts!, m => m.Type == MountKind.Volume && m.Source == "api-55555555-data");
         Assert.Contains(c.Mounts!, m => m.Type == MountKind.Bind && m.Source == "/srv/cfg" && m.ReadOnly);
         Assert.Equal(["aethera-proxy", "proj-net"], c.Networks!.Select(n => n.Network));
         Assert.Equal(512L << 20, c.Resources!.MemoryLimitBytes);

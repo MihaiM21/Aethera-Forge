@@ -4,6 +4,7 @@ using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
 using Aethera.Domain;
+using Aethera.Engine.Deployments;
 using Aethera.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -65,6 +66,30 @@ public static partial class VolumeRules
         if (text.Length == 0 || text.Split('/').Contains("..")) return false;
         normalized = text;
         return true;
+    }
+
+    public const string NameReserved = "volume.name_reserved";
+    public const string ForeignRequiresAdmin = "volume.foreign_requires_admin";
+
+    /// <summary>
+    /// Which Docker volume a name may point at (<see cref="VolumeNames"/>). A plain name is a volume of the workload itself (the engine puts it in
+    /// the workload's namespace). The volumes of the Aethera installation (<c>aethera_*</c>, <c>aethera-*</c>: its database, backups, certificates) are
+    /// refused for everyone (422 <c>volume.name_reserved</c>); a name in the namespace of another workload shares that workload's data and needs the
+    /// Administrator role (403 <c>volume.foreign_requires_admin</c>).
+    /// </summary>
+    public static void CheckName(ICurrentActor actor, string slug, Guid workloadId, string name, string pointer)
+    {
+        switch (VolumeNames.Classify(name, slug, workloadId))
+        {
+            case VolumeNameKind.Reserved:
+                throw new ApiProblemException(new ApiProblem(StatusCodes.Status422UnprocessableEntity, NameReserved,
+                    "Volumes whose name starts with 'aethera_' or 'aethera-' belong to the Aethera installation itself and cannot be mounted.")
+                    .WithExtension("errors", new List<FieldError> { FieldError.AtPointer(pointer, NameReserved, "Reserved for the Aethera installation.") }));
+            case VolumeNameKind.Foreign when !actor.IsAdmin():
+                throw new ApiProblemException(new ApiProblem(StatusCodes.Status403Forbidden, ForeignRequiresAdmin,
+                    "This name is a volume of another application or service (<slug>-<8 hex digits>-<name>). Mounting it shares that workload's data and needs the Administrator role; choose a plain name for a volume of your own.")
+                    .WithExtension("errors", new List<FieldError> { FieldError.AtPointer(pointer, ForeignRequiresAdmin, "Requires the Administrator role.") }));
+        }
     }
 
     public static string NameFromPath(string normalizedPath) => string.Join('-', normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
@@ -181,6 +206,7 @@ internal static class VolumeEndpoints
         VolumeRules.TryNormalizePath(request.MountPath, out var mountPath);
         var name = request.Name ?? VolumeRules.NameFromPath(mountPath);
         if (!VolumeRules.IsValidName(name)) name = "volume-" + Guid.CreateVersion7().ToString("N")[^8..];
+        VolumeRules.CheckName(actor, workload.Slug, workload.Id, name, "/name");
         await EnsureFreeAsync(db, workload.Id, name, mountPath, null, ct);
 
         var volume = new Volume
@@ -222,6 +248,12 @@ internal static class VolumeEndpoints
 
         if (name != volume.Name || mountPath != volume.MountPath)
         {
+            if (name != volume.Name)
+            {
+                var owner = await db.Workloads.AsNoTracking().FirstAsync(w => w.Id == volume.WorkloadId, ct);
+                VolumeRules.CheckName(actor, owner.Slug, owner.Id, name, "/name");
+            }
+
             await EnsureFreeAsync(db, volume.WorkloadId, name, mountPath, id, ct);
             volume.Name = name;
             volume.MountPath = mountPath;

@@ -122,6 +122,14 @@ func (d *Deps) containerRemove(ctx context.Context, env *dispatch.Env) (*agentv1
 	if req.GetContainer() == "" {
 		return nil, invalidArg("container is required")
 	}
+	// A forced removal kills a running container (SIGKILL). Whoever asks for it gets the graceful stop first (SIGTERM, then the container's own
+	// stop timeout): a database flushes, a server drains. The control plane stops explicitly before it removes; this is the safety net for every
+	// other caller. A stop that fails is ignored, the removal below is what matters.
+	if req.GetForce() {
+		if info, err := d.Docker.ContainerInspect(ctx, req.GetContainer(), false); err == nil && info.GetState() == agentv1.ContainerState_CONTAINER_STATE_RUNNING {
+			_ = d.Docker.ContainerStop(ctx, req.GetContainer(), nil)
+		}
+	}
 	err := d.Docker.ContainerRemove(ctx, req.GetContainer(), req.GetForce(), req.GetRemoveAnonymousVolumes())
 	if err != nil && !isNotFound(err) {
 		return nil, err

@@ -157,8 +157,13 @@ internal static class ApplicationEndpoints
         return TypedResults.Ok(ToResponse(app));
     }
 
-    private static async Task<NoContent> Delete(
-        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock, CancellationToken ct)
+    /// <summary>
+    /// Soft-deletes the application right away and queues the removal of its containers (202 with the job and the volumes that are kept; 204 when
+    /// it never ran): a deleted application must stop serving its domain. Volumes are never deleted.
+    /// </summary>
+    private static async Task<Results<NoContent, Accepted<WorkloadSupport.WorkloadDeletedResponse>>> Delete(
+        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
+        Aethera.Infrastructure.Deployments.DeploymentService deployments, CancellationToken ct)
     {
         var org = actor.Org();
         var app = await db.ApplicationsOf(org).FirstOrDefaultAsync(a => a.Id == id, ct)
@@ -169,8 +174,9 @@ internal static class ApplicationEndpoints
         var now = clock.UtcNow;
         app.MarkDeleted(now);
         WorkloadSupport.SoftDeleteDomains(db, await db.Domains.Where(d => d.WorkloadId == id).ToListAsync(ct), now);
-        await audit.RecordAsync("application.deleted", "application", id, new { slug = app.Slug, environmentId = app.EnvironmentId }, ct);
-        return TypedResults.NoContent();
+        var (result, jobId, kept) = await WorkloadSupport.QueueTeardownAsync(db, deployments, app, "application", ct);
+        await audit.RecordAsync("application.deleted", "application", id, new { slug = app.Slug, environmentId = app.EnvironmentId, teardownJobId = jobId, volumesKept = kept }, ct);
+        return result;
     }
 
     // ---- loading / mapping ----------------------------------------------------------------------------------------------------------

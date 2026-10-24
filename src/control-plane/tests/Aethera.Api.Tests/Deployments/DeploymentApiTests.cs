@@ -48,7 +48,7 @@ public sealed class DeploymentsApiCollection : ICollectionFixture<DeploymentsFix
 
 /// <summary>End to end: API -> deployment + job -> worker -> engine -> (fake) transport, against a real database.</summary>
 [Collection(DeploymentsApiCollection.Name)]
-public sealed class DeploymentApiTests(DeploymentsFixture fixture)
+public sealed partial class DeploymentApiTests(DeploymentsFixture fixture)
 {
     private FakeServerTransport Transport => fixture.Transport;
 
@@ -83,12 +83,12 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
     private Task<Deployment> LoadAsync(string id) =>
         WithDbAsync(db => db.Deployments.AsNoTracking().Include(d => d.Steps).FirstAsync(d => d.Id == Guid.Parse(id)));
 
-    private async Task<Deployment> WaitForAsync(string id, Func<Deployment, bool> done, string what)
+    private async Task<Deployment> WaitForAsync(string id, Func<Deployment, bool> done, string what, int timeoutMs = 15000)
     {
         Deployment? last = null;
         try
         {
-            await GatewayFixture.EventuallyAsync(async () => done(last = await LoadAsync(id)), what, timeoutMs: 15000);
+            await GatewayFixture.EventuallyAsync(async () => done(last = await LoadAsync(id)), what, timeoutMs: timeoutMs);
         }
         catch (Xunit.Sdk.XunitException)
         {
@@ -168,7 +168,7 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
     public async Task A_failed_pull_fails_the_deployment_the_job_and_the_application()
     {
         Healthy().Fail<ImagePullCommand, ImagePulled>(CommandErrorCode.ImagePullFailed, "manifest unknown");
-        var (t, appId) = await ImageAppAsync();
+        var (t, appId) = await ImageAppAsync(new { image = new { image = "nginx", tag = "1.27", pullPolicy = "always" } }); // IfNotPresent would use the image the server has
 
         var queued = await DeployAsync(t, appId);
         var d = await WaitForAsync(queued.Id(), Finished, "the deployment to fail");
@@ -207,7 +207,7 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
     public async Task Rolling_back_to_a_failed_deployment_is_a_conflict()
     {
         Healthy().Fail<ImagePullCommand, ImagePulled>(CommandErrorCode.ImagePullFailed, "nope");
-        var (t, appId) = await ImageAppAsync();
+        var (t, appId) = await ImageAppAsync(new { image = new { image = "nginx", tag = "1.27", pullPolicy = "always" } });
         var failed = await WaitForAsync((await DeployAsync(t, appId)).Id(), Finished, "failure");
 
         var response = await t.Developer.PostAsync($"/api/v1/deployments/{failed.Id}/rollback", new { });

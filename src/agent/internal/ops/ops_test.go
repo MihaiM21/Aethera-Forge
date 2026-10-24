@@ -339,3 +339,29 @@ func TestPhase3CapabilitiesUseTheProtocolNames(t *testing.T) {
 		}
 	}
 }
+
+func TestForcedContainerRemoveStopsARunningContainerFirst(t *testing.T) {
+	d, f := newDeps()
+	ctx := context.Background()
+	f.AddContainer(&agentv1.ContainerInfo{Id: "live", Name: "db", Image: "pg:17", State: agentv1.ContainerState_CONTAINER_STATE_RUNNING})
+	f.AddContainer(&agentv1.ContainerInfo{Id: "done", Name: "old", Image: "pg:17", State: agentv1.ContainerState_CONTAINER_STATE_EXITED})
+	rm := func(name string, force bool) {
+		cmd := &agentv1.Command{Request: &agentv1.Command_ContainerRemove{ContainerRemove: &agentv1.ContainerRemove{Container: name, Force: force}}}
+		if _, err := d.containerRemove(ctx, envFor(cmd)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rm("live", true)
+	rm("done", true)
+
+	var calls []string
+	for _, c := range f.CallLog() {
+		if strings.HasPrefix(c, "ContainerStop") || strings.HasPrefix(c, "ContainerRemove") {
+			calls = append(calls, c)
+		}
+	}
+	want := []string{"ContainerStop live", "ContainerRemove live force=true", "ContainerRemove done force=true"}
+	if strings.Join(calls, "|") != strings.Join(want, "|") {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}

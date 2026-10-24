@@ -226,8 +226,13 @@ internal static class ServiceEndpoints
         return TypedResults.Ok(ToResponse(service));
     }
 
-    private static async Task<NoContent> Delete(
-        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock, CancellationToken ct)
+    /// <summary>
+    /// Soft-deletes the service right away and queues the removal of its container (202 with the job and the volumes that are kept; 204 when it
+    /// never ran). A deleted database service keeps its data volume.
+    /// </summary>
+    private static async Task<Results<NoContent, Accepted<WorkloadSupport.WorkloadDeletedResponse>>> Delete(
+        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
+        Aethera.Infrastructure.Deployments.DeploymentService deployments, CancellationToken ct)
     {
         var service = await db.ServicesOf(actor.Org()).FirstOrDefaultAsync(s => s.Id == id, ct)
             ?? throw new ApiProblemException(ApiProblems.NotFound("service", id));
@@ -237,8 +242,9 @@ internal static class ServiceEndpoints
         var now = clock.UtcNow;
         service.MarkDeleted(now);
         WorkloadSupport.SoftDeleteDomains(db, await db.Domains.Where(d => d.WorkloadId == id).ToListAsync(ct), now);
-        await audit.RecordAsync("service.deleted", "service", id, new { slug = service.Slug, template = service.TemplateKey }, ct);
-        return TypedResults.NoContent();
+        var (result, jobId, kept) = await WorkloadSupport.QueueTeardownAsync(db, deployments, service, "service", ct);
+        await audit.RecordAsync("service.deleted", "service", id, new { slug = service.Slug, template = service.TemplateKey, teardownJobId = jobId, volumesKept = kept }, ct);
+        return result;
     }
 
     /// <summary>

@@ -115,6 +115,32 @@ public sealed class ComposeFromGitApiTests(ComposeApiFixture fixture)
         return await WithDbAsync(db => db.Deployments.AsNoTracking().Include(d => d.Steps).FirstAsync(d => d.Id == Guid.Parse(id)));
     }
 
+    [RequiresDatabaseFact]
+    public async Task Deleting_a_compose_application_takes_its_project_down_without_volumes()
+    {
+        Healthy()
+            .On<ComposeDownCommand, ComposeOutcome>(_ => new ComposeOutcome("p", [], null))
+            .On<ContainerListCommand, IReadOnlyList<DockerContainer>>(_ => [])
+            .On<ContainerStopCommand, DockerContainer>(c => throw new InvalidOperationException("no container expected: " + c.Container));
+        var (tenant, _, _, appId) = await ComposeAppAsync(inline: true);
+        await DeployAndWaitAsync(tenant, appId);
+        var slug = (await tenant.Developer.GetJsonAsync($"/api/v1/applications/{appId}"))["slug"]!.GetValue<string>();
+        Transport.Commands.Clear();
+
+        var response = await tenant.Developer.DeleteAsync($"/api/v1/applications/{appId}?confirm={slug}");
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var jobId = (await response.ReadAsync())["jobId"]!.GetValue<string>();
+        await GatewayFixture.EventuallyAsync(async () => await WithDbAsync(db => db.Jobs.AsNoTracking()
+            .AnyAsync(j => j.Id == Guid.Parse(jobId) && (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))), "the teardown job", timeoutMs: 20000);
+        var finished = await WithDbAsync(db => db.Jobs.AsNoTracking().FirstAsync(j => j.Id == Guid.Parse(jobId)));
+        Assert.True(finished.Status == JobStatus.Succeeded, finished.ErrorJson);
+        var down = Assert.Single(Transport.Commands.Select(c => c.Command).OfType<ComposeDownCommand>());
+        Assert.False(down.RemoveVolumes);
+        Assert.True(down.RemoveOrphans);
+        Assert.Contains("image: nginx", down.Project.ComposeFile);
+    }
+
     // ---- inspect endpoint ------------------------------------------------------------------------------------------------------------
 
     [RequiresDatabaseFact]
