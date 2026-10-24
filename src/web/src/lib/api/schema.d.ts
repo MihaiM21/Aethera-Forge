@@ -4817,6 +4817,11 @@ export interface components {
             policies: components["schemas"]["BackupPolicyResponse"][];
             targets: components["schemas"]["BackupTargetResponse"][];
         };
+        WorkloadDeletedResponse: {
+            /** Format: uuid */
+            jobId: string;
+            volumesKept: string[];
+        };
         /** @enum {unknown} */
         WorkloadStatus: "unknown" | "notDeployed" | "deploying" | "running" | "unhealthy" | "stopped" | "failed";
         WorkloadStatusResponse: {
@@ -7526,6 +7531,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadDeletedResponse"];
+                };
+            };
             /** @description No Content */
             204: {
                 headers: {
@@ -7880,6 +7894,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkloadDeletedResponse"];
+                };
+            };
             /** @description No Content */
             204: {
                 headers: {
