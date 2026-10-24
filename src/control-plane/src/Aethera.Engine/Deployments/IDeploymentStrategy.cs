@@ -5,10 +5,40 @@ namespace Aethera.Engine.Deployments;
 
 /// <summary>Services a strategy gets while it runs steps Network..HealthCheck of the pipeline.</summary>
 public sealed class DeploymentRun(
-    Deployment deployment, DeploymentPlan plan, string image, IServerTransport transport, IClock clock, Func<CancellationToken, Task> checkpoint)
+    Deployment deployment, DeploymentPlan plan, string image, IServerTransport transport, IClock clock, Func<CancellationToken, Task> checkpoint,
+    string? strategyNote = null)
 {
     public Deployment Deployment { get; } = deployment;
     public DeploymentPlan Plan { get; } = plan;
+
+    /// <summary>Why the strategy that runs is not the one the workload asked for (<see cref="DeploymentRunner.ChooseStrategy"/>); recorded on the Container step.</summary>
+    public string? StrategyNote { get; } = strategyNote;
+
+    /// <summary>The details recorded when the Container step succeeds: the container, and the strategy note when there is one.</summary>
+    public string ContainerStepDetails(string containerId, string? name = null) =>
+        System.Text.Json.JsonSerializer.Serialize(new { containerId, name, strategyNote = StrategyNote },
+            new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+
+    /// <summary>
+    /// Stops <paramref name="container"/> gracefully (SIGTERM, then SIGKILL after <see cref="DeploymentPlan.StopTimeout"/>) and removes it. A stop that fails
+    /// for any reason but an unreachable server (it is not running, it is already gone) falls back to a forced removal; the removal is idempotent.
+    /// </summary>
+    public async Task StopAndRemoveAsync(string container, string operation, CancellationToken ct)
+    {
+        var stopped = true;
+        try
+        {
+            await ExecuteAsync<ContainerStopCommand, DockerContainer>(
+                new ContainerStopCommand(container, Plan.StopTimeout), $"{operation}.stop", DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
+        }
+        catch (DeploymentFailure f) when (f.Code != FailureCodes.ServerUnavailable && !ct.IsCancellationRequested)
+        {
+            stopped = false;
+        }
+
+        await ExecuteAsync<ContainerRemoveCommand, Unit>(
+            new ContainerRemoveCommand(container, Force: !stopped), operation, DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
+    }
 
     /// <summary>The image to run: the build's tag or the pulled reference.</summary>
     public string Image { get; } = image;

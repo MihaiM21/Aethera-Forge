@@ -37,6 +37,16 @@ public sealed class DeployJobHandler : IJobHandler
         }
     }
 
+    /// <summary>
+    /// What the handler knows when something goes wrong, so that every way out (an exception nobody planned for, a cancel, a lost secret) can end the
+    /// deployment and the workload instead of leaving "Deploying" behind forever.
+    /// </summary>
+    private sealed class RunState
+    {
+        public Workload? App { get; set; }
+        public Deployment? Previous { get; set; }
+    }
+
     private async Task ExecuteDeploymentAsync(JobContext context, CancellationToken cancellationToken)
     {
         var sp = context.Services;
@@ -49,9 +59,117 @@ public sealed class DeployJobHandler : IJobHandler
         if (deployment.IsTerminal || deployment.Status == DeploymentStatus.Running) return; // already finished (redelivery)
         deployment.JobId ??= context.JobId;
 
-        var app = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
+        // The last attempt of the job: a transient failure (the server cannot be reached) ends the deployment now, an earlier one leaves it resumable.
+        var finalAttempt = context.Attempt >= context.Job.MaxAttempts;
+        var state = new RunState();
+        try
+        {
+            await RunDeploymentAsync(context, db, clock, deployment, state, finalAttempt, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: true, FailureCodes.InternalError, "Deployment cancelled.");
+            throw;
+        }
+        catch (JobFailedException ex)
+        {
+            // Most paths that throw this settled the deployment first. One that did not (a lost secret) fails it here; a retryable failure
+            // with attempts left leaves it in progress for the next attempt.
+            var retrying = ex.Error.Retryable && !finalAttempt;
+            if (!retrying)
+                await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, ex.Error.Code, context.Secrets.Redact(ex.Error.Detail ?? ex.Error.Title));
+            throw;
+        }
+        catch (ServerTransportException ex) when (ex.Transient)
+        {
+            // The server could not be reached outside a pipeline step (reading the compose file): the same as a transient step failure.
+            if (!finalAttempt)
+            {
+                await NoteRetryAsync(db, clock, state.App, context.Secrets.Redact(ex.Message));
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
+            }
+
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, FailureCodes.ServerUnavailable, context.Secrets.Redact(ex.Message));
+            throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
+        }
+        catch (Exception ex)
+        {
+            // Anything else is a bug or a broken environment: the deployment and the workload end Failed with a code and a message that
+            // names the kind of error only (the text of an arbitrary exception can hold a connection string or a secret). The worker logs the rest.
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, FailureCodes.InternalError,
+                $"An unexpected error stopped the deployment ({ex.GetType().Name}). The details are in the server log.");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Ends a deployment that the pipeline did not settle: Failed with <paramref name="code"/> (or Cancelled), the step it was at marked failed, and
+    /// the workload out of "Deploying". A no-op for a deployment that already ended. Best effort: it runs on error paths and must not hide the cause.
+    /// </summary>
+    private static async Task EndUnfinishedAsync(
+        AetheraDbContext db, IClock clock, Deployment deployment, RunState state, bool cancelled, string code, string message)
+    {
+        try
+        {
+            var ended = false;
+            for (var attempt = 0; attempt < 3 && !ended; attempt++)
+            {
+                if (deployment.Status is not (DeploymentStatus.Queued or DeploymentStatus.InProgress)) break;
+                var now = clock.UtcNow;
+                if (cancelled) deployment.MarkCancelled(now);
+                else deployment.MarkFailed(deployment.CurrentStep ?? DeploymentStep.Source, code, string.IsNullOrWhiteSpace(message) ? "The deployment failed." : message, now);
+                try
+                {
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    ended = true;
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    foreach (var entry in ex.Entries) await entry.ReloadAsync(CancellationToken.None);
+                }
+            }
+
+            if (ended && state.App is { } app)
+            {
+                // A Recreate deployment that got as far as the container step has removed the old container: nothing is serving any more.
+                var oldGone = deployment.Strategy == DeploymentStrategies.Recreate && deployment.CurrentStep is { } step && step >= DeploymentStep.Container;
+                await RestoreStatusAsync(db, clock, app, oldGone ? null : state.Previous,
+                    cancelled ? "Deployment cancelled." : deployment.FailureReason ?? message, failed: !cancelled);
+            }
+        }
+        catch (Exception)
+        {
+            // The caller rethrows the original problem; the job's own record of it survives.
+        }
+    }
+
+    /// <summary>The workload stays "Deploying" while the job waits for its next attempt, and says why.</summary>
+    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, Workload? app, string reason)
+    {
+        if (app is null) return;
+        try
+        {
+            await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+            {
+                app.Status = WorkloadStatus.Deploying;
+                app.StatusChangedAt = clock.UtcNow;
+                app.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
+            }, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Only a status line.
+        }
+    }
+
+    private async Task RunDeploymentAsync(
+        JobContext context, AetheraDbContext db, IClock clock, Deployment deployment, RunState state, bool finalAttempt, CancellationToken cancellationToken)
+    {
+        var sp = context.Services;
+
+        var app = state.App = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
-        var previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
+        var previous = state.Previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
 
         Deployment? rollbackTarget = deployment.RollbackOfDeploymentId is { } rb
             ? await db.Deployments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == rb, cancellationToken) : null;
@@ -102,10 +220,19 @@ public sealed class DeployJobHandler : IJobHandler
             }
         }
 
-        if (snapshot.Domains.Count > 0 && await EnsureProxyAsync(db, resolver, proxy, proxyOptions, sp, clock, deployment, context, cancellationToken) is { } proxyFailure)
+        if (snapshot.Domains.Count > 0 && await EnsureProxyAsync(db, resolver, proxy, proxyOptions, sp, clock, deployment, finalAttempt, context, cancellationToken) is { } proxyFailure)
         {
-            await RestoreStatusAsync(db, clock, app, previous, proxyFailure, failed: true);
-            throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure, "Domain");
+            if (proxyFailure.Retry)
+            {
+                // Not marked failed: the job runs again and resumes this deployment.
+                await NoteRetryAsync(db, clock, app, proxyFailure.Message);
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
+            }
+
+            await RestoreStatusAsync(db, clock, app, previous, proxyFailure.Message, failed: true);
+            if (deployment.FailureCode == FailureCodes.ServerUnavailable)
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
+            throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure.Message, "Domain");
         }
 
         var runner = new DeploymentRunner(new ResolvingServerTransport(resolver), sp.GetServices<IDeploymentStrategy>(), clock);
@@ -131,12 +258,20 @@ public sealed class DeployJobHandler : IJobHandler
             throw JobFailedException.Permanent("proxy.failed", "The domains cannot be routed", ex.Message, "Domain");
         }
 
-        await context.Log.WriteSystemAsync($"Deploying {app.Name} #{deployment.Number} with the {deployment.Strategy} strategy.", cancellationToken);
-        var result = await runner.RunAsync(deployment, plan, async (_, ct) => await db.SaveChangesAsync(ct), cancellationToken);
+        var (effectiveStrategy, strategyNote) = DeploymentRunner.ChooseStrategy(deployment.Strategy, plan);
+        await context.Log.WriteSystemAsync($"Deploying {app.Name} #{deployment.Number} with the {effectiveStrategy} strategy.", cancellationToken);
+        if (strategyNote is not null) await context.Log.WriteSystemAsync(strategyNote, cancellationToken);
+        var result = await runner.RunAsync(deployment, plan, async (_, ct) => await db.SaveChangesAsync(ct), cancellationToken, finalAttempt);
         if (buildRecord is not null) await FinishBuildRecordAsync(db, clock, buildRecord, deployment, plan);
 
         switch (result)
         {
+            case DeploymentRunResult.Retry:
+                var transient = runner.TransientFailure!;
+                await context.Log.WriteSystemAsync($"The server could not be reached ({transient.Message}); the deployment will be retried.", CancellationToken.None);
+                await NoteRetryAsync(db, clock, app, transient.Message);
+                throw JobFailedException.Transient(transient.Code, "The server could not be reached", transient.Message, transient.Step.ToString());
+
             case DeploymentRunResult.Running:
                 await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
                 await context.Log.WriteSystemAsync($"Deployment #{deployment.Number} is running.", cancellationToken);
@@ -149,7 +284,7 @@ public sealed class DeployJobHandler : IJobHandler
                 return;
 
             default:
-                var failedAfterOldRemoved = previous is not null && deployment.Strategy == DeploymentStrategies.Recreate
+                var failedAfterOldRemoved = previous is not null && effectiveStrategy == DeploymentStrategies.Recreate
                                             && deployment.FailedStep is { } step && step >= DeploymentStep.Container;
                 await RestoreStatusAsync(db, clock, app, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
                 var code = deployment.FailureCode ?? "deployment.failed";
@@ -210,10 +345,13 @@ public sealed class DeployJobHandler : IJobHandler
         }, CancellationToken.None);
     }
 
-    /// <summary>Makes sure Traefik runs on the server before routes are attached. Returns a failure message, or null when the proxy is ready.</summary>
-    private static async Task<string?> EnsureProxyAsync(
+    /// <summary>A proxy that could not be set up. <see cref="Retry"/>: the server was unreachable and the job has attempts left; the deployment is left open.</summary>
+    private sealed record ProxyFailure(string Message, bool Retry);
+
+    /// <summary>Makes sure Traefik runs on the server before routes are attached. Returns the failure, or null when the proxy is ready.</summary>
+    private static async Task<ProxyFailure?> EnsureProxyAsync(
         AetheraDbContext db, IServerTransportResolver resolver, IProxyProvider proxy, ProxyOptions options, IServiceProvider sp, IClock clock, Deployment deployment,
-        JobContext context, CancellationToken ct)
+        bool finalAttempt, JobContext context, CancellationToken ct)
     {
         var command = await ProxyConfigurator.BuildEnsureCommandAsync(
             db, sp.GetRequiredService<ISecretProtector>(), proxy, options, deployment.ServerId, context.Secrets.Register, ct);
@@ -228,13 +366,14 @@ public sealed class DeployJobHandler : IJobHandler
             var message = $"The agent could not start the proxy: {resolved.Outcome.ErrorMessage ?? resolved.Outcome.Status.ToString()}";
             deployment.MarkFailed(DeploymentStep.Domain, "proxy.failed", message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            return message;
+            return new ProxyFailure(message, Retry: false);
         }
         catch (ServerTransportException ex)
         {
+            if (ex.Transient && !finalAttempt) return new ProxyFailure(ex.Message, Retry: true);
             deployment.MarkFailed(DeploymentStep.Domain, ex.Transient ? FailureCodes.ServerUnavailable : "proxy.failed", ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            return ex.Message;
+            return new ProxyFailure(ex.Message, Retry: false);
         }
     }
 
@@ -305,7 +444,8 @@ public sealed class DeployJobHandler : IJobHandler
         }
         else
         {
-            snapshot = DeploymentSnapshotFactory.Create(app);
+            // A webhook push deploys the pushed branch at the pushed commit, not the application's configured branch.
+            snapshot = DeploymentSnapshotFactory.ApplyTrigger(DeploymentSnapshotFactory.Create(app), deployment.Trigger, deployment.Ref, deployment.CommitSha);
         }
 
         deployment.Start(snapshot.ToJson(), clock.UtcNow);
@@ -340,7 +480,7 @@ public sealed class DeployJobHandler : IJobHandler
         await CleanupImagesAsync(db, sp, app, deployment, ct);
     }
 
-    private static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
+    internal static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
     {
         var now = clock.UtcNow;
         await ConcurrencySupport.SaveWithRetryAsync(db, () =>

@@ -22,14 +22,14 @@ public sealed class RecreateStrategy : IDeploymentStrategy
         await run.SaveAsync(ct);
 
         d.BeginStep(DeploymentStep.Container, run.Clock.UtcNow);
+        // The old container gets its grace period (SIGTERM) before it is removed: a database flushes, a server drains its requests.
         if (plan.PreviousContainer is { Length: > 0 } old)
-            await run.ExecuteAsync<ContainerRemoveCommand, Unit>(
-                new ContainerRemoveCommand(old, Force: true), "container.remove_old", DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
+            await run.StopAndRemoveAsync(old, "container.remove_old", ct);
 
         var created = await run.ExecuteAsync<ContainerCreateCommand, ContainerCreated>(
             new ContainerCreateCommand(plan.Container with { Image = run.Image }, Start: true, ReplaceExisting: true),
             "container.create", DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
-        d.CompleteStep(DeploymentStep.Container, run.Clock.UtcNow, JsonSerializer.Serialize(new { containerId = created.ContainerId }));
+        d.CompleteStep(DeploymentStep.Container, run.Clock.UtcNow, run.ContainerStepDetails(created.ContainerId));
         await run.SaveAsync(ct);
 
         // Domains and routing are attached through container labels by the proxy provider (WP3.3).

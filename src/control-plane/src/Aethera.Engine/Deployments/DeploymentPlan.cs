@@ -1,3 +1,4 @@
+using Aethera.Domain;
 using Aethera.Domain.Transport;
 
 namespace Aethera.Engine.Deployments;
@@ -17,6 +18,12 @@ public sealed class DeploymentPlan
     public string? ImageReference { get; init; }
 
     public RegistryCredentials? PullAuth { get; init; }
+
+    /// <summary>When an image source is pulled (<see cref="ImagePullPolicy"/>). The default pulls every time.</summary>
+    public ImagePullPolicy PullPolicy { get; init; } = ImagePullPolicy.Always;
+
+    /// <summary>Grace period of the old container before it is killed (SIGTERM, then SIGKILL) when a deployment replaces it.</summary>
+    public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(RuntimeSnapshot.DefaultStopTimeoutSeconds);
 
     /// <summary>The image only exists on the server (rollbacks): it is checked, not pulled, and a missing image fails with <c>image.missing</c>.</summary>
     public bool LocalImage { get; init; }

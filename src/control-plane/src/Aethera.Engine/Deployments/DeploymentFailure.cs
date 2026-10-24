@@ -20,4 +20,5 @@ public static class FailureCodes
     public const string HealthTimeout = "health.timeout";
     public const string ImageMissing = "image.missing";
     public const string UnknownStrategy = "strategy.unknown";
+    public const string InternalError = "internal.error";
 }

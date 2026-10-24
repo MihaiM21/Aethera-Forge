@@ -88,9 +88,11 @@ public static class DeploymentPlanBuilder
             Env = env,
             Ports = s.Ports.Where(p => p.PublishedPort is > 0)
                 .Select(p => new PortMappingSpec(p.ContainerPort, p.PublishedPort!.Value, null, p.Protocol == PortProtocol.Udp ? PortProtocolKind.Udp : PortProtocolKind.Tcp)).ToList(),
+            // Named volumes live in the workload's own namespace (VolumeNames): prod and dev never share a Docker volume.
             Mounts = s.Volumes.Select(v => v.HostPath is { Length: > 0 }
                 ? new VolumeMountSpec(MountKind.Bind, v.HostPath, v.MountPath, v.ReadOnly)
-                : new VolumeMountSpec(MountKind.Volume, v.Name, v.MountPath, v.ReadOnly)).ToList(),
+                : new VolumeMountSpec(MountKind.Volume, VolumeNames.DockerName(s.Slug, s.WorkloadId, v.Name), v.MountPath, v.ReadOnly)).ToList(),
+            StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
             Networks = networks,
             Resources = new ResourceLimitsSpec(
                 s.Runtime.CpuLimit ?? 0, s.Runtime.CpuReservation ?? 0, s.Runtime.MemoryLimitBytes ?? 0, s.Runtime.MemoryReservationBytes ?? 0, 0, s.Runtime.PidsLimit ?? 0),
@@ -113,6 +115,7 @@ public static class DeploymentPlanBuilder
             HealthFor = health, HealthTimeout = TimeSpan.FromSeconds(s.Runtime.HealthTimeoutSeconds),
             HealthInterval = TimeSpan.FromSeconds(s.Runtime.HealthIntervalSeconds), HealthRetries = Math.Max(1, s.Runtime.HealthRetries),
             HealthStartPeriod = TimeSpan.FromSeconds(s.Runtime.HealthStartPeriodSeconds),
+            StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
         };
 
         if (c.ExistingImage is { Length: > 0 } existing)
@@ -121,19 +124,21 @@ public static class DeploymentPlanBuilder
         if (s.Image is { } image)
         {
             var reference = image.Tag.StartsWith('@') ? image.Image + image.Tag : $"{image.Image}:{image.Tag}";
-            return Copy(common, imageReference: reference, pullAuth: c.Registry);
+            return Copy(common, imageReference: reference, pullAuth: c.Registry, pullPolicy: image.PullPolicy);
         }
 
         return Copy(common, build: BuildSpec(s, c));
     }
 
-    private static DeploymentPlan Copy(DeploymentPlan p, string? imageReference = null, bool local = false, RegistryCredentials? pullAuth = null, BuildSpec? build = null) =>
+    private static DeploymentPlan Copy(
+        DeploymentPlan p, string? imageReference = null, bool local = false, RegistryCredentials? pullAuth = null, BuildSpec? build = null,
+        ImagePullPolicy pullPolicy = ImagePullPolicy.Always) =>
         new()
         {
             ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, InternalNetworks = p.InternalNetworks, JobId = p.JobId,
             OrganizationId = p.OrganizationId, OnLog = p.OnLog, HealthFor = p.HealthFor, HealthTimeout = p.HealthTimeout, HealthInterval = p.HealthInterval,
-            HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod,
-            ImageReference = imageReference, LocalImage = local, PullAuth = pullAuth, Build = build,
+            HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod, StopTimeout = p.StopTimeout,
+            ImageReference = imageReference, LocalImage = local, PullAuth = pullAuth, Build = build, PullPolicy = pullPolicy,
         };
 
     private static BuildSpec BuildSpec(DeploymentSnapshot s, PlanContext c)

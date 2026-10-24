@@ -90,6 +90,12 @@ public sealed record RuntimeSnapshot
     public int HealthTimeoutSeconds { get; init; } = 5;
     public int HealthRetries { get; init; } = 3;
     public int HealthStartPeriodSeconds { get; init; }
+
+    public const int DefaultStopTimeoutSeconds = 30;
+    public const int DatabaseStopTimeoutSeconds = 60;
+
+    /// <summary>Seconds a container gets to stop gracefully (SIGTERM) before it is killed: 30 for applications, 60 for the databases of the service templates. Snapshots from before R1 read as 30.</summary>
+    public int StopTimeoutSeconds { get; init; } = DefaultStopTimeoutSeconds;
 }
 
 /// <summary>An environment variable. Exactly one of <see cref="Value"/> and <see cref="SecretId"/> is set.</summary>
