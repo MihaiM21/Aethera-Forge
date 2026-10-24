@@ -94,6 +94,7 @@ info "running install.sh"
 INSTALL_OUT="$(docker exec \
   -e AETHERA_IMAGE=aethera-local/control-plane -e AETHERA_AGENT_IMAGE=aethera-local/agent -e AETHERA_UPDATER_IMAGE=aethera-local/updater \
   -e AETHERA_UPDATE_API_URL=http://releases -e AETHERA_HEALTH_TIMEOUT=25 \
+  -e AETHERA_TRUSTED_PROXIES=172.16.0.0/12 \
   "$DIND" bash /deploy/install.sh --compose-file /deploy/docker-compose.prod.yml --dir /opt/aethera --version "$V1" --host 127.0.0.1 \
   --admin-email "$EMAIL" --http-port 8080 --grpc-port 9443 2>&1)" || { echo "$INSTALL_OUT"; fail "install.sh failed"; }
 echo "$INSTALL_OUT" | sed 's/^/       /' | tail -14
@@ -147,6 +148,8 @@ echo "$cookie" | grep -qi 'secure' && fail "the plain-http session cookie is mar
 echo "$cookie" | grep -qi 'httponly' && echo "$cookie" | grep -qi 'samesite=lax' || fail "the session cookie lost HttpOnly or SameSite=Lax: $cookie"
 code="$(D curl -s -o /dev/null -w '%{http_code}' -H 'Host: 203.0.113.5:8080' -H 'Cookie: aethera_session='"$(echo "$cookie" | sed -n 's/^[Ss]et-[Cc]ookie: aethera_session=\([^;]*\).*/\1/p')" http://127.0.0.1:8080/api/v1/auth/me)"
 [ "$code" = 200 ] || fail "the plain-http session cookie is not accepted on a non-loopback host (answered $code)"
+# (A request through the published port reaches the app from the Docker bridge gateway, which this installation trusts as a proxy through
+# AETHERA_TRUSTED_PROXIES, the way the documented setup trusts its own proxy network.)
 hdrs="$(D curl -sS -D - -o /dev/null -H 'X-Forwarded-Proto: https' -H 'Host: aethera.example.test' -X POST -H 'Content-Type: application/json' \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" http://127.0.0.1:8080/api/v1/auth/login | tr -d '\r')"
 echo "$hdrs" | grep -i '^set-cookie:' | grep -q '^[Ss]et-[Cc]ookie: __Host-aethera_session=.*[Ss]ecure' \
