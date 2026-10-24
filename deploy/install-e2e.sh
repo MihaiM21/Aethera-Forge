@@ -6,7 +6,10 @@
 #
 # What it proves:
 #   1. install.sh: generates secrets, starts PostgreSQL, Redis and the control plane, creates the owner and enrolls this machine's agent
-#   2. /install-agent.sh is served and validates its input; the local agent connects
+#      (also: sign-in over plain http to a non-local Host gets a usable cookie, `aethera reset-password` works end to end)
+#   2. /install-agent.sh is served and validates its input; the local agent connects, in the host network namespace
+#      (also: it reconnects within a minute after `docker restart` of the control plane, and a template PostgreSQL service deploys
+#      healthy, i.e. the agent's TCP probe reaches containers on environment networks)
 #   3. maintenance: "Run now" writes a real pg_dump backup (the client in the image matches the server)
 #   4. update through the UI endpoint: backup, pull, restart on the new version, agent follows, data intact
 #   5. an update whose images cannot be pulled changes nothing
@@ -129,6 +132,40 @@ ok "the local agent enrolled and is connected"
 [ "$(api GET /system/version | jq -r .current)" = "$V1" ] || fail "the control plane does not report version $V1"
 ok "the control plane reports version $V1"
 
+# ---------------------------------------------------------------------------------------------------------------- sign-in over plain HTTP
+# A browser drops Secure and __Host- cookies from http://<ip>:8080; curl on 127.0.0.1 would not notice. The Host header stands in for the
+# address of a real server: the response must carry the plain, non-Secure cookie, and the cookie must work on that address too.
+hdrs="$(D curl -sS -D - -o /dev/null -c /tmp/jar-ip -H 'Host: 203.0.113.5:8080' -X POST -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" http://127.0.0.1:8080/api/v1/auth/login | tr -d '\r')"
+cookie="$(echo "$hdrs" | grep -i '^set-cookie:' || true)"
+echo "$cookie" | grep -q '^[Ss]et-[Cc]ookie: aethera_session=' || fail "login over plain http did not set the plain aethera_session cookie: $cookie"
+echo "$cookie" | grep -qi 'secure' && fail "the plain-http session cookie is marked Secure (browsers would drop it): $cookie"
+echo "$cookie" | grep -qi 'httponly' && echo "$cookie" | grep -qi 'samesite=lax' || fail "the session cookie lost HttpOnly or SameSite=Lax: $cookie"
+code="$(D curl -s -o /dev/null -w '%{http_code}' -H 'Host: 203.0.113.5:8080' -H 'Cookie: aethera_session='"$(echo "$cookie" | sed -n 's/^[Ss]et-[Cc]ookie: aethera_session=\([^;]*\).*/\1/p')" http://127.0.0.1:8080/api/v1/auth/me)"
+[ "$code" = 200 ] || fail "the plain-http session cookie is not accepted on a non-loopback host (answered $code)"
+hdrs="$(D curl -sS -D - -o /dev/null -H 'X-Forwarded-Proto: https' -H 'Host: aethera.example.test' -X POST -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" http://127.0.0.1:8080/api/v1/auth/login | tr -d '\r')"
+echo "$hdrs" | grep -i '^set-cookie:' | grep -q '^[Ss]et-[Cc]ookie: __Host-aethera_session=.*[Ss]ecure' \
+  || fail "login behind a TLS-terminating proxy (X-Forwarded-Proto: https) did not set the __Host- Secure cookie"
+ok "sign-in over plain http to a non-local host gets a usable non-Secure cookie; over https (forwarded) the __Host- Secure one"
+
+# ---------------------------------------------------------------------------------------------------------------- aethera reset-password
+out="$(dsh 'AETHERA_DIR=/opt/aethera aethera reset-password OWNER@e2e.test 2>/dev/null')" || fail "aethera reset-password failed"
+generated="$(echo "$out" | tail -n1 | tr -d '\r ')"
+[ "${#generated}" -ge 12 ] || fail "aethera reset-password printed no usable password: $out"
+code="$(D curl -s -o /dev/null -w '%{http_code}' -b /tmp/jar http://127.0.0.1:8080/api/v1/auth/me)"
+[ "$code" = 401 ] || fail "the old session survived reset-password (answered $code)"
+code="$(D curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" http://127.0.0.1:8080/api/v1/auth/login)"
+[ "$code" = 401 ] || fail "the old password still works after reset-password (answered $code)"
+# a password given on stdin becomes the one the rest of this script uses
+PASSWORD="e2e chosen password 42"
+dsh "printf '%s\n' '$PASSWORD' | AETHERA_DIR=/opt/aethera aethera reset-password $EMAIL --stdin >/dev/null 2>&1" || fail "aethera reset-password --stdin failed"
+D curl -fsS -c /tmp/jar -X POST -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" http://127.0.0.1:8080/api/v1/auth/login >/dev/null \
+  || fail "the owner cannot sign in with the password given to reset-password"
+api GET "/audit-log?limit=100" | jq -e '[.items[] | select(.action=="users.password_reset" and .actorType=="system")] | length >= 2' >/dev/null \
+  || fail "reset-password left no system-actor audit events"
+ok "aethera reset-password: new password printed once (or read from stdin), old password and sessions dead, audited as the system"
+
 # ---------------------------------------------------------------------------------------------------------------- 2. install-agent.sh
 code="$(D curl -s -o /tmp/ia.sh -w '%{http_code}' http://127.0.0.1:8080/install-agent.sh)"
 [ "$code" = 200 ] && dsh 'head -1 /tmp/ia.sh | grep -q "^#!/usr/bin/env bash"' || fail "/install-agent.sh is not served"
@@ -151,6 +188,36 @@ dsh "docker exec aethera-aethera-1 test -s /data/backups/$backup" || fail "the b
 dsh "docker exec aethera-aethera-1 pg_restore --list /data/backups/$backup | grep -q 'TABLE DATA.*users'" || fail "the backup does not contain the users table"
 api GET /system/maintenance | jq -e --arg b "$backup" '.backups[] | select(.name==$b)' >/dev/null || fail "the backup is not listed by GET /system/maintenance"
 ok "maintenance wrote a real pg_dump backup ($backup) that pg_restore can read, and it is listed"
+
+# ---------------------------------------------------------------------------------------------------------------- 3b. local agent networking
+# The agent of this machine runs in the host network namespace: it must survive a restart of the control plane container (a container
+# sharing that container's namespace would stay cut off) and reach containers on environment networks (template health checks).
+[ "$(D docker inspect --format '{{.HostConfig.NetworkMode}}' aethera-agent-1)" = host ] || fail "the local agent container is not in the host network namespace"
+control_ready() { D curl -fs http://127.0.0.1:8080/ready; }
+D docker restart aethera-aethera-1 >/dev/null
+restarted="$(date +%s)"
+wait_for "the control plane after docker restart" 90 control_ready
+wait_for "the local agent to reconnect after the control plane restarted" 60 agent_connected
+ok "after 'docker restart' of the control plane the local agent is connected again within $(( $(date +%s) - restarted )) s (limit 60 s after /ready)"
+
+local_server="$(api GET /servers | jq -r '.items[] | select(.name=="local") | .id')"
+pg_project="$(api POST /projects '{"name":"net e2e"}')"
+pg_env="$(echo "$pg_project" | jq -r '.environments[0].id')"
+pg_service="$(api POST /services "{\"name\":\"net-db\",\"environmentId\":\"$pg_env\",\"serverId\":\"$local_server\",\"templateKey\":\"postgres\"}" | jq -r .id)"
+[ -n "$pg_service" ] && [ "$pg_service" != null ] || fail "could not create a PostgreSQL service from the template"
+pg_deployment="$(api POST "/services/$pg_service/deployments" '{}' | jq -r .id)"
+[ -n "$pg_deployment" ] && [ "$pg_deployment" != null ] || fail "could not start the PostgreSQL deployment"
+n=0; pg_status=""
+while [ "$n" -le 300 ]; do
+  pg_status="$(api GET "/deployments/$pg_deployment" | jq -r .status)"
+  case "$pg_status" in running|failed|cancelled) break ;; esac
+  sleep 3; n=$((n + 3))
+done
+if [ "$pg_status" != running ]; then
+  api GET "/deployments/$pg_deployment" | jq -c '{status, failedStep, failureCode, failureMessage}' >&2 || true
+  fail "the PostgreSQL service did not become healthy (status: $pg_status): the agent cannot reach the container on the environment network"
+fi
+ok "a PostgreSQL service from the template deployed healthy: the TCP probe reaches it through its environment network"
 
 # ---------------------------------------------------------------------------------------------------------------- 4. update
 project="$(api POST /projects '{"name":"survives the update"}' | jq -r .id)"

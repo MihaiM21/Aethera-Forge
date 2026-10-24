@@ -57,6 +57,10 @@ services:
       # Let's Encrypt: without an email the proxy serves HTTP only. AETHERA_ACME_STAGING=true uses the staging CA while testing.
       Aethera__Proxy__AcmeEmail: ${AETHERA_ACME_EMAIL:-}
       Aethera__Proxy__Staging: ${AETHERA_ACME_STAGING:-false}
+      # Proxies whose X-Forwarded-For / X-Forwarded-Proto are believed (comma-separated IPs or CIDRs; empty = loopback only). Only needed
+      # when something other than Aethera's own proxy sits in front. Without it the UI is still reachable behind Traefik, but the session
+      # cookie uses its plain (non-__Host-) form and the audit log sees the proxy's address instead of the client's.
+      Aethera__Http__TrustedProxies: ${AETHERA_TRUSTED_PROXIES:-}
       Aethera__Updates__Repository: ${AETHERA_UPDATE_REPOSITORY:-MihaiM21/aethera-forge}
       Aethera__Updates__ApiBaseUrl: ${AETHERA_UPDATE_API_URL:-https://api.github.com}
       Aethera__Updates__Enabled: ${AETHERA_UPDATE_CHECK:-true}
@@ -90,18 +94,25 @@ services:
 
   # The agent of this machine, so a single server is enough: it waits, unenrolled, until the control plane has an owner, which then makes
   # the "local" server and hands this container a one-time join token through the shared aethera_data volume (Servers > "Use this
-  # machine" does the same by hand). After that it is an ordinary agent. It shares the control plane's network namespace, so it reaches
-  # the agent gateway on 127.0.0.1:9443, a name the gateway's certificate always has, whatever the public host is.
+  # machine" does the same by hand). After that it is an ordinary agent.
+  #
+  # It runs in the HOST network namespace, like the systemd agents of other servers, for two reasons: it can then reach containers on
+  # every Docker network (health checks of the databases and apps on environment networks), and it does not lose its network when the
+  # aethera container is restarted or recreated (a container that shares another one's namespace keeps a dead copy of it). It dials the
+  # gateway on the host's loopback, 127.0.0.1:<grpc port>, published by the aethera service; the gateway certificate always names 127.0.0.1.
+  # If the control plane stays unreachable for ten minutes the agent exits and the restart policy starts it again.
+  # Docker Desktop (Windows, macOS) has no real host namespace: docker-compose.desktop.yml restores the shared namespace there.
   agent:
     image: ${AETHERA_AGENT_IMAGE:-ghcr.io/mihaim21/aethera-forge/agent}:${AETHERA_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - aethera
-    network_mode: "service:aethera"
+    network_mode: host
     environment:
-      AETHERA_ENDPOINT: 127.0.0.1:9443
+      AETHERA_ENDPOINT: 127.0.0.1:${AETHERA_GRPC_PORT:-9443}
       AETHERA_ENROLL_DIR: /data/updater
       AETHERA_AGENT_NAME: local
+      AETHERA_EXIT_AFTER_OFFLINE: ${AETHERA_AGENT_EXIT_AFTER_OFFLINE:-10m}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside: bind mounts the agent creates are resolved by the host's Docker daemon.

@@ -59,8 +59,10 @@ services:
       - aethera_data:/data
 
   # The agent of the master machine itself. It waits, unenrolled, for Servers > "Use this machine" in the UI (the control plane hands it a
-  # one-time join token through the shared aethera_data volume), then it runs as an ordinary agent. It shares the control plane's network
-  # namespace, so it reaches the agent gateway on 127.0.0.1:9443 (a name the gateway's certificate always has), also on Docker Desktop.
+  # one-time join token through the shared aethera_data volume), then it runs as an ordinary agent. On Linux it runs in the host network
+  # namespace (reaches every Docker network, survives a restart of the aethera container) and dials 127.0.0.1:<grpc port>; Docker Desktop
+  # has no real host namespace, so add docker-compose.desktop.yml there (install.ps1 does): the agent then shares the control plane's
+  # namespace and dials 127.0.0.1:9443. See ADR 0009.
   agent:
     build:
       context: ..
@@ -69,11 +71,12 @@ services:
     restart: unless-stopped
     depends_on:
       - aethera
-    network_mode: "service:aethera"
+    network_mode: host
     environment:
-      AETHERA_ENDPOINT: 127.0.0.1:9443
+      AETHERA_ENDPOINT: 127.0.0.1:${AETHERA_GRPC_PORT:-9443}
       AETHERA_ENROLL_DIR: /data/updater
       AETHERA_AGENT_NAME: local
+      AETHERA_EXIT_AFTER_OFFLINE: ${AETHERA_AGENT_EXIT_AFTER_OFFLINE:-10m}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/aethera:/var/lib/aethera

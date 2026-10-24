@@ -5,7 +5,8 @@
 #
 # Options (each also as an environment variable):
 #   --dir <path>              install directory (AETHERA_DIR, default /opt/aethera)
-#   --version <v>             release to install, e.g. v0.1.0 (AETHERA_VERSION, default latest)
+#   --version <v>             release to install: 0.1.0, v0.1.0 or a pre-release such as 0.1.0-rc.1 (AETHERA_VERSION, default latest = the
+#                             newest non-pre-release)
 #   --host <name-or-ip>       what servers use to reach this machine's agent port (AETHERA_PUBLIC_HOST, default: detected)
 #   --domain <name>           serve the UI on https://<name> through Aethera's proxy (AETHERA_DOMAIN)
 #   --acme-email <email>      Let's Encrypt account for HTTPS certificates (AETHERA_ACME_EMAIL); without it the proxy serves HTTP only
@@ -62,7 +63,7 @@ while [ $# -gt 0 ]; do
     --compose-file) COMPOSE_FILE_SRC="${2:?--compose-file needs a value}"; shift 2 ;;
     --http-port) HTTP_PORT="${2:?--http-port needs a value}"; shift 2 ;;
     --grpc-port) GRPC_PORT="${2:?--grpc-port needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -90,23 +91,39 @@ chmod 0700 "$DIR"
 ENV_FILE="$DIR/.env"
 COMPOSE="$DIR/docker-compose.yml"
 
+# --version takes either form. Release assets live under the git tag (vX.Y.Z[-pre]); the images are tagged without the v (X.Y.Z[-pre]),
+# which is also what AETHERA_VERSION in the .env, the compose file and `aethera update` use.
+TAG=""
+IMAGE_VERSION="$VERSION"
+if [ "$VERSION" != latest ]; then
+  IMAGE_VERSION="${VERSION#v}"
+  printf '%s' "$IMAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+    || die "invalid version '$VERSION' (expected latest, 0.1.0, v0.1.0 or 0.1.0-rc.1)"
+  TAG="v$IMAGE_VERSION"
+fi
+
 release_base() {
-  if [ "$VERSION" = latest ]; then echo "https://github.com/$REPO/releases/latest/download"
-  else echo "https://github.com/$REPO/releases/download/$VERSION"; fi
+  if [ -z "$TAG" ]; then echo "https://github.com/$REPO/releases/latest/download"
+  else echo "https://github.com/$REPO/releases/download/$TAG"; fi
 }
 
 if [ -n "$COMPOSE_FILE_SRC" ]; then
   [ -f "$COMPOSE_FILE_SRC" ] || die "no such compose file: $COMPOSE_FILE_SRC"
   cp "$COMPOSE_FILE_SRC" "$COMPOSE"
 elif [ "$FROM_SOURCE" -eq 0 ]; then
-  say "Downloading docker-compose.prod.yml ($VERSION)"
+  say "Downloading docker-compose.prod.yml (${TAG:-latest})"
   if ! curl -fsSL "$(release_base)/docker-compose.prod.yml" -o "$COMPOSE.tmp"; then
     rm -f "$COMPOSE.tmp"
-    [ "$VERSION" = latest ] || die "release $VERSION not found at github.com/$REPO"
-    warn "no published release yet: building from source ($SOURCE_REF) instead (first run takes several minutes)"
+    [ "$VERSION" = latest ] || die "release $TAG not found at github.com/$REPO (pre-releases need --version, e.g. --version 0.1.0-rc.1)"
+    warn "no published (non-pre) release yet: building from source ($SOURCE_REF) instead (first run takes several minutes)"
     FROM_SOURCE=1
   else
     mv "$COMPOSE.tmp" "$COMPOSE"
+    # `latest` means whatever release the downloaded compose file is pinned to: record that version, not the word.
+    if [ "$VERSION" = latest ]; then
+      pinned="$(sed -n 's/.*AETHERA_VERSION:-\([0-9][^}]*\)}.*/\1/p' "$COMPOSE" | head -n1)"
+      [ -z "$pinned" ] || IMAGE_VERSION="$pinned"
+    fi
   fi
 fi
 
@@ -162,7 +179,7 @@ fi
 env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 [ -z "$DOMAIN" ] || env_set AETHERA_DOMAIN "$DOMAIN"
 [ -z "$ACME_EMAIL" ] || env_set AETHERA_ACME_EMAIL "$ACME_EMAIL"
-env_set AETHERA_VERSION "$VERSION"
+env_set AETHERA_VERSION "$IMAGE_VERSION"
 env_set AETHERA_DIR "$DIR"
 # The agent of this machine is part of the stack and waits for the control plane to enroll it; the updater is an opt-in profile.
 if [ "$FROM_SOURCE" -eq 1 ]; then profiles=""; else profiles="updater"; fi
@@ -173,8 +190,8 @@ env_set AETHERA_GRPC_PORT "$GRPC_PORT"
 
 # Settings the compose file reads, passed through when set in the environment of this script (private registry or mirror, a release
 # mirror, update checks off): AETHERA_IMAGE, AETHERA_AGENT_IMAGE, AETHERA_UPDATER_IMAGE, AETHERA_UPDATE_API_URL, AETHERA_UPDATE_CHECK,
-# AETHERA_UPDATE_REPOSITORY, AETHERA_INSTALL_AGENT_URL.
-for name in AETHERA_IMAGE AETHERA_AGENT_IMAGE AETHERA_UPDATER_IMAGE AETHERA_UPDATE_API_URL AETHERA_UPDATE_CHECK AETHERA_UPDATE_REPOSITORY AETHERA_HEALTH_TIMEOUT AETHERA_INSTALL_AGENT_URL; do
+# AETHERA_UPDATE_REPOSITORY, AETHERA_INSTALL_AGENT_URL, AETHERA_TRUSTED_PROXIES, AETHERA_AGENT_EXIT_AFTER_OFFLINE.
+for name in AETHERA_IMAGE AETHERA_AGENT_IMAGE AETHERA_UPDATER_IMAGE AETHERA_UPDATE_API_URL AETHERA_UPDATE_CHECK AETHERA_UPDATE_REPOSITORY AETHERA_HEALTH_TIMEOUT AETHERA_INSTALL_AGENT_URL AETHERA_TRUSTED_PROXIES AETHERA_AGENT_EXIT_AFTER_OFFLINE; do
   value="$(printenv "$name" || true)"
   [ -z "$value" ] || env_set "$name" "$value"
 done

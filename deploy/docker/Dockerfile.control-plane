@@ -1,5 +1,7 @@
 # Aethera control plane: Next.js export + .NET API in one image. Build context: the repository root.
-FROM node:22-alpine AS web
+# The web export and the .NET publish are platform independent: they run natively on the build machine (BUILDPLATFORM) and are only copied
+# into the per-architecture runtime stage. Running them under QEMU for linux/arm64 is slow and .NET is known to crash or hang there.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 RUN corepack enable
 WORKDIR /src/web
 COPY src/web/package.json src/web/pnpm-lock.yaml src/web/pnpm-workspace.yaml ./
@@ -7,7 +9,8 @@ RUN pnpm install --frozen-lockfile
 COPY src/web/ ./
 RUN pnpm build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+ARG TARGETARCH
 WORKDIR /src
 COPY proto/ proto/
 COPY src/control-plane/ src/control-plane/
@@ -15,7 +18,8 @@ COPY src/control-plane/ src/control-plane/
 COPY deploy/install-agent.sh deploy/install-agent.sh
 ARG VERSION=0.0.0-dev
 # The OpenAPI document is generated at build time into src/web/openapi (committed); skip it here.
-RUN dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -o /app \
+RUN case "${TARGETARCH:-amd64}" in arm64) arch=arm64 ;; *) arch=x64 ;; esac \
+    && dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -a "$arch" -o /app \
     -p:OpenApiGenerateDocuments=false -p:Version=${VERSION} -p:InformationalVersion=${VERSION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
