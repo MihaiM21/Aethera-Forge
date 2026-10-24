@@ -117,6 +117,7 @@ export function DomainsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           <option value="ok">DNS ok</option>
           <option value="mismatch">Mismatch</option>
           <option value="missing">Missing</option>
+          <option value="proxied">Proxied</option>
           <option value="unknown">Unknown</option>
         </NativeSelect>
       </div>

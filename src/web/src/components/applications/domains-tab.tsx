@@ -11,6 +11,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { dnsStatusExplanation, dnsStatusTone } from "@/lib/dns/status";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { ComposeInspect, DnsProviderOption, Domain } from "@/lib/resources/types";
 import { HOSTNAME } from "@/lib/resources/wizard";
@@ -21,8 +22,7 @@ import type { WorkloadKind } from "./env-tab";
 
 export function DnsBadge({ domain }: { domain: Pick<Domain, "dns"> }) {
   const s = domain.dns.status;
-  const tone = s === "ok" ? "success" : s === "unknown" ? "neutral" : "warning";
-  return <Badge tone={tone}>dns {s}</Badge>;
+  return <Badge tone={dnsStatusTone(s)} title={dnsStatusExplanation(s) ?? undefined}>dns {s}</Badge>;
 }
 
 export function CertBadge({ domain }: { domain: Pick<Domain, "certificate" | "httpsEnabled"> }) {
