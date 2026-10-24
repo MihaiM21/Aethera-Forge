@@ -160,7 +160,8 @@ public static class BackupEngines
         {
             var data = c.Volumes.FirstOrDefault(v => !v.IsBind && v.MountPath.TrimEnd('/') == "/data")
                        ?? throw new BackupEngineException("The Redis service has no named volume at /data, so there is nothing to restore into.");
-            return new VolumeRestoreSink(data.Name);
+            // Cleared first: with AOF persistence Redis loads appendonlydir/ at start and would ignore the restored dump.rdb.
+            return new VolumeRestoreSink(data.Name, ClearFirst: true);
         }
     }
 

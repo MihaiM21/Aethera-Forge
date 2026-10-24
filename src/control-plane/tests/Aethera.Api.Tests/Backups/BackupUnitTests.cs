@@ -508,6 +508,7 @@ public sealed class EngineTests
 
         var restore = Assert.IsType<VolumeRestoreSink>(engine.Restore(context));
         Assert.Equal("cache-1234-data", restore.Volume);
+        Assert.True(restore.ClearFirst); // an AOF directory left behind would win over the restored dump.rdb
         Assert.True(engine.StopsForRestore);
         Assert.Equal("redis", engine.Name);
     }
