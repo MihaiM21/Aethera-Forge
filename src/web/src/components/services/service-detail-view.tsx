@@ -320,7 +320,7 @@ export function ServiceDetailView({ api = resourcesApi, id: idProp }: { api?: Re
         <TabsContent value="environment">{tab === "environment" && <EnvTab kind="services" id={s.id} slug={s.slug} api={api} />}</TabsContent>
         <TabsContent value="domains">{tab === "domains" && <DomainsTab kind="services" id={s.id} api={api} />}</TabsContent>
         <TabsContent value="storage">{tab === "storage" && <StorageTab kind="services" id={s.id} api={api} />}</TabsContent>
-        <TabsContent value="backups">{tab === "backups" && <WorkloadBackupsTab kind="services" id={s.id} />}</TabsContent>
+        <TabsContent value="backups">{tab === "backups" && <WorkloadBackupsTab kind="services" id={s.id} name={s.name} />}</TabsContent>
         <TabsContent value="tasks">{tab === "tasks" && <ScheduledTasksTab kind="services" id={s.id} />}</TabsContent>
         <TabsContent value="settings">{tab === "settings" && <ServiceSettings service={s} template={template} api={api} onSaved={() => void svc.refresh()} />}</TabsContent>
       </Tabs>
