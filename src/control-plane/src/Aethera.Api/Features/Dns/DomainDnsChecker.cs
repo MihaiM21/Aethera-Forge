@@ -2,7 +2,7 @@ using System.Net;
 using Aethera.Api.Features.Resources.DomainNames;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Domain;
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 using Aethera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 

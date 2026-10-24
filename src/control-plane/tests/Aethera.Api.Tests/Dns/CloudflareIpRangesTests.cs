@@ -1,5 +1,5 @@
 using System.Net;
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 
 namespace Aethera.Api.Tests.DnsProviders;
 

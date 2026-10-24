@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Aethera.Infrastructure.Dns;
+namespace Aethera.Infrastructure.DnsProviders;
 
 /// <summary>
 /// Cloudflare's published edge address ranges. A hostname whose every A/AAAA answer lies inside them is behind the Cloudflare proxy (orange

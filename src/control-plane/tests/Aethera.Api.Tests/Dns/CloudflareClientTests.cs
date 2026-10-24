@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http;
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 
 namespace Aethera.Api.Tests.DnsProviders;
 

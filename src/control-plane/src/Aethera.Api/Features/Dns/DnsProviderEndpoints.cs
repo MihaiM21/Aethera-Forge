@@ -6,7 +6,7 @@ using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
 using Aethera.Api.Security;
 using Aethera.Domain;
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 using Aethera.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;

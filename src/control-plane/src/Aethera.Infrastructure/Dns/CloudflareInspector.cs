@@ -1,4 +1,4 @@
-namespace Aethera.Infrastructure.Dns;
+namespace Aethera.Infrastructure.DnsProviders;
 
 /// <summary>What a token can do: it is active, the zones it sees, and whether it can read DNS records of them.</summary>
 public sealed record CloudflareTokenReport(bool Valid, bool DnsAccess, IReadOnlyList<string> Zones, string? Message);

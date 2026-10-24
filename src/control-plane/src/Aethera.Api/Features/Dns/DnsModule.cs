@@ -1,4 +1,4 @@
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 

@@ -2,7 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Aethera.Api.Tests.Resources;
-using Aethera.Infrastructure.Dns;
+using Aethera.Infrastructure.DnsProviders;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;

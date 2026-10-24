@@ -2372,6 +2372,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dns-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDnsProviders"];
+        put?: never;
+        post: operations["createDnsProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dns-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDnsProvider"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteDnsProvider"];
+        options?: never;
+        head?: never;
+        patch: operations["updateDnsProvider"];
+        trace?: never;
+    };
+    "/api/v1/dns-providers/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["verifyDnsProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2875,6 +2923,11 @@ export interface components {
             /** Format: uuid */
             environmentId?: null | string;
         };
+        CreateDnsProviderRequest: {
+            name?: null | string;
+            kind?: null | components["schemas"]["DnsProviderKind"];
+            apiToken?: null | string;
+        };
         CreateDomainRequest: {
             /** Format: uuid */
             workloadId?: null | string;
@@ -3149,9 +3202,34 @@ export interface components {
             /** Format: date-time */
             checkedAt: unknown;
             message: string;
+            method: string;
         };
         /** @enum {unknown} */
-        DnsStatus: "unknown" | "ok" | "mismatch" | "missing" | "error";
+        DnsProviderKind: "cloudflare";
+        DnsProviderResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            kind: components["schemas"]["DnsProviderKind"];
+            hasToken: boolean;
+            zones: string[];
+            /** Format: date-time */
+            lastVerifiedAt: unknown;
+            lastError: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
+        DnsProviderVerifyResponse: {
+            valid: boolean;
+            dnsAccess: boolean;
+            zones: string[];
+            message: null | string;
+            provider: components["schemas"]["DnsProviderResponse"];
+        };
+        /** @enum {unknown} */
+        DnsStatus: "unknown" | "ok" | "mismatch" | "missing" | "error" | "proxied";
         DockerContainer: {
             id: string;
             name: string;
@@ -3766,6 +3844,10 @@ export interface components {
         };
         PageOfDeploymentListItemDto: {
             items: components["schemas"]["DeploymentListItemDto"][];
+            nextCursor: null | string;
+        };
+        PageOfDnsProviderResponse: {
+            items: components["schemas"]["DnsProviderResponse"][];
             nextCursor: null | string;
         };
         PageOfDomainResponse: {
@@ -4511,6 +4593,10 @@ export interface components {
             projectId?: null | string;
             /** Format: uuid */
             environmentId?: null | string;
+        };
+        UpdateDnsProviderRequest: {
+            name?: null | string;
+            apiToken?: null | string;
         };
         UpdateDomainRequest: {
             hostname?: null | string;
@@ -16275,6 +16361,328 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listDnsProviders: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfDnsProviderResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    createDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDnsProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteDnsProvider: {
+        parameters: {
+            query?: {
+                confirm?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/merge-patch+json": components["schemas"]["UpdateDnsProviderRequest"];
+                "application/json": components["schemas"]["UpdateDnsProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    verifyDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderVerifyResponse"];
                 };
             };
             /** @description Not authenticated (auth.unauthenticated). */

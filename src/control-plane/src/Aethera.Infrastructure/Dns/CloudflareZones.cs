@@ -1,4 +1,4 @@
-namespace Aethera.Infrastructure.Dns;
+namespace Aethera.Infrastructure.DnsProviders;
 
 /// <summary>Zone and record-name logic of the DNS check (pure, no I/O).</summary>
 public static class CloudflareZones
