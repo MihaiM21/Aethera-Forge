@@ -12,28 +12,31 @@ public sealed class DomainDnsCheckTests(DnsFixture fixture)
 
     private static string Zone() => $"z{Guid.NewGuid().ToString("N")[..8]}.example";
 
-    private sealed record Setup(Tenant Tenant, string AppId, string Zone);
+    private sealed record Setup(Tenant Tenant, string AppId, string Zone, string? ProviderId = null);
 
     private async Task<Setup> StartAsync(bool withProvider = true, params string[] zones)
     {
         var tenant = await fixture.NewTenantAsync();
         var (_, _, _, appId) = await tenant.CreateStackAsync(); // server with public IP 203.0.113.10
         var zone = Zone();
+        string? providerId = null;
         if (withProvider)
         {
             fixture.Cloudflare.Tokens[Token] = new FakeToken();
             fixture.Cloudflare.WithZone(zone);
             foreach (var extra in zones) fixture.Cloudflare.WithZone(extra);
             var provider = await tenant.Admin.CreateAsync("/api/v1/dns-providers", new { name = Tenant.Unique("cf"), apiToken = Token });
+            providerId = provider.Id();
             Assert.True((await (await tenant.Admin.PostAsync($"/api/v1/dns-providers/{provider.Id()}/verify", null)).ReadAsync())["valid"]!.GetValue<bool>());
             fixture.Cloudflare.Requests.Clear();
         }
 
-        return new Setup(tenant, appId, zone);
+        return new Setup(tenant, appId, zone, providerId);
     }
 
     private static async Task<JsonNode> DomainAsync(Setup s, string hostname) =>
-        await s.Tenant.Developer.CreateAsync("/api/v1/domains", new { workloadId = s.AppId, hostname });
+        // A wildcard host needs a DNS provider (DNS-01, ADR 0010).
+        await s.Tenant.Developer.CreateAsync("/api/v1/domains", new { workloadId = s.AppId, hostname, dnsProviderId = hostname.StartsWith("*.") ? s.ProviderId : null });
 
     private static async Task<JsonNode> VerifyAsync(Setup s, JsonNode domain)
     {
