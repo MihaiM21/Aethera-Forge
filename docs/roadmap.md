@@ -46,7 +46,7 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] R1.2 Email notifications & alerts (SMTP/Resend, webhook, per-event settings, alert store) — Phase 9
 - [x] R1.3 Scheduled tasks (`container.exec`, cron, history) — part of Phase 10
 - [x] R1.4 Compose from the repository (`build:`, domains per service)
-- [ ] R1.5 Domains & proxy (Cloudflare DNS-01, wildcards, www redirect, strip prefix, basic auth, custom labels)
+- [x] R1.5 Domains & proxy (Cloudflare DNS-01, wildcards, www redirect, strip prefix, basic auth, custom labels)
 - [ ] R1.6 Hardening (bug hunt fixes, `aethera reset-password`, registry test, docs, beta labelling)
 - [ ] R1 verification, PR, `v0.1.0-rc.1`, owner test on the VPS, `v0.1.0`
 
