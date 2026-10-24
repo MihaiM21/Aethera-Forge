@@ -27,9 +27,9 @@ The agent refuses `container.exec` on containers it does not manage (no `aethera
 
 | Engine | Dump (inside the database container, `ExecDump`) | Restore (`ExecRestore`) |
 |---|---|---|
-| PostgreSQL | `pg_dump -Fc -U $POSTGRES_USER -d <db>` | `pg_restore --clean --if-exists --no-owner -U ... -d <db>` |
-| MongoDB | `mongodump --archive --gzip` (+ auth from the service's variables) | `mongorestore --archive --gzip --drop` |
-| Redis | `redis-cli --rdb -` | stop, `VolumeRestore` of `dump.rdb`, start (off by default: usually a cache) |
+| PostgreSQL | `pg_dump -Fc -U $POSTGRES_USER -d <db>` (one database per policy: `POSTGRES_DB`, or `config.backup.database` of the service) | `pg_restore --clean --if-exists --no-owner -U ... -d <db>` |
+| MongoDB | `mongodump --archive --gzip`; the tools take a password only in argv or a config file, so a fixed `sh -c` script writes a 0600 `--config` file inside the container from the environment and removes it | `mongorestore --archive --gzip --drop`, same credential handling |
+| Redis | `redis-cli --rdb` into a temporary file, streamed as a tar.gz holding `dump.rdb` (so the volume sink can restore it); `REDISCLI_AUTH` only when the server asks for a password | stop, `VolumeRestore` of `/data` with `clear_first` (an AOF directory would otherwise win), start. Off by default: usually a cache |
 | MySQL/MariaDB | `mysqldump --single-transaction --all-databases` | `mysql` |
 | Volume | `VolumeArchive`: helper container (busybox) with the volume read-only at `/data`, `tar czf -` | `VolumeRestore`: workload stopped, `tar xzf -` |
 
