@@ -126,44 +126,92 @@ public sealed class Aeb1Tests
         Assert.Equal(header.Bytes.Length, stream.Position);
     }
 
+    // ---- the reference vector of the Go agent -----------------------------------------------------------------------------------
+
+    private static JsonElement LoadVector() => JsonDocument.Parse(File.ReadAllText(VectorFileFactAttribute.Path!)).RootElement;
+
     /// <summary>
-    /// The reference vector written by the Go agent (src/agent/internal/backup/testdata/aeb1-vector.json): key 32 x 0x01, key id "test", salt 32 x 0x02,
-    /// plaintext of 150000 bytes with byte i = i % 251. The same bytes must come out of this implementation.
+    /// src/agent/internal/backup/testdata/aeb1-vector.json: key 32 x 0x01, key id "test", salt 32 x 0x02, plaintext byte i = i % 251. This implementation
+    /// must produce exactly the object of the main vector and read it back.
     /// </summary>
     [VectorFileFact]
-    public async Task Produces_the_object_of_the_shared_reference_vector()
+    public async Task Produces_the_object_of_the_main_reference_vector_and_reads_it_back()
     {
-        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(VectorFileFactAttribute.Path!));
-        var fields = document.RootElement.EnumerateObject().ToDictionary(p => Normalize(p.Name), p => p.Value);
-        string Text(params string[] names)
-        {
-            foreach (var name in names)
-                if (fields.TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.String) return v.GetString()!;
-            throw new Xunit.Sdk.XunitException($"The vector has none of {string.Join("/", names)}; it has: {string.Join(", ", fields.Keys)}.");
-        }
-
-        static byte[] Bytes(string text) => text.Length == 64 && text.All(Uri.IsHexDigit) ? Convert.FromHexString(text) : Convert.FromBase64String(text);
-        var key = Bytes(Text("key", "keybase64", "streamkey"));
-        var salt = Bytes(Text("salt", "saltbase64", "saltbytes"));
-        var keyId = Text("keyid");
-        var plaintextSha = Text("plaintextsha256", "plainsha256", "plaintextsha");
-        var ciphertextSha = Text("ciphertextsha256", "objectsha256", "storedsha256", "sealedsha256", "ciphertextsha");
-        var length = fields.TryGetValue("plaintextlength", out var l) && l.ValueKind == JsonValueKind.Number ? l.GetInt32() : 150000;
+        var vector = LoadVector();
+        var key = Convert.FromBase64String(vector.GetProperty("key_base64").GetString()!);
+        var salt = Convert.FromHexString(vector.GetProperty("salt_hex").GetString()!);
+        var keyId = vector.GetProperty("key_id").GetString()!;
+        var expected = Convert.FromBase64String(vector.GetProperty("object_base64").GetString()!);
+        var length = vector.GetProperty("plaintext_length").GetInt32();
+        Assert.Equal(Key, key);
+        Assert.Equal(Salt, salt);
+        Assert.Equal(vector.GetProperty("header_hex").GetString(), Convert.ToHexStringLower(Aeb1.BuildHeader(keyId, salt)));
+        Assert.Equal(vector.GetProperty("derived_key_hex").GetString(), Convert.ToHexStringLower(Aeb1.DeriveChunkKey(key, salt)));
 
         var plain = Plain(length);
-        Assert.Equal(Convert.ToHexStringLower(Bytes(plaintextSha)), Convert.ToHexStringLower(SHA256.HashData(plain)));
+        Assert.Equal(vector.GetProperty("plaintext_sha256").GetString(), Convert.ToHexStringLower(SHA256.HashData(plain)));
+        var (sealedBytes, result) = await EncryptAsync(plain, salt, keyId);
+        Assert.Equal(expected.Length, vector.GetProperty("object_length").GetInt32());
+        Assert.Equal(Convert.ToHexString(expected), Convert.ToHexString(sealedBytes));
+        Assert.Equal(vector.GetProperty("object_sha256").GetString(), result.StoredSha256);
 
-        using var output = new MemoryStream();
-        await Aeb1Encryptor.EncryptAsync(new MemoryStream(plain), output, key, keyId, salt);
-        Assert.Equal(Convert.ToHexStringLower(Bytes(ciphertextSha)), Convert.ToHexStringLower(SHA256.HashData(output.ToArray())));
-
-        // and the other way round: this implementation reads what the vector describes
-        using var back = new MemoryStream();
-        await Aeb1Decryptor.DecryptAsync(new MemoryStream(output.ToArray()), back, _ => key);
-        Assert.Equal(plain, back.ToArray());
+        Assert.Equal(plain, await DecryptAsync(expected));
     }
 
-    private static string Normalize(string name) => name.Replace("_", "").Replace("-", "").ToLowerInvariant();
+    /// <summary>Empty, one byte, exactly one and two full chunks, a chunk and a byte: lengths and SHA-256 of plaintext and object must match the agent's.</summary>
+    [VectorFileFact]
+    public async Task Produces_the_additional_reference_vectors()
+    {
+        var vector = LoadVector();
+        var salt = Convert.FromHexString(vector.GetProperty("salt_hex").GetString()!);
+        var keyId = vector.GetProperty("key_id").GetString()!;
+        var cases = vector.GetProperty("additional_vectors").EnumerateArray().ToList();
+        Assert.True(cases.Count >= 5, "the vector file lists the boundary cases");
+
+        foreach (var c in cases)
+        {
+            var name = c.GetProperty("name").GetString();
+            var plain = Plain(c.GetProperty("plaintext_length").GetInt32());
+            Assert.True(c.GetProperty("plaintext_sha256").GetString() == Convert.ToHexStringLower(SHA256.HashData(plain)), $"{name}: plaintext");
+            var (sealedBytes, result) = await EncryptAsync(plain, salt, keyId);
+            Assert.True(c.GetProperty("object_length").GetInt32() == sealedBytes.Length, $"{name}: object length");
+            Assert.True(c.GetProperty("object_sha256").GetString() == result.StoredSha256, $"{name}: object sha256");
+            Assert.Equal(plain, await DecryptAsync(sealedBytes));
+        }
+    }
+
+    [Fact]
+    public async Task A_full_last_chunk_carries_the_final_flag_and_no_empty_chunk_follows()
+    {
+        var (one, _) = await EncryptAsync(Plain(65536), Salt);
+        var (two, _) = await EncryptAsync(Plain(131072), Salt);
+        Assert.Equal(41 + 65536 + 16, one.Length);
+        Assert.Equal(41 + 2 * (65536 + 16), two.Length);
+        Assert.Equal(41 + 16, (await EncryptAsync([], Salt)).Sealed.Length); // an empty plaintext is one empty final chunk
+    }
+
+    [Fact]
+    public async Task A_reader_accepts_an_empty_final_chunk_after_a_full_one()
+    {
+        // header | full chunk (not final) | empty chunk (final): what a writer that always ends with an empty chunk produces
+        var plain = Plain(65536);
+        var header = Aeb1.BuildHeader("test", Salt);
+        var chunkKey = Aeb1.DeriveChunkKey(Key, Salt);
+        using var aes = new AesGcm(chunkKey, Aeb1.TagLength);
+        var nonce = new byte[Aeb1.NonceLength];
+        var sealedBytes = new List<byte>(header);
+
+        var chunk = new byte[plain.Length + Aeb1.TagLength];
+        Aeb1.WriteNonce(nonce, 0, final: false);
+        aes.Encrypt(nonce, plain, chunk.AsSpan(0, plain.Length), chunk.AsSpan(plain.Length, Aeb1.TagLength), header);
+        sealedBytes.AddRange(chunk);
+        var tag = new byte[Aeb1.TagLength];
+        Aeb1.WriteNonce(nonce, 1, final: true);
+        aes.Encrypt(nonce, ReadOnlySpan<byte>.Empty, Span<byte>.Empty, tag.AsSpan(), header);
+        sealedBytes.AddRange(tag);
+
+        Assert.Equal(plain, await DecryptAsync([.. sealedBytes]));
+    }
 }
 
 /// <summary>Skips with a clear message only when the Go agent's reference vector is not in the tree (a branch that does not have it yet).</summary>
