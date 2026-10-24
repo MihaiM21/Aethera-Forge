@@ -94,7 +94,7 @@ public class BackupScheduler(IServiceScopeFactory scopes, IClock clock, IOptions
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var due = await db.BackupPolicies
-            .FromSql($"SELECT * FROM backup_policies WHERE enabled AND next_run_at <= {now} ORDER BY next_run_at LIMIT {batch} FOR UPDATE SKIP LOCKED")
+            .FromSql($"SELECT *, xmin FROM backup_policies WHERE enabled AND next_run_at <= {now} ORDER BY next_run_at LIMIT {batch} FOR UPDATE SKIP LOCKED")
             .ToListAsync(cancellationToken);
 
         var queued = 0;

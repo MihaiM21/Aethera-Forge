@@ -201,9 +201,24 @@ public sealed class BackupStack(BackupsFixture fixture, Tenant tenant, string se
     /// <summary>Waits until the job is finished and returns it.</summary>
     public async Task<Job> WaitForJobAsync(string jobId)
     {
-        await GatewayFixture.EventuallyAsync(async () => await WithDbAsync(db => db.Jobs.AsNoTracking()
-            .AnyAsync(j => j.Id == Guid.Parse(jobId) && (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))),
-            "the job to finish", timeoutMs: 20000);
+        try
+        {
+            await GatewayFixture.EventuallyAsync(async () => await WithDbAsync(db => db.Jobs.AsNoTracking()
+                .AnyAsync(j => j.Id == Guid.Parse(jobId) && (j.Status == JobStatus.Succeeded || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))),
+                "the job to finish", timeoutMs: 20000);
+        }
+        catch (Xunit.Sdk.XunitException)
+        {
+            var state = await WithDbAsync(async db =>
+            {
+                var j = await db.Jobs.AsNoTracking().FirstAsync(x => x.Id == Guid.Parse(jobId));
+                var log = await db.LogChunks.AsNoTracking().Where(c => c.StreamId == $"job:{jobId}").OrderBy(c => c.Sequence).Select(c => c.Data).ToListAsync();
+                var others = await db.Jobs.AsNoTracking().Where(x => x.OrganizationId == j.OrganizationId && x.Id != j.Id).ToListAsync();
+                return $"{j.Type} {j.Status} attempt {j.Attempt}: {j.ErrorJson}\n{string.Join("", log)}\nOther jobs of the organization: "
+                       + string.Join("; ", others.Select(o => $"{o.Type} {o.Status} {o.ErrorJson}"));
+            });
+            throw new Xunit.Sdk.XunitException("Timed out waiting for the job to finish. " + state);
+        }
         return await WithDbAsync(db => db.Jobs.AsNoTracking().FirstAsync(j => j.Id == Guid.Parse(jobId)));
     }
 

@@ -244,6 +244,11 @@ public sealed class BackupRestoreJobHandler : IJobHandler
             if (status.Status is DeploymentStatus.Failed or DeploymentStatus.Cancelled)
                 throw JobFailedException.Permanent("backup.new_service_failed", "The new service did not start",
                     $"{status.FailureReason ?? status.Status.ToString()} The service {name} was created and can be deleted.", "deploy");
+            // The deploy job can die without finishing the deployment row: do not wait for a deployment nobody is running.
+            var deployJob = await db.Jobs.AsNoTracking().Where(j => j.Id == queued.JobId).Select(j => new { j.Status, j.ErrorJson }).FirstAsync(ct);
+            if (deployJob.Status is JobStatus.Failed or JobStatus.Cancelled)
+                throw JobFailedException.Permanent("backup.new_service_failed", "The new service did not start",
+                    $"The deployment job {deployJob.Status.ToString().ToLowerInvariant()}. The service {name} was created and can be deleted.", "deploy");
             if (DateTimeOffset.UtcNow > deadline)
                 throw JobFailedException.Permanent("backup.new_service_timeout", "The new service did not start in time", $"Check the deployment of {name}.", "deploy");
             await Task.Delay(PollInterval, ct);
