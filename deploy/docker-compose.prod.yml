@@ -54,6 +54,9 @@ services:
       # Where new releases are looked up: GitHub by default; a mirror or GitHub Enterprise through AETHERA_UPDATE_API_URL; AETHERA_UPDATE_CHECK=false for air-gapped installs.
       # The install command the UI prints for a new server fetches this script; behind HTTPS, set it to https://<domain>/install-agent.sh.
       Aethera__Agents__InstallScriptUrl: ${AETHERA_INSTALL_AGENT_URL:-}
+      # The address the UI is opened at (https://<domain> with a domain, else http://<host>:<port>): links in emails and notifications.
+      # install.sh writes it; set it by hand in the .env when you change AETHERA_DOMAIN.
+      Aethera__PublicUrl: ${AETHERA_PUBLIC_URL:-}
       # Let's Encrypt: without an email the proxy serves HTTP only. AETHERA_ACME_STAGING=true uses the staging CA while testing.
       Aethera__Proxy__AcmeEmail: ${AETHERA_ACME_EMAIL:-}
       Aethera__Proxy__Staging: ${AETHERA_ACME_STAGING:-false}

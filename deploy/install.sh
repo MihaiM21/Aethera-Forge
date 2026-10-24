@@ -178,6 +178,16 @@ if [ -z "$PUBLIC_HOST" ]; then
 fi
 env_set AETHERA_PUBLIC_HOST "$PUBLIC_HOST"
 [ -z "$DOMAIN" ] || env_set AETHERA_DOMAIN "$DOMAIN"
+# The address people open the UI at: the control plane builds the links in emails and notifications from it (Aethera:PublicUrl). An
+# explicit AETHERA_PUBLIC_URL wins; otherwise a domain given now gives https://<domain>, an earlier value in the .env is kept, and the
+# fallback is the plain address of this machine.
+PUBLIC_URL="${AETHERA_PUBLIC_URL:-}"
+if [ -z "$PUBLIC_URL" ] && [ -n "$DOMAIN" ]; then PUBLIC_URL="https://$DOMAIN"; fi
+if [ -z "$PUBLIC_URL" ]; then PUBLIC_URL="$(env_get AETHERA_PUBLIC_URL)"; fi
+if [ -z "$PUBLIC_URL" ]; then
+  if [ -n "$(env_get AETHERA_DOMAIN)" ]; then PUBLIC_URL="https://$(env_get AETHERA_DOMAIN)"; else PUBLIC_URL="http://$PUBLIC_HOST:$HTTP_PORT"; fi
+fi
+env_set AETHERA_PUBLIC_URL "$PUBLIC_URL"
 [ -z "$ACME_EMAIL" ] || env_set AETHERA_ACME_EMAIL "$ACME_EMAIL"
 env_set AETHERA_VERSION "$IMAGE_VERSION"
 env_set AETHERA_DIR "$DIR"

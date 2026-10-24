@@ -50,6 +50,8 @@ services:
       Aethera__Agents__PublicEndpoint: ${AETHERA_PUBLIC_HOST:-localhost}:${AETHERA_GRPC_PORT:-9443}
       # Connect this machine's agent container as the "local" server once the first owner has registered (false: only Servers > Use this machine).
       Aethera__Agents__AutoLocalServer: ${AETHERA_AUTO_LOCAL_SERVER:-true}
+      # The address the UI is opened at, for links in emails and notifications (empty: the notifications code falls back to AETHERA_DOMAIN).
+      Aethera__PublicUrl: ${AETHERA_PUBLIC_URL:-}
       # Optional (base64 of 32 bytes). Unset = generated once and kept in the aethera_data volume.
       AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:-}
     ports:

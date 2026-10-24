@@ -19,6 +19,8 @@
 #   E2E_V1 / E2E_V2 / E2E_V3 / E2E_V4   versions used for the images (default 0.1.0 0.2.0 0.3.0 0.4.0); 0.3.0 is never built
 #   E2E_KEEP=1                          leave the Docker-in-Docker container running afterwards
 set -euo pipefail
+# Git Bash on Windows rewrites container paths (/deploy/install.sh) into host paths; elsewhere this variable does nothing.
+export MSYS_NO_PATHCONV=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # docker.exe (Git Bash on Windows) needs Windows paths for what it reads from the host; elsewhere pwd -W does not exist.
@@ -103,7 +105,9 @@ D docker run -d --name releases --network aethera_default --network-alias releas
 
 dsh 'test "$(stat -c %a /opt/aethera/.env)" = 600' || fail ".env is not mode 0600"
 dsh 'grep -q "^AETHERA_MASTER_KEY=.\{40,\}" /opt/aethera/.env && grep -q "^AETHERA_DB_PASSWORD=.\{16,\}" /opt/aethera/.env' || fail "secrets were not generated"
-dsh 'grep -q "^AETHERA_JOIN_TOKEN=$" /opt/aethera/.env' || fail "the single-use join token stayed in the .env"
+dsh '! grep -q "^AETHERA_JOIN_TOKEN=." /opt/aethera/.env' || fail "a single-use join token stayed in the .env"
+dsh 'grep -qx "AETHERA_PUBLIC_URL=http://127.0.0.1:8080" /opt/aethera/.env' || fail "install.sh did not write AETHERA_PUBLIC_URL (http://<host>:<port> without a domain)"
+dsh 'docker exec aethera-aethera-1 printenv Aethera__PublicUrl | grep -qx "http://127.0.0.1:8080"' || fail "the control plane does not get Aethera__PublicUrl"
 dsh 'test -x /usr/local/bin/aethera' || fail "the aethera command was not installed"
 ok ".env holds generated secrets with mode 0600, the join token is gone, aethera command installed"
 
