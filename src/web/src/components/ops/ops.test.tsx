@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeResources, makeApp, makeListItem, NOW } from "@/test/resources-fixtures";
 import { fakeApi, makeServer } from "@/test/servers-fixtures";
-import { aggregateUsage, DashboardView, deriveAlerts } from "@/components/shell/dashboard-view";
+import { aggregateUsage, DashboardView } from "@/components/shell/dashboard-view";
 import { groupTemplates, NewServiceView } from "@/components/services/new-service-view";
 import { connectionInfo } from "@/components/services/service-detail-view";
 import { isManaged, SecretsView } from "./secrets-view";
@@ -19,31 +19,6 @@ vi.mock("@/lib/navigate", () => ({ navigateTo: vi.fn() }));
 const empty = { items: [], nextCursor: null };
 
 describe("dashboard", () => {
-  const down = makeServer({ id: "s-down", name: "db-1", transport: "agent", status: { reachability: { status: "unreachable" }, agent: { status: "unavailable" }, docker: { status: "unknown" } } as never });
-  const up = makeServer({ id: "s-up", name: "edge-1" });
-
-  it("derives alerts from reported status only", () => {
-    const alerts = deriveAlerts(
-      [up, down],
-      [makeApp({ id: "a1", name: "web", status: "failed", statusReason: "health check" }), makeApp({ id: "a2", name: "api", status: "running" }), makeApp({ id: "a3", name: "slow", status: "unhealthy" })],
-      [],
-      { cpu: 95, memory: 40, disk: null },
-    );
-    expect(alerts.map((a) => [a.key, a.tone])).toEqual([
-      ["srv:s-down", "danger"],
-      ["app:a1", "danger"],
-      ["app:a3", "warning"],
-      ["use:CPU", "warning"],
-    ]);
-    expect(deriveAlerts([up], [makeApp()], [], { cpu: 10, memory: 10, disk: 10 })).toEqual([]);
-  });
-
-  it("announces an available update first, linking to the system settings", () => {
-    const alerts = deriveAlerts([up], [makeApp({ id: "a1", name: "web", status: "failed" })], [], { cpu: null, memory: null, disk: null }, { current: "1.0.0", latest: "1.2.0" });
-    expect(alerts[0]).toEqual({ key: "update", tone: "warning", text: "Aethera 1.2.0 is available (running 1.0.0)", href: "/settings#system" });
-    expect(alerts).toHaveLength(2);
-    expect(deriveAlerts([up], [], [], { cpu: null, memory: null, disk: null }, null)).toEqual([]);
-  });
 
   it("averages cpu and sums memory and disk over servers with fresh metrics", () => {
     const host = (cpu: number, used: number) => ({ timestamp: NOW, cpuPercent: cpu, memoryUsedBytes: used, memoryTotalBytes: 100, diskUsedBytes: used, diskTotalBytes: 200 });
@@ -73,7 +48,8 @@ describe("dashboard", () => {
       jobs: { list: vi.fn().mockResolvedValue({ items: [{ id: "j1", type: "application.deploy", status: "running", createdAt: NOW }], nextCursor: null }) },
     });
     const servers = fakeApi({ list: vi.fn().mockResolvedValue({ items: [makeServer()], nextCursor: null }), latestMetrics: vi.fn().mockResolvedValue({ serverId: "x", host: null, containers: [], observedAt: null, stale: true }) });
-    render(<DashboardView api={api} servers={servers} pollMs={60_000} />);
+    const notifications = { alerts: { list: vi.fn().mockResolvedValue(empty) } } as never;
+    render(<DashboardView api={api} servers={servers} notifications={notifications} pollMs={60_000} />);
 
     expect(await screen.findByText("All quiet")).toBeInTheDocument();
     expect(screen.getByText("1 online · 0 ssh · 0 offline")).toBeInTheDocument();
@@ -81,6 +57,30 @@ describe("dashboard", () => {
     expect(await screen.findByText("failed at Build · build.failed", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("application.deploy")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /New application/ })).toHaveAttribute("href", "/applications/new");
+  });
+
+  it("lists the open stored alerts, most severe first, linking to the resource", async () => {
+    const api = fakeResources({
+      applications: { list: vi.fn().mockResolvedValue(empty) },
+      services: { list: vi.fn().mockResolvedValue(empty) },
+      deployments: { list: vi.fn().mockResolvedValue(empty) },
+      jobs: { list: vi.fn().mockResolvedValue(empty) },
+    });
+    const servers = fakeApi({ list: vi.fn().mockResolvedValue(empty), latestMetrics: vi.fn() });
+    const alert = (over: Record<string, unknown>) => ({ id: "x", severity: "warning", title: "t", path: null, state: "open", ...over });
+    const list = vi.fn().mockResolvedValue({
+      items: [alert({ id: "w", title: "Disk almost full", path: "/servers/s-1" }), alert({ id: "c", severity: "critical", title: "Deployment #3 of web failed", path: "/deployments/d-3" })],
+      nextCursor: null,
+    });
+    render(<DashboardView api={api} servers={servers} notifications={{ alerts: { list } } as never} pollMs={60_000} />);
+
+    const first = await screen.findByRole("link", { name: /Deployment #3 of web failed/ });
+    expect(first).toHaveAttribute("href", "/deployments/d-3");
+    expect(first).toHaveTextContent("Critical: Deployment #3 of web failed");
+    expect(screen.getByRole("link", { name: /Disk almost full/ })).toHaveAttribute("href", "/servers/s-1");
+    expect(screen.getByRole("link", { name: "All alerts" })).toHaveAttribute("href", "/monitoring");
+    expect(screen.queryByText("All quiet")).not.toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ state: "open", limit: 20 }, expect.anything());
   });
 });
 

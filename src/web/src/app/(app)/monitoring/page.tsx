@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/shell/placeholder-page";
+import { MonitoringView } from "@/components/notifications/monitoring-view";
 
 export const metadata: Metadata = { title: "Monitoring" };
 
 export default function Page() {
-  return <PlaceholderPage href="/monitoring" />;
+  return <MonitoringView />;
 }
