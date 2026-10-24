@@ -7,6 +7,7 @@ using Aethera.Api.Security;
 using Aethera.Domain;
 using Aethera.Domain.Transport;
 using Aethera.Infrastructure.Agents;
+using Aethera.Infrastructure.SelfOps;
 using Aethera.Infrastructure.Agents.Enrollment;
 using Aethera.Infrastructure.Agents.Ingest;
 using Aethera.Infrastructure.Agents.Jobs;
@@ -135,7 +136,7 @@ internal static class AgentEndpoints
         var info = await ca.GetPublicInfoAsync(ct);
         var endpoint = settings.EffectivePublicEndpoint;
         var script = settings.InstallScriptUrl is { Length: > 0 } configured ? configured : $"{http.Request.Scheme}://{http.Request.Host}/install-agent.sh";
-        var command = $"curl -fsSL {script} | sudo bash -s -- --token {token} --endpoint {endpoint} --ca-sha256 {info.FingerprintSha256}";
+        var command = $"curl -fsSL {script} | sudo bash -s -- --token {token} --endpoint {endpoint} --ca-sha256 {info.FingerprintSha256}{AgentInstallCommand.VersionArgument(AppVersion.Current)}";
         return TypedResults.Created($"{ResourceHttp.Path("servers", id)}/join-tokens",
             new JoinTokenResponse(record.Id, id, token, record.ExpiresAt, endpoint, info.FingerprintSha256, command));
     }
@@ -385,4 +386,15 @@ internal static class AgentEndpoints
         var dto = await JobMapper.ToDtoWithPositionAsync(db, job, ct);
         return Results.Accepted(dto.Links.Self, dto);
     }
+}
+
+/// <summary>Parts of the install command printed with a join token.</summary>
+public static class AgentInstallCommand
+{
+    /// <summary>
+    /// A released control plane installs the agent of its own release (a release candidate has no <c>releases/latest</c> download, and the
+    /// two should match anyway); a development build leaves the choice to the script (the newest release).
+    /// </summary>
+    public static string VersionArgument(string controlPlaneVersion) =>
+        controlPlaneVersion.StartsWith("0.0.0-", StringComparison.Ordinal) ? "" : $" --version {controlPlaneVersion}";
 }
