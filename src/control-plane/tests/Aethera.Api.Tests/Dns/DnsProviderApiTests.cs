@@ -57,6 +57,7 @@ public sealed class DnsProviderApiTests(DnsFixture fixture)
         Assert.Equal("********", secret["value"]!.GetValue<string>());
         Assert.True(secret["managed"]!.GetValue<bool>());
         Assert.Equal("dnsCredential", secret["purpose"]!.GetValue<string>());
+        Assert.Equal("dnsProvider", secret["managedBy"]!["type"]!.GetValue<string>());
         await (await tenant.Developer.DeleteAsync($"/api/v1/secrets/{secret.Id()}?confirm={secret["name"]!.GetValue<string>()}")).AssertProblemAsync(409, "secret.managed");
 
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
