@@ -553,6 +553,22 @@ export interface paths {
         patch: operations["updateApplication"];
         trace?: never;
     };
+    "/api/v1/applications/{id}/compose/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["inspectApplicationCompose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/services": {
         parameters: {
             query?: never;
@@ -1956,6 +1972,7 @@ export interface components {
             compose: null | components["schemas"]["ComposeSourceResponse"];
             build: null | components["schemas"]["BuildConfigResponse"];
             runtime: components["schemas"]["RuntimeResponse"];
+            customLabels: components["schemas"]["JsonObject"];
             /** Format: date-time */
             createdAt: unknown;
             /** Format: date-time */
@@ -2039,6 +2056,10 @@ export interface components {
             createdAt: unknown;
             kind: string;
         };
+        BasicAuthUserRequest: {
+            username?: null | string;
+            password?: null | string;
+        };
         BuildCandidateDto: {
             engine: string;
             /** Format: double */
@@ -2096,6 +2117,17 @@ export interface components {
         ChangePasswordRequest: {
             currentPassword: string;
             newPassword: string;
+        };
+        ComposeInspectResponse: {
+            services: components["schemas"]["ComposeServiceResponse"][];
+            commitSha: string;
+            violations: string[];
+        };
+        ComposeServiceResponse: {
+            name: string;
+            image: string;
+            hasBuild: boolean;
+            ports: (number | string)[];
         };
         ComposeSourceRequest: {
             filePath?: null | string;
@@ -2165,6 +2197,12 @@ export interface components {
             /** Format: int32 */
             targetPort?: null | number | string;
             isPrimary?: null | boolean;
+            composeService?: null | string;
+            redirectTo?: null | string;
+            stripPathPrefix?: null | boolean;
+            basicAuth?: null | components["schemas"]["BasicAuthUserRequest"][];
+            /** Format: uuid */
+            dnsProviderId?: null | string;
         };
         CreateEnvVarRequest: {
             key?: null | string;
@@ -2528,8 +2566,15 @@ export interface components {
             /** Format: int32 */
             targetPort: null | number | string;
             isPrimary: boolean;
+            composeService: null | string;
+            redirectTo: null | string;
+            stripPathPrefix: boolean;
+            basicAuthUsers: string[];
+            /** Format: uuid */
+            dnsProviderId: null | string;
             certificate: components["schemas"]["DomainCertificateResponse"];
             dns: components["schemas"]["DomainDnsResponse"];
+            warnings: string[];
             /** Format: date-time */
             createdAt: unknown;
             /** Format: date-time */
@@ -3531,6 +3576,9 @@ export interface components {
             compose?: null | components["schemas"]["ComposeSourceRequest"];
             build?: null | components["schemas"]["BuildConfigRequest"];
             runtime?: null | components["schemas"]["RuntimeRequest"];
+            customLabels?: null | {
+                [key: string]: string;
+            };
         };
         UpdateDomainRequest: {
             hostname?: null | string;
@@ -3539,6 +3587,12 @@ export interface components {
             /** Format: int32 */
             targetPort?: null | number | string;
             isPrimary?: null | boolean;
+            composeService?: null | string;
+            redirectTo?: null | string;
+            stripPathPrefix?: null | boolean;
+            basicAuth?: null | components["schemas"]["BasicAuthUserRequest"][];
+            /** Format: uuid */
+            dnsProviderId?: null | string;
         };
         UpdateEnvVarRequest: {
             key?: null | string;
@@ -6418,6 +6472,82 @@ export interface operations {
             };
             /** @description Unexpected error (internal.error). */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    inspectApplicationCompose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeInspectResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

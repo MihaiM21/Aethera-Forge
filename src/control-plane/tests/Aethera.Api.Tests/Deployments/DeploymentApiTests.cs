@@ -264,7 +264,9 @@ public sealed class DeploymentApiTests(DeploymentsFixture fixture)
 
         var create = Transport.Commands.Select(c => c.Command).OfType<ContainerCreateCommand>().Single();
         Assert.Contains(create.Spec.Labels!, kv => kv.Key.EndsWith("-https.rule") && kv.Value == "Host(`app.example.com`)");
-        Assert.Contains(create.Spec.Labels!, kv => kv.Key.EndsWith("-https.tls.certresolver"));
+        // No ACME email in this host: the HTTPS router names no certificate resolver (Traefik serves its default certificate) instead of a resolver that does not exist.
+        Assert.DoesNotContain(create.Spec.Labels!, kv => kv.Key.EndsWith("certresolver"));
+        Assert.Contains(create.Spec.Labels!, kv => kv.Key.EndsWith("-https.tls") && kv.Value == "true");
         Assert.Contains(create.Spec.Networks!, n => n.Network == "aethera-proxy");
         Assert.Contains(Transport.Commands, c => c.Command is ProxyEnsureCommand);
         Assert.Contains(Transport.Commands, c => c.Command is NetworkCreateCommand n && n.NetworkName == "aethera-proxy");

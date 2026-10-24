@@ -9,7 +9,7 @@ export const BUILD_METHODS: Array<{ value: BuildMethod; label: string; hint: str
   { value: "nixpacks", label: "Nixpacks", hint: "Detect the language and build without a Dockerfile.", fromRepo: true },
   { value: "static", label: "Static site", hint: "Build with Node and serve the output with nginx.", fromRepo: true },
   { value: "dockerImage", label: "Docker image", hint: "Run a prebuilt image from a registry.", fromRepo: false },
-  { value: "compose", label: "Docker Compose", hint: "Run a compose file (pasted in).", fromRepo: false },
+  { value: "compose", label: "Docker Compose", hint: "Run a compose file from your repository, or paste one in.", fromRepo: false },
 ];
 
 export type EnvRow = { id: number; key: string; value: string; secret: boolean };
@@ -31,6 +31,9 @@ export type WizardState = {
   tag: string;
   registryId: string;
   composeContent: string;
+  /** Where the compose file comes from: a path in the repository (built on the server) or pasted in. */
+  composeSource: "repo" | "inline";
+  composePath: string;
   context: string;
   dockerfilePath: string;
   installCommand: string;
@@ -61,6 +64,8 @@ export const initialWizardState: WizardState = {
   tag: "latest",
   registryId: "",
   composeContent: "",
+  composeSource: "repo",
+  composePath: "docker-compose.yml",
   context: ".",
   dockerfilePath: "Dockerfile",
   installCommand: "",
@@ -96,6 +101,16 @@ export function isRepoMethod(m: BuildMethod): boolean {
   return m === "dockerfile" || m === "nixpacks" || m === "static";
 }
 
+/** The wizard asks for a repository: a source build, or a compose file that lives in one. */
+export function usesRepo(s: Pick<WizardState, "method" | "composeSource">): boolean {
+  return isRepoMethod(s.method) || (s.method === "compose" && s.composeSource === "repo");
+}
+
+/** Relative path inside the repository: no leading slash, no "..", no backslash (what the API accepts). */
+export function isRelativePath(p: string): boolean {
+  return p !== "" && !p.startsWith("/") && !p.startsWith("~") && !p.startsWith("-") && !p.includes("\\") && !p.split("/").includes("..");
+}
+
 export function providerOf(url: string): "gitHub" | "gitLab" | "generic" {
   if (/github\.com[/:]/i.test(url)) return "gitHub";
   if (/gitlab\.com[/:]/i.test(url)) return "gitLab";
@@ -116,7 +131,7 @@ export function validateStep(step: StepKey, s: WizardState): Errors {
       if (!s.name.trim()) e.name = "Give the application a name.";
       if (!s.slug) e.slug = "A slug is required (lowercase letters, digits and hyphens).";
       else if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(s.slug) || s.slug.length > 63) e.slug = "Use lowercase letters, digits and single hyphens (max 63).";
-      if (isRepoMethod(s.method)) {
+      if (usesRepo(s)) {
         if (!s.repoUrl.trim()) e.repoUrl = "Enter the repository URL.";
         else if (!/^(https?:\/\/|ssh:\/\/|git@)/i.test(s.repoUrl.trim())) e.repoUrl = "Use an https://, ssh:// or git@ URL.";
         if (!s.branch.trim()) e.branch = "Enter a branch.";
@@ -126,7 +141,11 @@ export function validateStep(step: StepKey, s: WizardState): Errors {
         else if (!IMAGE.test(s.image.trim())) e.image = "That is not a valid image name.";
         if (!s.tag.trim()) e.tag = "Enter a tag (latest is allowed).";
       }
-      if (s.method === "compose" && !s.composeContent.trim()) e.composeContent = "Paste the compose file.";
+      if (s.method === "compose" && s.composeSource === "inline" && !s.composeContent.trim()) e.composeContent = "Paste the compose file.";
+      if (s.method === "compose" && s.composeSource === "repo") {
+        if (!s.composePath.trim()) e.composePath = "Enter the path of the compose file in the repository.";
+        else if (!isRelativePath(s.composePath.trim())) e.composePath = "Use a path inside the repository, like deploy/docker-compose.yml.";
+      }
       break;
     case "build":
       if (s.method === "dockerfile" && !s.dockerfilePath.trim()) e.dockerfilePath = "Enter the Dockerfile path.";
@@ -151,6 +170,7 @@ export function validateStep(step: StepKey, s: WizardState): Errors {
       if (s.healthPath && !s.healthPath.startsWith("/")) e.healthPath = "The health check path starts with /.";
       break;
     case "domain":
+      if (s.method === "compose") break; // the domains of a compose application name a service: added on its Domains tab
       if (s.hostname.trim() && !HOSTNAME.test(s.hostname.trim())) e.hostname = "That is not a valid hostname.";
       break;
   }
@@ -194,7 +214,7 @@ export function toCreateRequest(s: WizardState): CreateApplicationRequest {
     serverId: s.serverId,
     sourceKind: kind,
   };
-  if (isRepoMethod(s.method)) {
+  if (usesRepo(s)) {
     body.gitSource = {
       provider: providerOf(s.repoUrl),
       repositoryUrl: s.repoUrl.trim(),
@@ -202,19 +222,20 @@ export function toCreateRequest(s: WizardState): CreateApplicationRequest {
       gitCredentialId: nz(s.credentialId) ?? null,
       autoDeploy: s.autoDeploy,
     };
-    body.build = {
-      engine: s.method,
-      context: nz(s.context) ?? ".",
-      dockerfilePath: s.method === "dockerfile" ? nz(s.dockerfilePath) : undefined,
-      installCommand: nz(s.installCommand),
-      buildCommand: nz(s.buildCommand),
-      startCommand: nz(s.startCommand),
-      outputDirectory: nz(s.outputDirectory),
-      cacheEnabled: true,
-    };
+    if (isRepoMethod(s.method))
+      body.build = {
+        engine: s.method,
+        context: nz(s.context) ?? ".",
+        dockerfilePath: s.method === "dockerfile" ? nz(s.dockerfilePath) : undefined,
+        installCommand: nz(s.installCommand),
+        buildCommand: nz(s.buildCommand),
+        startCommand: nz(s.startCommand),
+        outputDirectory: nz(s.outputDirectory),
+        cacheEnabled: true,
+      };
   }
   if (s.method === "dockerImage") body.image = { image: s.image.trim(), tag: s.tag.trim(), registryId: nz(s.registryId) ?? null, pullPolicy: "ifNotPresent" };
-  if (s.method === "compose") body.compose = { inlineContent: s.composeContent };
+  if (s.method === "compose") body.compose = s.composeSource === "repo" ? { filePath: s.composePath.trim() } : { inlineContent: s.composeContent };
   if (s.method !== "compose") {
     const health = s.healthPath.trim();
     body.runtime = {

@@ -20,7 +20,7 @@ import type { Domain } from "@/lib/resources/types";
 import { formatAgo } from "@/lib/servers/format";
 import { usePolled } from "@/lib/servers/use-polled";
 
-type Owner = { name: string; href: string; kind: "applications" | "services" };
+type Owner = { name: string; href: string; kind: "applications" | "services"; compose?: boolean };
 
 /** Picks the application or service a new domain is attached to, then reuses the per-workload dialog. */
 function ChooseWorkloadDialog({ owners, onChoose, onClose }: { owners: Array<Owner & { id: string }>; onChoose: (o: Owner & { id: string }) => void; onClose: () => void }) {
@@ -78,7 +78,7 @@ export function DomainsView({ api = resourcesApi }: { api?: ResourcesApi }) {
 
   const owners = React.useMemo(() => {
     const m = new Map<string, Owner & { id: string }>();
-    for (const a of apps.data?.items ?? []) m.set(a.id, { id: a.id, name: a.name, href: `/applications/${a.id}`, kind: "applications" });
+    for (const a of apps.data?.items ?? []) m.set(a.id, { id: a.id, name: a.name, href: `/applications/${a.id}`, kind: "applications", compose: a.sourceKind === "compose" });
     for (const s of services.data?.items ?? []) m.set(s.id, { id: s.id, name: s.name, href: `/services/${s.id}`, kind: "services" });
     return m;
   }, [apps.data, services.data]);
@@ -147,6 +147,10 @@ export function DomainsView({ api = resourcesApi }: { api?: ResourcesApi }) {
                       {d.pathPrefix !== "/" ? d.pathPrefix : ""}
                     </a>
                     {d.isPrimary && <Badge tone="brand">primary</Badge>}
+                    {d.composeService && <Badge tone="neutral">service {d.composeService}</Badge>}
+                    {d.redirectTo && <Badge tone="neutral">→ {d.redirectTo}</Badge>}
+                    {(d.basicAuthUsers?.length ?? 0) > 0 && <Badge tone="neutral">basic auth</Badge>}
+                    {d.dnsProviderId && <Badge tone="neutral">DNS-01</Badge>}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {owner ? (
@@ -194,7 +198,7 @@ export function DomainsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           }}
         />
       )}
-      {adding && <AddDomainDialog kind={adding.kind} id={adding.id} api={api} onClose={() => setAdding(null)} onAdded={() => void list.refresh()} />}
+      {adding && <AddDomainDialog kind={adding.kind} id={adding.id} compose={adding.compose} api={api} onClose={() => setAdding(null)} onSaved={() => void list.refresh()} />}
     </div>
   );
 }

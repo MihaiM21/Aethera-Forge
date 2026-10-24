@@ -19,6 +19,9 @@ import { formatAgo, formatBytes } from "@/lib/servers/format";
 import { serversApi, type ServersApi } from "@/lib/servers/api";
 import { usePolled } from "@/lib/servers/use-polled";
 import { navigateTo } from "@/lib/navigate";
+import { useAuth } from "@/lib/auth/auth-context";
+import { isAdminRole } from "@/components/ops/settings-view";
+import { isRelativePath, providerOf } from "@/lib/resources/wizard";
 
 type Props = { app: Application; api?: ResourcesApi; onSaved: () => void };
 
@@ -335,6 +338,101 @@ function WebhookPanel({ app, api }: { app: Application; api: ResourcesApi }) {
   );
 }
 
+/** Compose applications: the file comes from the repository (built on the server) or is pasted in (ADR 0010). */
+function ComposeSourceForm(
+  p: Props & {
+    branch: string;
+    setBranch: (v: string) => void;
+    pin: string;
+    setPin: (v: string) => void;
+    autoDeploy: boolean;
+    setAutoDeploy: (v: boolean) => void;
+    compose: string;
+    setCompose: (v: string) => void;
+  },
+) {
+  const { app, api = resourcesApi } = p;
+  const [mode, setMode] = React.useState<"repo" | "inline">(app.compose?.filePath ? "repo" : app.compose?.inlineContent ? "inline" : "repo");
+  const [path, setPath] = React.useState(app.compose?.filePath ?? "docker-compose.yml");
+  const [repoUrl, setRepoUrl] = React.useState(app.gitSource?.repositoryUrl ?? "");
+  const [credentialId, setCredentialId] = React.useState(app.gitSource?.gitCredentialId ?? "");
+  const creds = usePolled((signal) => api.gitCredentials.list({ signal }).catch(() => ({ items: [], nextCursor: null })), "compose-creds", { intervalMs: null });
+  const { act, save } = usePatch(api, app, p.onSaved);
+  const pathInvalid = mode === "repo" && !isRelativePath(path.trim());
+  return (
+    <form
+      className="grid max-w-3xl gap-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (mode === "inline") {
+          void save({ compose: { filePath: null, inlineContent: p.compose } });
+          return;
+        }
+        void save({
+          gitSource: {
+            repositoryUrl: repoUrl.trim(),
+            provider: providerOf(repoUrl),
+            branch: p.branch.trim() || "main",
+            commitPin: nz(p.pin),
+            autoDeploy: p.autoDeploy,
+            gitCredentialId: credentialId || null,
+          },
+          compose: { filePath: path.trim(), inlineContent: null },
+        });
+      }}
+    >
+      <SectionTitle index="01">Compose file</SectionTitle>
+      <fieldset className="flex flex-wrap gap-2">
+        <legend className="sr-only">Where the compose file comes from</legend>
+        <label className={`flex cursor-pointer items-center gap-2 border border-border px-3 py-1.5 text-sm ${mode === "repo" ? "border-primary bg-primary-soft" : ""}`}>
+          <input type="radio" name="compose-source" checked={mode === "repo"} onChange={() => setMode("repo")} /> Compose file from the repository
+        </label>
+        <label className={`flex cursor-pointer items-center gap-2 border border-border px-3 py-1.5 text-sm ${mode === "inline" ? "border-primary bg-primary-soft" : ""}`}>
+          <input type="radio" name="compose-source" checked={mode === "inline"} onChange={() => setMode("inline")} /> Paste a compose file
+        </label>
+      </fieldset>
+      {mode === "repo" ? (
+        <>
+          <Field label="Repository URL" error={fieldError(act.fields, "repositoryUrl")}>
+            {(c) => <Input {...c} value={repoUrl} placeholder="https://github.com/owner/repo.git" onChange={(e) => setRepoUrl(e.target.value)} />}
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Branch" error={fieldError(act.fields, "branch")}>{(c) => <Input {...c} value={p.branch} onChange={(e) => p.setBranch(e.target.value)} />}</Field>
+            <Field label="Pin to a commit" hint="Empty = follow the branch." error={fieldError(act.fields, "commitPin")}>
+              {(c) => <Input {...c} className="font-mono" value={p.pin} onChange={(e) => p.setPin(e.target.value)} />}
+            </Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Compose file path" hint="Relative to the repository root." error={pathInvalid ? "Use a path inside the repository." : fieldError(act.fields, "filePath")}>
+              {(c) => <Input {...c} className="font-mono" value={path} onChange={(e) => setPath(e.target.value)} />}
+            </Field>
+            <Field label="Git credential" hint="Only for private repositories.">
+              {(c) => (
+                <NativeSelect {...c} value={credentialId} onChange={(e) => setCredentialId(e.target.value)}>
+                  <option value="">None (public)</option>
+                  {(creds.data?.items ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </NativeSelect>
+              )}
+            </Field>
+          </div>
+          <label className="flex items-center gap-3 text-sm">
+            <Switch checked={p.autoDeploy} onCheckedChange={p.setAutoDeploy} aria-label="Deploy on push" /> Deploy automatically when the branch is pushed
+          </label>
+          <p className="text-xs text-muted-foreground">Services with build: are built on the server from the checkout on every deployment; build arguments are the application&apos;s build-time variables.</p>
+        </>
+      ) : (
+        <Field label="compose.yaml" error={fieldError(act.fields, "inlineContent")}>
+          {(c) => <Textarea {...c} rows={16} className="font-mono text-xs" value={p.compose} onChange={(e) => p.setCompose(e.target.value)} />}
+        </Field>
+      )}
+      <FormError message={act.error} />
+      <div><SaveButton pending={act.pending} disabled={mode === "repo" && (!repoUrl.trim() || pathInvalid)} /></div>
+    </form>
+  );
+}
+
 export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
   const b = app.build;
   const g = app.gitSource;
@@ -369,12 +467,19 @@ export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
   }
   if (app.sourceKind === "compose") {
     return (
-      <form className="grid max-w-3xl gap-5" onSubmit={(e) => { e.preventDefault(); void save({ compose: { inlineContent: compose } }); }}>
-        <SectionTitle index="01">Compose file</SectionTitle>
-        <Field label="compose.yaml" error={fieldError(act.fields, "inlineContent")}>{(c) => <Textarea {...c} rows={16} className="font-mono text-xs" value={compose} onChange={(e) => setCompose(e.target.value)} />}</Field>
-        <FormError message={act.error} />
-        <div><SaveButton pending={act.pending} /></div>
-      </form>
+      <ComposeSourceForm
+        app={app}
+        api={api}
+        onSaved={onSaved}
+        branch={branch}
+        setBranch={setBranch}
+        pin={pin}
+        setPin={setPin}
+        autoDeploy={autoDeploy}
+        setAutoDeploy={setAutoDeploy}
+        compose={compose}
+        setCompose={setCompose}
+      />
     );
   }
   return (
@@ -433,7 +538,58 @@ export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
 
 // ------------------------------------------------------------------------------------------------ Settings
 
+type LabelRow = { id: number; key: string; value: string };
+
+/** Extra container labels (Traefik middlewares and the like), merged over the generated ones. Administrators only; the API refuses `aethera.*` and `traefik.docker.network`. */
+export function CustomLabelsEditor({ app, api = resourcesApi, onSaved }: Props) {
+  const initial = Object.entries(app.customLabels ?? {}) as Array<[string, string]>;
+  const nextId = React.useRef(initial.length + 1);
+  const [rows, setRows] = React.useState<LabelRow[]>(initial.map(([key, value], i) => ({ id: i + 1, key, value })));
+  const { act, save } = usePatch(api, app, onSaved);
+  const filled = rows.filter((r) => r.key.trim());
+  const protectedKey = (k: string) => /^(aethera\.|traefik\.docker\.network)/i.test(k.trim());
+  const duplicate = new Set(filled.map((r) => r.key.trim())).size !== filled.length;
+  const invalid = filled.some((r) => protectedKey(r.key)) || duplicate;
+  const update = (id: number, patch: Partial<LabelRow>) => setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  return (
+    <form
+      className="grid gap-4"
+      aria-label="Custom labels"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save({ customLabels: Object.fromEntries(filled.map((r) => [r.key.trim(), r.value])) }, "Labels saved: they apply on the next deployment");
+      }}
+    >
+      <SectionTitle index="02">Custom labels</SectionTitle>
+      <p className="text-sm text-muted-foreground">
+        Container labels merged last over the generated ones, for example a Traefik middleware. On a compose application they go on its first routed service. Names starting with <span className="font-mono">aethera.</span> or{" "}
+        <span className="font-mono">traefik.docker.network</span> are managed by Aethera.
+      </p>
+      <div className="grid gap-2">
+        {rows.map((r) => (
+          <div key={r.id} className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-2">
+            <Input aria-label="Label name" className="font-mono" placeholder="traefik.http.middlewares.x.compress" value={r.key} aria-invalid={protectedKey(r.key) ? true : undefined} onChange={(e) => update(r.id, { key: e.target.value })} />
+            <Input aria-label="Label value" className="font-mono" placeholder="true" value={r.value} onChange={(e) => update(r.id, { value: e.target.value })} />
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${r.key || "label"}`} onClick={() => setRows((p) => p.filter((x) => x.id !== r.id))}>
+              <Trash2Icon aria-hidden="true" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      {invalid && <p className="text-xs text-danger">{duplicate ? "A label name appears twice." : "Names starting with aethera. or traefik.docker.network cannot be set."}</p>}
+      <FormError message={act.error ?? fieldError(act.fields, "customLabels")} />
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" onClick={() => setRows((p) => [...p, { id: nextId.current++, key: "", value: "" }])}>
+          <PlusIcon aria-hidden="true" /> Add label
+        </Button>
+        <SaveButton pending={act.pending} disabled={invalid} />
+      </div>
+    </form>
+  );
+}
+
 export function SettingsTab({ app, api = resourcesApi, servers = serversApi, onSaved }: Props & { servers?: ServersApi }) {
+  const { me } = useAuth();
   const [name, setName] = React.useState(app.name);
   const [description, setDescription] = React.useState(app.description ?? "");
   const [serverId, setServerId] = React.useState(app.serverId);
@@ -469,6 +625,7 @@ export function SettingsTab({ app, api = resourcesApi, servers = serversApi, onS
         <FormError message={act.error} />
         <div><SaveButton pending={act.pending} disabled={!dirty || !name.trim()} /></div>
       </form>
+      {isAdminRole(me?.role) && <CustomLabelsEditor app={app} api={api} onSaved={onSaved} />}
       <section className="grid gap-3 border border-danger/50 p-4">
         <h3 className="text-base font-medium text-danger">Danger zone</h3>
         <p className="text-sm text-muted-foreground">Deleting the application removes its configuration and domains. Containers already running on the server are not touched.</p>

@@ -3948,6 +3948,106 @@
         "x-required-scope": "write"
       }
     },
+    "/api/v1/applications/{id}/compose/inspect": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "operationId": "inspectApplicationCompose",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeInspectResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "write"
+      }
+    },
     "/api/v1/services": {
       "get": {
         "tags": [
@@ -13854,6 +13954,7 @@
           "compose",
           "build",
           "runtime",
+          "customLabels",
           "createdAt",
           "updatedAt"
         ],
@@ -13935,6 +14036,9 @@
           },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeResponse"
+          },
+          "customLabels": {
+            "$ref": "#/components/schemas/JsonObject"
           },
           "createdAt": {
             "format": "date-time"
@@ -14264,6 +14368,23 @@
           }
         }
       },
+      "BasicAuthUserRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "BuildCandidateDto": {
         "required": [
           "engine",
@@ -14554,6 +14675,62 @@
           },
           "newPassword": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeInspectResponse": {
+        "required": [
+          "services",
+          "commitSha",
+          "violations"
+        ],
+        "type": "object",
+        "properties": {
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComposeServiceResponse"
+            }
+          },
+          "commitSha": {
+            "type": "string"
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ComposeServiceResponse": {
+        "required": [
+          "name",
+          "image",
+          "hasBuild",
+          "ports"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "hasBuild": {
+            "type": "boolean"
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
           }
         }
       },
@@ -14878,6 +15055,40 @@
               "null",
               "boolean"
             ]
+          },
+          "composeService": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "redirectTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripPathPrefix": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "basicAuth": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BasicAuthUserRequest"
+            }
+          },
+          "dnsProviderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -16363,8 +16574,14 @@
           "httpsEnabled",
           "targetPort",
           "isPrimary",
+          "composeService",
+          "redirectTo",
+          "stripPathPrefix",
+          "basicAuthUsers",
+          "dnsProviderId",
           "certificate",
           "dns",
+          "warnings",
           "createdAt",
           "updatedAt"
         ],
@@ -16403,11 +16620,45 @@
           "isPrimary": {
             "type": "boolean"
           },
+          "composeService": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "redirectTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripPathPrefix": {
+            "type": "boolean"
+          },
+          "basicAuthUsers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dnsProviderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
           "certificate": {
             "$ref": "#/components/schemas/DomainCertificateResponse"
           },
           "dns": {
             "$ref": "#/components/schemas/DomainDnsResponse"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "createdAt": {
             "format": "date-time"
@@ -20533,6 +20784,15 @@
                 "$ref": "#/components/schemas/RuntimeRequest"
               }
             ]
+          },
+          "customLabels": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
@@ -20571,6 +20831,40 @@
               "null",
               "boolean"
             ]
+          },
+          "composeService": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "redirectTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripPathPrefix": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "basicAuth": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BasicAuthUserRequest"
+            }
+          },
+          "dnsProviderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },

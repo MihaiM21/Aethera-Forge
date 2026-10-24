@@ -62,7 +62,7 @@ export function tabFromHash(hash: string): AppTab {
 function sourceLabel(app: Application): string {
   if (app.gitSource) return `${repoLabel(app.gitSource.repositoryUrl)} @ ${app.gitSource.branch}`;
   if (app.image) return `${app.image.image}:${app.image.tag}`;
-  if (app.compose) return "compose file";
+  if (app.compose) return app.compose.filePath ? `compose file ${app.compose.filePath}` : "compose file";
   return "-";
 }
 
@@ -375,7 +375,7 @@ export function ApplicationDetailView({ api = resourcesApi, servers = serversApi
         </TabsContent>
         <TabsContent value="logs">{tab === "logs" && <LogsTab app={a} api={api} />}</TabsContent>
         <TabsContent value="environment">{tab === "environment" && <EnvTab kind="applications" id={a.id} slug={a.slug} api={api} />}</TabsContent>
-        <TabsContent value="domains">{tab === "domains" && <DomainsTab kind="applications" id={a.id} api={api} />}</TabsContent>
+        <TabsContent value="domains">{tab === "domains" && <DomainsTab kind="applications" id={a.id} compose={a.sourceKind === "compose"} api={api} />}</TabsContent>
         <TabsContent value="storage">{tab === "storage" && <StorageTab kind="applications" id={a.id} api={api} />}</TabsContent>
         <TabsContent value="networking">{tab === "networking" && <NetworkingTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="resources">{tab === "resources" && <ResourcesTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>

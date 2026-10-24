@@ -118,6 +118,61 @@ describe("CreateApplicationWizard", () => {
     expect(m.create.mock.calls[0][0].gitSource).toBeUndefined();
   });
 
+  it("offers the compose file from the repository next to pasting one, and creates the application from it", { timeout: 30_000 }, async () => {
+    const m = setup();
+    await screen.findByDisplayValue("Staging");
+    await userEvent.click(screen.getByRole("radio", { name: /Docker Compose/ }));
+
+    // From the repository is the default: repository fields and a path, no textarea.
+    expect(screen.getByRole("radio", { name: "Compose file from the repository" })).toBeChecked();
+    expect(screen.getByLabelText("Compose file path")).toHaveValue("docker-compose.yml");
+    expect(screen.queryByLabelText("compose.yaml")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Repository URL"), "git@github.com:acme/turnone.git");
+    const path = screen.getByLabelText("Compose file path");
+    await userEvent.clear(path);
+    await userEvent.type(path, "deploy/docker-compose.prod.yml");
+
+    // Pasting is the alternative: it swaps the path for a textarea and drops the repository.
+    await userEvent.click(screen.getByRole("radio", { name: "Paste a compose file" }));
+    expect(screen.getByLabelText("compose.yaml")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Repository URL")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Compose file from the repository" }));
+    expect(screen.getByLabelText("Compose file path")).toHaveValue("deploy/docker-compose.prod.yml");
+
+    await next();
+    expect(screen.getByText(/read from the repository on the server/)).toBeInTheDocument();
+    await next();
+    await next();
+    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue("srv-1"));
+    expect(screen.queryByLabelText("Container port")).not.toBeInTheDocument();
+    await next();
+    expect(screen.getByText(/Each service of a compose application has its own domains/)).toBeInTheDocument();
+    await next();
+    expect(screen.getByText(/deploy\/docker-compose\.prod\.yml/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create and deploy" }));
+
+    await waitFor(() => expect(m.create).toHaveBeenCalled());
+    expect(m.create.mock.calls[0][0]).toMatchObject({
+      sourceKind: "compose",
+      gitSource: { repositoryUrl: "git@github.com:acme/turnone.git", branch: "main" },
+      compose: { filePath: "deploy/docker-compose.prod.yml" },
+    });
+    expect(m.create.mock.calls[0][0].build).toBeUndefined();
+    expect(m.domainCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a compose path that leaves the repository", { timeout: 30_000 }, async () => {
+    setup();
+    await screen.findByDisplayValue("Staging");
+    await userEvent.click(screen.getByRole("radio", { name: /Docker Compose/ }));
+    await userEvent.type(screen.getByLabelText("Repository URL"), "https://github.com/acme/turnone.git");
+    const path = screen.getByLabelText("Compose file path");
+    await userEvent.clear(path);
+    await userEvent.type(path, "../outside.yml");
+    await next();
+    expect(screen.getByText(/Use a path inside the repository/)).toBeInTheDocument();
+  });
+
   it("applies the best detection candidate to the build step", async () => {
     const buildDetect = vi.fn().mockResolvedValue({
       commitSha: "abc",

@@ -21,6 +21,7 @@ import {
   envToCreate,
   initialWizardState,
   isRepoMethod,
+  usesRepo,
   nextSlug,
   parseDotenv,
   suggestFrom,
@@ -135,7 +136,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
     const steps: Progress[] = [
       { label: "Create the application", state: "pending" },
       ...(env.length > 0 ? [{ label: `Save ${env.length} environment variable${env.length === 1 ? "" : "s"}`, state: "pending" as const }] : []),
-      ...(s.hostname.trim() ? [{ label: `Attach ${s.hostname.trim()}`, state: "pending" as const }] : []),
+      ...(s.method !== "compose" && s.hostname.trim() ? [{ label: `Attach ${s.hostname.trim()}`, state: "pending" as const }] : []),
       { label: "Start the deployment", state: "pending" },
     ];
     setProgress(steps);
@@ -161,13 +162,13 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
         }
         mark(i++, { state: "done" });
       }
-      if (s.hostname.trim()) {
+      if (s.method !== "compose" && s.hostname.trim()) {
         mark(i, { state: "running" });
         await api.domains.create("applications", appId, {
           hostname: s.hostname.trim().toLowerCase(),
           httpsEnabled: s.https,
           isPrimary: true,
-          targetPort: s.method === "compose" ? undefined : Number(s.port),
+          targetPort: Number(s.port),
         });
         mark(i++, { state: "done" });
       }
@@ -252,7 +253,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
               </div>
             </fieldset>
 
-            {isRepoMethod(s.method) && (
+            {usesRepo(s) && (
               <div className="grid gap-4">
                 <Field label="Repository URL" error={err("repoUrl")} hint="https://github.com/owner/repo.git, an ssh:// URL or git@host:owner/repo.git">
                   {(c) => (
@@ -315,9 +316,28 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
             )}
 
             {s.method === "compose" && (
-              <Field label="Compose file" error={err("composeContent")} hint="Paste compose.yaml. Services that build from a local context are not supported yet.">
-                {(c) => <Textarea {...c} rows={10} className="font-mono text-xs" value={s.composeContent} onChange={(e) => set({ composeContent: e.target.value })} />}
-              </Field>
+              <fieldset className="grid gap-3">
+                <legend className="mb-1 font-mono text-2xs uppercase tracking-[0.06em] text-muted-foreground">Compose file</legend>
+                <div className="flex flex-wrap gap-2">
+                  <label className={cn("flex cursor-pointer items-center gap-2 border border-border px-3 py-1.5 text-sm", s.composeSource === "repo" && "border-primary bg-primary-soft")}>
+                    <input type="radio" name="compose-source" checked={s.composeSource === "repo"} onChange={() => set({ composeSource: "repo" })} />
+                    Compose file from the repository
+                  </label>
+                  <label className={cn("flex cursor-pointer items-center gap-2 border border-border px-3 py-1.5 text-sm", s.composeSource === "inline" && "border-primary bg-primary-soft")}>
+                    <input type="radio" name="compose-source" checked={s.composeSource === "inline"} onChange={() => set({ composeSource: "inline" })} />
+                    Paste a compose file
+                  </label>
+                </div>
+                {s.composeSource === "repo" ? (
+                  <Field label="Compose file path" error={err("composePath")} hint="Relative to the repository root. Services with build: are built on the server from the checkout.">
+                    {(c) => <Input {...c} className="font-mono" placeholder="docker-compose.yml" value={s.composePath} onChange={(e) => set({ composePath: e.target.value })} />}
+                  </Field>
+                ) : (
+                  <Field label="compose.yaml" error={err("composeContent")} hint="Paste the file. A pasted file has no build context: use the repository option for build: services.">
+                    {(c) => <Textarea {...c} rows={10} className="font-mono text-xs" value={s.composeContent} onChange={(e) => set({ composeContent: e.target.value })} />}
+                  </Field>
+                )}
+              </fieldset>
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -398,7 +418,11 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
               </>
             ) : (
               <p className="text-sm text-muted-foreground" role="status">
-                {s.method === "dockerImage" ? "A prebuilt image needs no build: it is pulled and started as is." : "Compose runs the pasted file as is: there is no build step."}
+                {s.method === "dockerImage"
+                  ? "A prebuilt image needs no build: it is pulled and started as is."
+                  : s.composeSource === "repo"
+                    ? "The compose file is read from the repository on the server; services with build: are built there on every deployment."
+                    : "Compose runs the pasted file as is: there is no build step."}
               </p>
             )}
           </>
@@ -481,7 +505,13 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
           </>
         )}
 
-        {key === "domain" && (
+        {key === "domain" && s.method === "compose" && (
+          <p className="text-sm text-muted-foreground" role="status">
+            Each service of a compose application has its own domains. Create the application, then add them on its Domains tab, choosing the service that serves each one.
+          </p>
+        )}
+
+        {key === "domain" && s.method !== "compose" && (
           <>
             <Field label="Domain" error={err("hostname")} hint="Optional. Point its DNS record at the server, then HTTPS is issued automatically.">
               {(c) => <Input {...c} className="font-mono" placeholder="app.example.com" value={s.hostname} onChange={(e) => set({ hostname: e.target.value })} />}
@@ -500,11 +530,18 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                 ["Project", `${project?.name ?? "-"} / ${project?.environments.find((e) => e.id === s.environmentId)?.name ?? "-"}`],
                 ["Application", `${s.name} (${s.slug})`],
                 ["Method", BUILD_METHODS.find((m) => m.value === s.method)?.label],
-                ["Source", isRepoMethod(s.method) ? `${repoLabel(s.repoUrl)} @ ${s.branch}` : s.method === "dockerImage" ? `${s.image}:${s.tag}` : "compose file"],
+                [
+                  "Source",
+                  usesRepo(s)
+                    ? `${repoLabel(s.repoUrl)} @ ${s.branch}${s.method === "compose" ? ` · ${s.composePath.trim()}` : ""}`
+                    : s.method === "dockerImage"
+                      ? `${s.image}:${s.tag}`
+                      : "pasted compose file",
+                ],
                 ["Server", serverList.data?.items.find((x) => x.id === s.serverId)?.name],
                 ["Port", s.method === "compose" ? "from compose" : s.port],
                 ["Variables", String(envToCreate(s).length)],
-                ["Domain", s.hostname.trim() ? `${s.https ? "https" : "http"}://${s.hostname.trim()}` : "none"],
+                ["Domain", s.method !== "compose" && s.hostname.trim() ? `${s.https ? "https" : "http"}://${s.hostname.trim()}` : "none"],
               ]}
             />
             {progress && (
