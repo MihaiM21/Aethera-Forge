@@ -409,6 +409,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notification-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNotificationEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNotificationDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -1882,6 +1914,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEmailSettings"];
+        put: operations["updateEmailSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/email/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["testEmailSettings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listNotificationChannels"];
+        put?: never;
+        post: operations["createNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-channels/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getNotificationChannel"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteNotificationChannel"];
+        options?: never;
+        head?: never;
+        patch: operations["updateNotificationChannel"];
+        trace?: never;
+    };
+    "/api/v1/notification-channels/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["testNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-channels/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rotateNotificationChannelSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["acknowledgeAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1935,6 +2095,39 @@ export interface components {
             /** Format: date-time */
             changedAt: unknown;
         };
+        AlertResponse: {
+            /** Format: uuid */
+            id: string;
+            type: string;
+            severity: components["schemas"]["AlertSeverity"];
+            state: components["schemas"]["AlertState"];
+            title: string;
+            message: null | string;
+            resourceType: null | string;
+            /** Format: uuid */
+            resourceId: null | string;
+            resource: null | string;
+            path: null | string;
+            details: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            openedAt: unknown;
+            /** Format: date-time */
+            lastSeenAt: unknown;
+            /** Format: date-time */
+            resolvedAt: unknown;
+            /** Format: int32 */
+            notificationCount: number | string;
+            /** Format: date-time */
+            acknowledgedAt: unknown;
+            /** Format: uuid */
+            acknowledgedBy: null | string;
+        };
+        /** @enum {unknown} */
+        AlertSeverity: "info" | "warning" | "critical";
+        /** @enum {unknown} */
+        AlertState: "open" | "resolved";
         ApiTokenResponse: {
             /** Format: uuid */
             id: string;
@@ -2118,6 +2311,31 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        ChannelResponse: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            kind: components["schemas"]["NotificationChannelKind"];
+            enabled: boolean;
+            sendToMembers: boolean;
+            emailRecipients: string[];
+            webhookUrl: null | string;
+            hasWebhookSecret: boolean;
+            events: string[];
+            /** Format: uuid */
+            projectId: null | string;
+            /** Format: uuid */
+            environmentId: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            updatedAt: unknown;
+            webhookSecret?: null | string;
+        };
+        ChannelTestResponse: {
+            ok: boolean;
+            error: null | string;
+        };
         ComposeInspectResponse: {
             services: components["schemas"]["ComposeServiceResponse"][];
             commitSha: string;
@@ -2187,6 +2405,19 @@ export interface components {
             compose?: null | components["schemas"]["ComposeSourceRequest"];
             build?: null | components["schemas"]["BuildConfigRequest"];
             runtime?: null | components["schemas"]["RuntimeRequest"];
+        };
+        CreateChannelRequest: {
+            name?: null | string;
+            kind?: null | string;
+            enabled?: null | boolean;
+            sendToMembers?: null | boolean;
+            emailRecipients?: null | string[];
+            webhookUrl?: null | string;
+            events?: null | string[];
+            /** Format: uuid */
+            projectId?: null | string;
+            /** Format: uuid */
+            environmentId?: null | string;
         };
         CreateDomainRequest: {
             /** Format: uuid */
@@ -2330,6 +2561,19 @@ export interface components {
         };
         CsrfTokenResponse: {
             token: string;
+        };
+        DeliveryResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            channelId: string;
+            /** Format: uuid */
+            alertId: null | string;
+            eventType: string;
+            status: components["schemas"]["NotificationDeliveryStatus"];
+            error: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
         };
         DeployRequest: {
             reason?: null | string;
@@ -2580,6 +2824,34 @@ export interface components {
             /** Format: date-time */
             updatedAt: unknown;
         };
+        EmailSettingsResponse: {
+            configured: boolean;
+            enabled: boolean;
+            transport: components["schemas"]["EmailTransport"];
+            smtpHost: null | string;
+            /** Format: int32 */
+            smtpPort: null | number | string;
+            smtpEncryption: components["schemas"]["SmtpEncryption"];
+            smtpUsername: null | string;
+            hasSmtpPassword: boolean;
+            hasResendApiKey: boolean;
+            fromAddress: null | string;
+            fromName: null | string;
+            /** Format: date-time */
+            lastTestedAt: unknown;
+            lastTestError: null | string;
+            /** Format: date-time */
+            updatedAt: unknown;
+        };
+        EmailTestResponse: {
+            ok: boolean;
+            error: null | string;
+            sentTo: string;
+            /** Format: date-time */
+            testedAt: unknown;
+        };
+        /** @enum {unknown} */
+        EmailTransport: "smtp" | "resend";
         EnvVarResponse: {
             /** Format: uuid */
             id: string;
@@ -2965,12 +3237,30 @@ export interface components {
             up: boolean;
         };
         /** @enum {unknown} */
+        NotificationChannelKind: "email" | "webhook";
+        /** @enum {unknown} */
+        NotificationDeliveryStatus: "sent" | "failed";
+        NotificationEventInfo: {
+            type: string;
+            group: string;
+            label: string;
+            description: string;
+            default: boolean;
+        };
+        NotificationEventsResponse: {
+            items: components["schemas"]["NotificationEventInfo"][];
+        };
+        /** @enum {unknown} */
         OrganizationRole: "viewer" | "developer" | "admin" | "owner";
         OrganizationSummary: {
             /** Format: uuid */
             id: string;
             name: string;
             slug: string;
+        };
+        PageOfAlertResponse: {
+            items: components["schemas"]["AlertResponse"][];
+            nextCursor: null | string;
         };
         PageOfApiTokenResponse: {
             items: components["schemas"]["ApiTokenResponse"][];
@@ -2982,6 +3272,14 @@ export interface components {
         };
         PageOfAuditEventDto: {
             items: components["schemas"]["AuditEventDto"][];
+            nextCursor: null | string;
+        };
+        PageOfChannelResponse: {
+            items: components["schemas"]["ChannelResponse"][];
+            nextCursor: null | string;
+        };
+        PageOfDeliveryResponse: {
+            items: components["schemas"]["DeliveryResponse"][];
             nextCursor: null | string;
         };
         PageOfDeploymentDto: {
@@ -3503,6 +3801,8 @@ export interface components {
         SetupStatusResponse: {
             setupRequired: boolean;
         };
+        /** @enum {unknown} */
+        SmtpEncryption: "none" | "startTls" | "tls";
         SshHostKeyStateResponse: {
             state: string;
             pinnedFingerprint: null | string;
@@ -3580,6 +3880,18 @@ export interface components {
                 [key: string]: string;
             };
         };
+        UpdateChannelRequest: {
+            name?: null | string;
+            enabled?: null | boolean;
+            sendToMembers?: null | boolean;
+            emailRecipients?: null | string[];
+            webhookUrl?: null | string;
+            events?: null | string[];
+            /** Format: uuid */
+            projectId?: null | string;
+            /** Format: uuid */
+            environmentId?: null | string;
+        };
         UpdateDomainRequest: {
             hostname?: null | string;
             pathPrefix?: null | string;
@@ -3593,6 +3905,19 @@ export interface components {
             basicAuth?: null | components["schemas"]["BasicAuthUserRequest"][];
             /** Format: uuid */
             dnsProviderId?: null | string;
+        };
+        UpdateEmailSettingsRequest: {
+            enabled?: boolean;
+            transport?: null | string;
+            smtpHost?: null | string;
+            /** Format: int32 */
+            smtpPort?: null | number | string;
+            smtpEncryption?: null | string;
+            smtpUsername?: null | string;
+            smtpPassword?: null | string;
+            resendApiKey?: null | string;
+            fromAddress?: null | string;
+            fromName?: null | string;
         };
         UpdateEnvVarRequest: {
             key?: null | string;
@@ -5299,6 +5624,105 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listNotificationEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationEventsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listNotificationDeliveries: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                channelId?: string;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfDeliveryResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12911,6 +13335,629 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEmailSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    testEmailSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailTestResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listNotificationChannels: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfChannelResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    createNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/merge-patch+json": components["schemas"]["UpdateChannelRequest"];
+                "application/json": components["schemas"]["UpdateChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    testNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelTestResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    rotateNotificationChannelSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listAlerts: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                state?: string;
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfAlertResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    acknowledgeAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
