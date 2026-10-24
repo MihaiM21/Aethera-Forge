@@ -108,6 +108,7 @@ dsh 'test "$(stat -c %a /opt/aethera/.env)" = 600' || fail ".env is not mode 060
 dsh 'grep -q "^AETHERA_MASTER_KEY=.\{40,\}" /opt/aethera/.env && grep -q "^AETHERA_DB_PASSWORD=.\{16,\}" /opt/aethera/.env' || fail "secrets were not generated"
 dsh '! grep -q "^AETHERA_JOIN_TOKEN=." /opt/aethera/.env' || fail "a single-use join token stayed in the .env"
 dsh 'grep -qx "AETHERA_PUBLIC_URL=http://127.0.0.1:8080" /opt/aethera/.env' || fail "install.sh did not write AETHERA_PUBLIC_URL (http://<host>:<port> without a domain)"
+dsh 'docker exec aethera-aethera-1 test -s /usr/share/zoneinfo/Europe/Bucharest' || fail "the control-plane image has no time zone database (IANA names such as Europe/Bucharest cannot resolve)"
 dsh 'docker exec aethera-aethera-1 printenv Aethera__PublicUrl | grep -qx "http://127.0.0.1:8080"' || fail "the control plane does not get Aethera__PublicUrl"
 dsh 'test -x /usr/local/bin/aethera' || fail "the aethera command was not installed"
 ok ".env holds generated secrets with mode 0600, the join token is gone, aethera command installed"

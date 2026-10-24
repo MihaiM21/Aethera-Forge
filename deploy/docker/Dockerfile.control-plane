@@ -29,11 +29,13 @@ LABEL org.opencontainers.image.title="Aethera control plane" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
+# tzdata: schedules of backups and scheduled tasks resolve IANA names ("Europe/Bucharest") with TimeZoneInfo, which reads /usr/share/zoneinfo
+# on Linux (a chiseled or distroless base would not have it; the base image has it too, this keeps it that way).
 # pg_dump for the scheduled and the pre-migration database backups. The client must be at least as new as the server (PostgreSQL 17 in
 # the compose files), which Ubuntu's own archive does not have: the PostgreSQL project's repository does.
 ARG PG_CLIENT_MAJOR=17
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg tzdata \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && . /etc/os-release \
