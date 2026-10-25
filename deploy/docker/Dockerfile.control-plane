@@ -1,5 +1,7 @@
 # Aethera control plane: Next.js export + .NET API in one image. Build context: the repository root.
-FROM node:22-alpine AS web
+# The web export and the .NET publish are platform independent: they run natively on the build machine (BUILDPLATFORM) and are only copied
+# into the per-architecture runtime stage. Running them under QEMU for linux/arm64 is slow and .NET is known to crash or hang there.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 RUN corepack enable
 WORKDIR /src/web
 COPY src/web/package.json src/web/pnpm-lock.yaml src/web/pnpm-workspace.yaml ./
@@ -7,7 +9,8 @@ RUN pnpm install --frozen-lockfile
 COPY src/web/ ./
 RUN pnpm build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+ARG TARGETARCH
 WORKDIR /src
 COPY proto/ proto/
 COPY src/control-plane/ src/control-plane/
@@ -15,7 +18,8 @@ COPY src/control-plane/ src/control-plane/
 COPY deploy/install-agent.sh deploy/install-agent.sh
 ARG VERSION=0.0.0-dev
 # The OpenAPI document is generated at build time into src/web/openapi (committed); skip it here.
-RUN dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -o /app \
+RUN case "${TARGETARCH:-amd64}" in arm64) arch=arm64 ;; *) arch=x64 ;; esac \
+    && dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -a "$arch" -o /app \
     -p:OpenApiGenerateDocuments=false -p:Version=${VERSION} -p:InformationalVersion=${VERSION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
@@ -25,11 +29,13 @@ LABEL org.opencontainers.image.title="Aethera control plane" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
+# tzdata: schedules of backups and scheduled tasks resolve IANA names ("Europe/Bucharest") with TimeZoneInfo, which reads /usr/share/zoneinfo
+# on Linux (a chiseled or distroless base would not have it; the base image has it too, this keeps it that way).
 # pg_dump for the scheduled and the pre-migration database backups. The client must be at least as new as the server (PostgreSQL 17 in
 # the compose files), which Ubuntu's own archive does not have: the PostgreSQL project's repository does.
 ARG PG_CLIENT_MAJOR=17
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg tzdata \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && . /etc/os-release \

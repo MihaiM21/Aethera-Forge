@@ -37,6 +37,12 @@ export type CreateVolumeRequest = S["CreateVolumeRequest"];
 export type Domain = S["DomainResponse"];
 export type CreateDomainRequest = S["CreateDomainRequest"];
 export type DnsStatus = S["DnsStatus"];
+export type BasicAuthUserRequest = S["BasicAuthUserRequest"];
+export type UpdateDomainRequest = S["UpdateDomainRequest"];
+export type ComposeInspect = S["ComposeInspectResponse"];
+export type ComposeService = S["ComposeServiceResponse"];
+/** A DNS provider as the domains UI needs it. Hand-written: `GET /dns-providers` is built by the DNS module, keep in step with it. */
+export type DnsProviderOption = { id: string; name: string; kind?: string };
 
 export type Deployment = S["DeploymentDto"];
 export type DeploymentStep = S["DeploymentStep"];
@@ -72,6 +78,7 @@ export type UpdateServiceRequest = S["UpdateServiceRequest"];
 export type Secret = S["SecretResponse"];
 export type CreateSecretRequest = S["CreateSecretRequest"];
 export type Registry = S["RegistryResponse"];
+export type RegistryTestResult = S["RegistryTestResponse"];
 export type CreateRegistryRequest = S["CreateRegistryRequest"];
 export type User = S["UserResponse"];
 export type CreateUserRequest = S["CreateUserRequest"];

@@ -4,7 +4,7 @@
 
 Aethera is an open-source self-hosted deployment and infrastructure management platform for running applications, services, and containers on your own servers. It is an alternative to tools like Coolify, built and tested against real production infrastructure.
 
-**Status:** MVP feature-complete (phases 0-5), pre-release. Next: the first tagged release, then multi-server roles, secure networking, backups and alerts. See [`docs/roadmap.md`](docs/roadmap.md) and [`docs/plan.md`](docs/plan.md).
+**Status: v0.1, beta.** Aethera is feature-complete for the first real workloads (deploy from Git, Docker and Compose, services, domains with Let's Encrypt and Cloudflare, backups, email notifications, scheduled tasks) and is being tested on production infrastructure. Beta means: the **API and the configuration may still change between 0.x releases**, rough edges are expected, and you should **back up before every update** (`aethera backup`, and the backups of your services to an S3-compatible destination). 1.0 follows a month of real use. Next: multi-server roles and secure networking (0.2). See [`docs/release-0.1.md`](docs/release-0.1.md), [`docs/roadmap.md`](docs/roadmap.md) and [`docs/plan.md`](docs/plan.md).
 
 ## Components
 
@@ -20,10 +20,10 @@ Aethera is an open-source self-hosted deployment and infrastructure management p
 On a Linux server, as root:
 
 ```bash
-curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- --admin-email you@example.com --host aethera.example.com
+curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
 ```
 
-Until a release is published the script builds the images from source on its own (a few minutes; `--from-source [ref]` forces that). On Windows or macOS with Docker Desktop: `pwsh deploy/install.ps1` from a checkout (or `irm https://raw.githubusercontent.com/MihaiM21/Aethera-Forge/master/deploy/install.ps1 | iex`), then open http://localhost:8080.
+`--acme-email` (the Let's Encrypt account) is needed for HTTPS. Release candidates are pre-releases: add `--version 0.1.0-rc.1` (with or without the `v`) and fetch the script from that release's assets. Until a non-pre-release is published the script builds the images from source on its own (a few minutes; `--from-source [ref]` forces that). On Windows or macOS with Docker Desktop: `pwsh deploy/install.ps1` from a checkout (or `irm https://raw.githubusercontent.com/MihaiM21/Aethera-Forge/master/deploy/install.ps1 | iex`), then open http://localhost:8080; that is for trying Aethera out, run real workloads on a Linux server (the agent of a Linux install runs in the host network namespace, see [`docs/install.md`](docs/install.md)).
 
 It installs Docker if needed, generates the secrets, starts the control plane with PostgreSQL and Redis, creates the owner and enrolls an agent for the machine. More servers join with one command from the UI. Updates, backups and housekeeping are built in (Settings > System, or `aethera update`). Full guide: [`docs/install.md`](docs/install.md); coming from Coolify: [`docs/migration-from-coolify.md`](docs/migration-from-coolify.md); how it fits together: [`docs/architecture/`](docs/architecture/README.md).
 
@@ -34,6 +34,7 @@ Builds the images from this checkout (no updater; for a real installation use th
 ```bash
 cp deploy/.env.example deploy/.env        # set AETHERA_PUBLIC_HOST to a name/IP the slaves can reach
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+# Docker Desktop (Windows, macOS): add  -f deploy/docker-compose.desktop.yml  after the first -f (install.ps1 does)
 # UI: http://<host>:8080, agents dial <host>:9443 (mTLS, no TLS-terminating proxy in front of it)
 ```
 

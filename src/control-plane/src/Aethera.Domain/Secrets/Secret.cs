@@ -21,6 +21,10 @@ public enum SecretPurpose
     SshCredential = 2,
     GitCredential = 3,
     ServiceGenerated = 4,
+    BackupCredential = 5,
+    NotificationCredential = 6,
+    DnsCredential = 7,
+    BasicAuth = 8,
 }
 
 /// <summary>

@@ -10,15 +10,15 @@ The approach is **side by side**: Aethera comes up on a *new* server (or the sam
 |---|---|---|
 | Server | Server | Aethera uses an agent (outbound connection, mutual TLS) instead of SSH from the control plane; an SSH transport exists as a fallback for servers you cannot install the agent on. |
 | Project / environment | Project / environment | Same idea. Aethera projects have templates (empty, web + database, ...). |
-| Application (Nixpacks, Dockerfile, static, compose, image) | Application | Sources: Git (public, token, deploy key), image, compose with the file pasted in. Builds: Dockerfile, Nixpacks, static site, image. |
+| Application (Nixpacks, Dockerfile, static, compose, image) | Application | Sources: Git (public, token, deploy key), image, compose (the compose file is read from the repository, or pasted in). Builds: Dockerfile, Nixpacks, static site, image. |
 | Database / service (one-click) | Service from a template | PostgreSQL, MySQL, MariaDB, Redis, MongoDB, InfluxDB, Grafana, Prometheus, MinIO. Templates are YAML, editable after creation. Generated credentials are stored as secrets. |
 | Environment variables, build-time vars, secrets | Environment variables (plain, secret, build-time) | `.env` files can be imported in the Environment tab. Secret values are encrypted, masked and revealable only by administrators (audited). |
 | Domains and Let's Encrypt (Traefik/Caddy) | Domains with DNS check and Let's Encrypt (Traefik) | Aethera runs its own Traefik on each server; applications on the same server share ports 80 and 443 through it. |
 | Webhooks (auto deploy) | Webhooks | GitHub (HMAC), GitLab (token) and generic hosts. Set up per application; the secret is shown once. |
 | Rollback to a previous image | Rollback | Pick any earlier deployment whose image is still on the server; unused images are pruned weekly but rollback images are kept. |
 | Persistent storage | Volumes | Named volumes or bind mounts (bind mounts of host paths need the administrator role). |
-| Backups (S3) | Not yet | Aethera backs up its own database. Backups of your databases and volumes are a later phase: do them yourself (below) until then. |
-| Notifications | Not yet | The dashboard shows alerts derived from status; Slack/email/Discord arrive in a later phase. |
+| Backups (S3) | Backups | Scheduled and on-demand backups of PostgreSQL, MongoDB, Redis and volumes to any S3-compatible destination (Cloudflare R2 works), with retention and restore: see [backups.md](backups.md). The copy in section 3 below is the one-time migration, not your backup. |
+| Notifications | Email and webhook | Email (SMTP or Resend) like Coolify, per-event settings, plus a signed webhook. Discord, Slack and Telegram arrive later. |
 
 ## 0. Inventory what you have
 
@@ -52,10 +52,11 @@ Use temporary hostnames under a domain you control (for example `*.new.example.c
 
 Things Coolify does that you may rely on and that need a decision:
 
-- **Docker Compose applications**: paste the compose file's content into the application (it is not read from the repository), and note that services with `build:` are not supported: build the image elsewhere (an Aethera application with a Dockerfile) and use `image:`.
+- **Docker Compose applications**: choose the compose source *Git repository* and give the path of the file in it (default `docker-compose.yml`); Aethera reads it from the repository on every deployment, so the file in Git is the source of truth, and `build:` services are built from the repository too. Pasting the file into the application is still possible for a file that is not in Git. Each compose service can have its own domains. The application's environment variables are available to the file's `${VAR}` interpolation; reference them with `environment:` or `env_file:` for the containers to see them.
 - **Private registries**: Registries > New, then pick the registry in the application.
-- **Scheduled tasks / cron** and **backups to S3**: not available yet. Keep them where they are (a cron on the host, a separate backup job) until a later phase.
-- **Prometheus configuration**: the template starts Prometheus with its default configuration. Mount your `prometheus.yml` (a bind mount of a file you place on the server, administrator role) or edit the service's command; Grafana's data sources and dashboards are in its volume, so copy that volume (below) rather than rebuilding them.
+- **Scheduled tasks / cron**: a task runs a command inside the workload's container on a cron schedule (Scheduled tasks tab, history with logs, email on failure). A cron on the host that runs `docker exec` maps directly to it.
+- **Backups to S3**: set up a destination and a schedule per service (see [backups.md](backups.md)) before the cut-over, so the first scheduled backup of the new services exists before you switch DNS.
+- **Prometheus configuration**: the template starts Prometheus with its default configuration. Mount your `prometheus.yml` (a bind mount of a file you place on the server, administrator role) or edit the service's command. Bind mounts are only allowed **under `/var/lib/aethera`** on the server (for example `/var/lib/aethera/prometheus/prometheus.yml`); any other host path is refused when the deployment starts; Grafana's data sources and dashboards are in its volume, so copy that volume (below) rather than rebuilding them.
 
 ## 3. Copy the data (the cut-over window)
 
@@ -82,6 +83,23 @@ Create the role and database first if the dump needs them (the template starts P
 
 If it is only a cache, skip it and let it warm up. If it holds data: `docker exec <redis> redis-cli -a "$REDIS_PASSWORD" --rdb /data/dump.rdb`, copy `dump.rdb` into the Aethera service's data volume while the service is stopped (`docker run --rm -v <volume>:/data -v $PWD:/src alpine cp /src/dump.rdb /data/dump.rdb`), then start the service.
 
+### MongoDB
+
+Dump everything to one compressed archive on the Coolify server (use the container name from `docker ps`; add `--db <name>` for a single database):
+
+```bash
+docker exec <coolify-mongo> mongodump --username <user> --password '<password>' --authenticationDatabase admin --archive --gzip > turnone.archive.gz
+scp turnone.archive.gz root@aethera-server:/root/
+```
+
+Restore it into the Aethera service (the template creates the user `admin` with a generated password: Environment tab, reveal needs an administrator). `--drop` replaces collections that already exist, so a rehearsal can be repeated:
+
+```bash
+docker exec -i <aethera-mongo> mongorestore --username admin --password '<password>' --authenticationDatabase admin --archive --gzip --drop < /root/turnone.archive.gz
+```
+
+Then point the applications at `mongodb://admin:<password>@mongodb:27017/<database>?authSource=admin` (or a dedicated user you create with `mongosh`). Restore into the same major version or a newer one, never an older one, and keep the old Mongo stopped for writes between the dump and the switch. For a database that must stay online during the copy use a replica set instead of dumps; that is outside this guide.
+
 ### InfluxDB, Grafana, other volumes
 
 Stop the container on the old side, copy the volume, and mount it into the new service:
@@ -95,6 +113,15 @@ docker run --rm -v <aethera-volume>:/data -v $PWD:/in alpine sh -c 'cd /data && 
 
 The service's Storage tab lists its volumes; `docker volume ls` on the server shows their Docker names. For InfluxDB 2 prefer `influx backup` / `influx restore` when the version differs, and keep the template's initial setup variables consistent with the data you restore (the init variables only apply to an empty data directory).
 
+## Cloudflare
+
+If the domains are on Cloudflare (as Turn One's are):
+
+- **Certificates before the switch: DNS-01.** Create an API token with the permission *Zone > DNS > Edit* for the zones involved (nothing broader) and add it in Aethera as a Cloudflare DNS provider (Domains). Aethera then proves domain ownership with a TXT record instead of by answering on port 80, so it can issue the certificates (also wildcards such as `*.example.com`) **while DNS still points at Coolify**: HTTPS works on the first request after the switch. Without a provider Aethera uses HTTP-01, which needs DNS to point at the new server first.
+- **The orange cloud (proxied) is fine.** Aethera's DNS check understands Cloudflare's proxy: a proxied record resolves to Cloudflare addresses, not to your server, and is accepted as such. Keep proxying on if you want it; keep it grey while you rehearse so the check sees the server's real address.
+- **SSL/TLS mode must be *Full (strict)*.** *Flexible* talks plain HTTP to the origin, which Aethera redirects to HTTPS: an endless redirect loop. *Full* without strict would accept any certificate. With a certificate issued by Aethera (Let's Encrypt) Full (strict) just works.
+- Aethera does not create or change DNS records itself in this release: add the records (or change the existing ones) in Cloudflare yourself, as in step 4.
+
 ## 4. Switch DNS
 
 1. Lower the TTL of the production records a day before.
@@ -106,7 +133,7 @@ The service's Storage tab lists its volumes; `docker volume ls` on the server sh
 
 - Stop and remove Coolify applications one by one, then Coolify itself, once you are sure.
 - Turn on what Aethera does for you: automatic deploys from the repositories, the weekly prune, daily backups of Aethera's own database (copy `/data/backups` off the machine), and release notifications (Settings > System).
-- Take your own backups of service volumes (a cron on each server with `pg_dump` and a volume archive, copied off the machine) until backups arrive in Aethera.
+- Check that the scheduled backups of every service ran and, once, **restore one into a new service** to prove the chain works ([backups.md](backups.md)). Keep the master key (`/opt/aethera/.env`) with them: backups are encrypted with a key derived from it.
 - Add an API token with the scopes your CI needs (Settings > API tokens), instead of sharing a login.
 
 ## Checklist
@@ -116,6 +143,8 @@ The service's Storage tab lists its volumes; `docker volume ls` on the server sh
 - [ ] Services created and reachable by name from the applications
 - [ ] Applications deployed under temporary hostnames, pipelines green, logs clean
 - [ ] Webhooks configured, a test push deployed
+- [ ] Cloudflare: DNS-01 token added, SSL mode Full (strict), certificates issued before the switch
+- [ ] Backup destination and schedules set; one backup restored into a new service
 - [ ] Rehearsal of the data copy timed and verified
 - [ ] TTLs lowered, cut-over window announced
 - [ ] Data copied, applications switched, DNS changed

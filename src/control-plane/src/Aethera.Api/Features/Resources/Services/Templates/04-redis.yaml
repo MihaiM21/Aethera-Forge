@@ -4,6 +4,13 @@ description: In-memory key-value store and cache.
 category: cache
 image: redis
 versions: ["7.4", "7.2", "6.2"]
+# The official image ignores REDIS_PASSWORD, so the password is applied here. A config file written by the shell's printf builtin keeps
+# the value out of every argument list (docker inspect, ps on the host); the image's own entrypoint then drops to the redis user, as it
+# does for a plain `redis-server`. --appendonly keeps writes across restarts and redeploys (the volume holds /data).
+command:
+  - sh
+  - -c
+  - 'umask 077 && printf "requirepass %s\n" "$REDIS_PASSWORD" > /tmp/redis.conf && chown redis:redis /tmp/redis.conf && exec docker-entrypoint.sh redis-server /tmp/redis.conf --appendonly yes'
 ports:
   - port: 6379
 volumes:

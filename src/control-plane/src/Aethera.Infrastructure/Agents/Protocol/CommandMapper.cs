@@ -117,7 +117,7 @@ public sealed class CommandMapper
                 };
                 if (m.Services is not null) c.ComposeUp.Services.Add(m.Services);
             },
-            ReadCompose, _ => "compose.v2");
+            ReadCompose, m => m.Project.Git is null ? "compose.v2" : "compose.git");
         Add<ComposeDownCommand, ComposeOutcome>((c, m) => c.ComposeDown = new P.ComposeDown
             { Project = m.Project.ToProto(), RemoveVolumes = m.RemoveVolumes, RemoveOrphans = m.RemoveOrphans, Timeout = m.Timeout.ToProto() },
             ReadCompose, _ => "compose.v2");
@@ -126,7 +126,9 @@ public sealed class CommandMapper
             {
                 c.ComposePull = new P.ComposePull { Project = m.Project.ToProto() };
                 if (m.Services is not null) c.ComposePull.Services.Add(m.Services);
-            }, ReadUnit, _ => "compose.v2");
+            }, ReadUnit, m => m.Project.Git is null ? "compose.v2" : "compose.git");
+        Add<ComposeInspectCommand, ComposeInspection>((c, m) => c.ComposeInspect = new P.ComposeInspect { Project = m.Project.ToProto() },
+            r => Expect(r, P.CommandResult.ResultOneofCase.ComposeInspect, x => x.ComposeInspect.ToDomain()), _ => "compose.git");
 
         // builds
         Add<BuildImageCommand, BuildOutcome>((c, m) => c.Build = m.Spec.ToProto(),
@@ -176,6 +178,30 @@ public sealed class CommandMapper
             r => Expect(r, P.CommandResult.ResultOneofCase.AgentSelfUpdate, x => new SelfUpdateOutcome(
                 x.AgentSelfUpdate.PreviousVersion, x.AgentSelfUpdate.NewVersion, x.AgentSelfUpdate.Restarting)),
             _ => "selfupdate");
+
+        // exec and backups (ADR 0010)
+        Add<ContainerExecCommand, ContainerExecOutcome>((c, m) =>
+            {
+                c.ContainerExec = new P.ContainerExec
+                    { Container = m.Container, User = m.User ?? "", WorkingDir = m.WorkingDir ?? "", OutputTailBytes = (uint)Math.Max(0, m.OutputTailBytes) };
+                c.ContainerExec.Argv.Add(m.Argv);
+                c.ContainerExec.Env.Add(m.Env.ToProto());
+            },
+            r => Expect(r, P.CommandResult.ResultOneofCase.ContainerExec, x => x.ContainerExec.ToDomain()), _ => "container.exec");
+        Add<BackupRunCommand, BackupRunOutcome>((c, m) => c.BackupRun = new P.BackupRun
+            { BackupId = m.BackupId, Source = m.Source.ToProto(), Target = m.Target.ToProto(), Encryption = m.Encryption.ToProto() },
+            r => Expect(r, P.CommandResult.ResultOneofCase.BackupRun, x => x.BackupRun.ToDomain()), _ => "backup.v1");
+        Add<BackupRestoreCommand, BackupRestoreOutcome>((c, m) => c.BackupRestore = new P.BackupRestore
+            {
+                BackupId = m.BackupId, Source = m.Source.ToProto(), Encryption = m.Encryption.ToProto(), Sink = m.Sink.ToProto(),
+                ExpectedSha256 = m.ExpectedSha256 ?? "",
+            },
+            r => Expect(r, P.CommandResult.ResultOneofCase.BackupRestore, x => x.BackupRestore.ToDomain()), _ => "backup.v1");
+        Add<BackupDeleteCommand, Unit>((c, m) =>
+            {
+                c.BackupDelete = new P.BackupDelete();
+                c.BackupDelete.Locations.Add(m.Locations.Select(l => l.ToProto()));
+            }, ReadUnit, _ => "backup.v1");
     }
 
     /// <summary>The mapping of a command type. Throws for a type outside the allowlist (including any test double).</summary>

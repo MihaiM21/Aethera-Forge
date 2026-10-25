@@ -65,6 +65,13 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
 
     // ================================================================ join tokens
 
+    [Theory]
+    [InlineData("0.1.0-rc.1", " --version 0.1.0-rc.1")] // a release candidate has no releases/latest download
+    [InlineData("0.1.0", " --version 0.1.0")]
+    [InlineData("0.0.0-dev", "")]                         // a local build lets the script pick the newest release
+    public void The_install_command_pins_the_agent_to_the_control_plane_release(string version, string expected) =>
+        Assert.Equal(expected, Aethera.Api.Features.Agents.AgentInstallCommand.VersionArgument(version));
+
     [RequiresDatabaseFact]
     public async Task A_join_token_comes_with_the_install_command_and_is_shown_once()
     {

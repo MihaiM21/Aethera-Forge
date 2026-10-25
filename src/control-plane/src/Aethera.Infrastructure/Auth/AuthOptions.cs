@@ -31,9 +31,8 @@ public sealed class AuthOptions
     public TimeSpan LoginRateLimitWindow { get; set; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Self-hosted installs often start on plain HTTP (LAN address, no certificate yet). The secure <c>__Host-</c> cookie would never be
-    /// sent back by a browser there, so this switch makes plain-HTTP requests use the non-secure <c>aethera_session</c> cookie, as
-    /// <c>Development</c> and <c>Testing</c> do. Leave it off in production behind HTTPS.
+    /// Ignored since 0.1: the cookie form is decided per request (HTTPS: the secure <c>__Host-</c> cookie, plain HTTP: <c>aethera_session</c>),
+    /// so no setting is needed to sign in on <c>http://&lt;ip&gt;:8080</c>. Kept so existing configuration files still bind.
     /// </summary>
     public bool AllowInsecureCookies { get; set; }
 

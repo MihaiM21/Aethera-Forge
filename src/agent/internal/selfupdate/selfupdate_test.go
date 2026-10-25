@@ -207,6 +207,14 @@ func TestRollbackWhenNewBinaryNeverConfirms(t *testing.T) {
 	if _, err := f.u.Apply(context.Background(), f.req()); err != nil {
 		t.Fatal(err)
 	}
+	// Apply asks for its own restart after RestartDelay; wait for it so it is not
+	// counted as the rollback's restart below.
+	for deadline := time.Now().Add(5 * time.Second); f.restart.n.Load() == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("apply did not request a restart")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	// The service manager started the new binary; it dies before Welcome and is
 	// restarted over and over.
 	for boot := 1; boot <= maxBoot; boot++ {

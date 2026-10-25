@@ -15,12 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/auth-context";
+import { notificationsApi, type NotificationsApi } from "@/lib/notifications/api";
+import { sortOpenAlerts } from "@/lib/notifications/events";
+import type { AlertSeverity } from "@/lib/notifications/types";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import { deploymentDuration, shortSha, stepLabel } from "@/lib/resources/status";
-import type { ApplicationSummary, DeploymentListItem, Job, ServiceSummary } from "@/lib/resources/types";
+import type { DeploymentListItem, Job } from "@/lib/resources/types";
 import { serversApi, type ServersApi } from "@/lib/servers/api";
 import { formatAgo, formatBytes, ratioPercent, toDate, toNum } from "@/lib/servers/format";
-import type { LatestMetrics, Server } from "@/lib/servers/types";
+import type { LatestMetrics } from "@/lib/servers/types";
 import { usePolled } from "@/lib/servers/use-polled";
 import { cn } from "@/lib/utils";
 
@@ -51,29 +54,10 @@ function Skeletons({ rows = 3 }: { rows?: number }) {
   );
 }
 
-export type Alert = { key: string; tone: "danger" | "warning"; text: string; href: string };
 
-/** Alerts derived from what the API already reports: servers whose agent is down, failing applications, high usage. */
-export function deriveAlerts(
-  servers: Server[],
-  apps: ApplicationSummary[],
-  services: ServiceSummary[],
-  usage: { cpu: number | null; memory: number | null; disk: number | null },
-  update?: { current: string; latest: string } | null,
-): Alert[] {
-  const alerts: Alert[] = [];
-  if (update) alerts.push({ key: "update", tone: "warning", text: `Aethera ${update.latest} is available (running ${update.current})`, href: "/settings#system" });
-  for (const s of servers) {
-    if (s.lifecycle === "active" && s.status.agent.status !== "connected" && s.transport === "agent")
-      alerts.push({ key: `srv:${s.id}`, tone: "danger", text: `${s.name}: the agent is ${s.status.agent.status}`, href: `/servers/${s.id}` });
-  }
-  for (const a of apps.filter((x) => x.status === "failed" || x.status === "unhealthy"))
-    alerts.push({ key: `app:${a.id}`, tone: a.status === "failed" ? "danger" : "warning", text: `${a.name} is ${a.status}${a.statusReason ? `: ${a.statusReason}` : ""}`, href: `/applications/${a.id}` });
-  for (const v of services.filter((x) => x.status === "failed" || x.status === "unhealthy"))
-    alerts.push({ key: `svc:${v.id}`, tone: v.status === "failed" ? "danger" : "warning", text: `${v.name} is ${v.status}`, href: `/services/${v.id}` });
-  for (const [label, value] of [["CPU", usage.cpu], ["Memory", usage.memory], ["Disk", usage.disk]] as const)
-    if (value !== null && value >= 90) alerts.push({ key: `use:${label}`, tone: "warning", text: `${label} usage is ${Math.round(value)}% across servers`, href: "/servers" });
-  return alerts;
+/** Dot colour of a stored alert: critical is red; warnings and announcements (an update) are amber. */
+export function alertTone(severity: AlertSeverity): "danger" | "warning" {
+  return severity === "critical" ? "danger" : "warning";
 }
 
 export function aggregateUsage(metrics: Array<LatestMetrics | undefined>) {
@@ -93,7 +77,9 @@ export function aggregateUsage(metrics: Array<LatestMetrics | undefined>) {
 const countBy = <T,>(items: T[], pick: (t: T) => string) => items.reduce<Record<string, number>>((acc, i) => ({ ...acc, [pick(i)]: (acc[pick(i)] ?? 0) + 1 }), {});
 
 /** The landing page: server and application status, recent and failed deployments, resource usage, active jobs and alerts. */
-export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs = POLL_MS }: { api?: ResourcesApi; servers?: ServersApi; pollMs?: number }) {
+export function DashboardView({
+  api = resourcesApi, servers = serversApi, notifications = notificationsApi, pollMs = POLL_MS,
+}: { api?: ResourcesApi; servers?: ServersApi; notifications?: NotificationsApi; pollMs?: number }) {
   const { me } = useAuth();
   const serverList = usePolled((signal) => servers.list({ limit: 100, sort: "name" }, { signal }), "dash-servers", { intervalMs: pollMs });
   const metrics = usePolled(
@@ -102,10 +88,10 @@ export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs
     { intervalMs: pollMs, enabled: serverList.data !== undefined },
   );
   const apps = usePolled((signal) => api.applications.list({ limit: 100, sort: "name" }, { signal }), "dash-apps", { intervalMs: pollMs });
-  const services = usePolled((signal) => api.services.list({ limit: 100, sort: "name" }, { signal }), "dash-services", { intervalMs: pollMs });
   const recent = usePolled((signal) => api.deployments.list({ limit: 25 }, { signal }), "dash-deployments", { intervalMs: pollMs });
   const failed = usePolled((signal) => api.deployments.list({ limit: 5, status: "failed" }, { signal }), "dash-failed", { intervalMs: pollMs });
   const jobs = usePolled((signal) => api.jobs.list({ limit: 10, status: "queued,running" }, { signal }), "dash-jobs", { intervalMs: pollMs });
+  const openAlerts = usePolled((signal) => notifications.alerts.list({ state: "open", limit: 20 }, { signal }), "dash-alerts", { intervalMs: pollMs });
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 5000);
@@ -114,7 +100,6 @@ export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs
 
   const serverItems = serverList.data?.items ?? [];
   const appItems = apps.data?.items ?? [];
-  const svcItems = services.data?.items ?? [];
   const recentItems: DeploymentListItem[] = recent.data?.items ?? [];
   const last24h = recentItems.filter((d) => {
     const at = toDate(d.deployment.createdAt);
@@ -123,11 +108,8 @@ export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs
   const serverCounts = countBy(serverItems, (s) => (s.status.agent.status === "connected" ? "online" : s.transport === "ssh" ? "ssh" : "offline"));
   const appCounts = countBy(appItems, (a) => a.status);
   const usage = aggregateUsage(metrics.data ?? []);
-  // Only administrators can act on an update, so only they are told. A failing lookup just means no alert.
-  const canUpdate = me?.role === "owner" || me?.role === "admin";
-  const version = usePolled((signal) => api.system.version({ signal }), "dash-version", { intervalMs: 5 * 60_000, enabled: canUpdate });
-  const update = canUpdate && version.data?.updateAvailable && version.data.latest ? { current: version.data.current, latest: version.data.latest.version } : null;
-  const alerts = deriveAlerts(serverItems, appItems, svcItems, usage, update);
+  // Stored alerts (ADR 0010): what the detectors opened and have not yet seen recover, most severe first.
+  const alerts = sortOpenAlerts(openAlerts.data?.items ?? []);
   const activeJobs: Job[] = jobs.data?.items ?? [];
   const firstError = [serverList, apps, recent].find((r) => r.error && !r.data)?.error;
 
@@ -258,19 +240,25 @@ export function DashboardView({ api = resourcesApi, servers = serversApi, pollMs
           </ul>
         </Panel>
 
-        <Panel title="Alerts" meta="from current status" className={cn("lg:col-span-2")}>
-          {alerts.length === 0 && <EmptyState icon={BellIcon} title="All quiet" description="Unreachable servers, failing applications and high usage will be listed here." className="py-8" />}
+        <Panel title="Alerts" meta={alerts.length > 0 ? `${alerts.length} open` : "none open"} className={cn("lg:col-span-2")}>
+          {openAlerts.data && alerts.length === 0 && <EmptyState icon={BellIcon} title="All quiet" description="Unreachable servers, failed deployments, full disks and expiring certificates will be listed here." className="py-8" />}
+          {!openAlerts.data && <Skeletons rows={2} />}
           <ul className="divide-y divide-border">
             {alerts.map((a) => (
-              <li key={a.key}>
-                <Link href={a.href} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent">
-                  <span className={cn("size-2 shrink-0", a.tone === "danger" ? "bg-danger" : "bg-warning")} aria-hidden="true" />
-                  <span className="sr-only">{a.tone === "danger" ? "Critical: " : "Warning: "}</span>
-                  {a.text}
+              <li key={a.id}>
+                <Link href={a.path ?? "/monitoring"} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent">
+                  <span className={cn("size-2 shrink-0", alertTone(a.severity) === "danger" ? "bg-danger" : "bg-warning")} aria-hidden="true" />
+                  <span className="sr-only">{a.severity === "critical" ? "Critical: " : "Warning: "}</span>
+                  {a.title}
                 </Link>
               </li>
             ))}
           </ul>
+          {alerts.length > 0 && (
+            <Link href="/monitoring" className="block border-t border-border px-4 py-2 font-mono text-2xs uppercase tracking-[0.1em] text-muted-foreground hover:bg-accent">
+              All alerts
+            </Link>
+          )}
         </Panel>
       </div>
     </div>

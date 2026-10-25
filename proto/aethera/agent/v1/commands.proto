@@ -1,10 +1,12 @@
 // The typed command allowlist (spec section 31). The control plane can only
-// ask the agent to do what appears in `Command.request`. There is no generic
-// "exec"/"shell" command, and adding one requires an ADR.
+// ask the agent to do what appears in `Command.request`. There is no host
+// shell command. `container_exec` runs a program inside a workload's own
+// container, never on the host (ADR 0010); anything broader requires an ADR.
 syntax = "proto3";
 
 package aethera.agent.v1;
 
+import "aethera/agent/v1/backup.proto";
 import "aethera/agent/v1/build.proto";
 import "aethera/agent/v1/common.proto";
 import "aethera/agent/v1/discovery.proto";
@@ -63,6 +65,7 @@ message Command {
     ComposeDown compose_down = 51;
     ComposePs compose_ps = 52;
     ComposePull compose_pull = 53;
+    ComposeInspect compose_inspect = 54;
     // Builds.
     BuildRequest build = 60;
     BuildDetect build_detect = 61;
@@ -77,6 +80,12 @@ message Command {
     DiscoveryRefresh discovery_refresh = 100;
     SystemPrune system_prune = 101;
     AgentSelfUpdate agent_self_update = 102;
+    // Exec inside a running container (scheduled tasks, ADR 0010).
+    ContainerExec container_exec = 110;
+    // Backups (ADR 0010).
+    BackupRun backup_run = 120;
+    BackupRestore backup_restore = 121;
+    BackupDelete backup_delete = 122;
   }
 }
 
@@ -302,6 +311,7 @@ message CommandResult {
     NetworkCreateResult network_create = 45;
     NetworkListResult network_list = 46;
     ComposeResult compose = 50;
+    ComposeInspectResult compose_inspect = 51;
     BuildResult build = 60;
     BuildDetectResult build_detect = 61;
     LogStreamStartResult log_stream_start = 70;
@@ -309,5 +319,8 @@ message CommandResult {
     ProxyEnsureResult proxy_ensure = 90;
     DiscoveryReport discovery = 100;
     AgentSelfUpdateResult agent_self_update = 102;
+    ContainerExecResult container_exec = 110;
+    BackupRunResult backup_run = 120;
+    BackupRestoreResult backup_restore = 121;
   }
 }

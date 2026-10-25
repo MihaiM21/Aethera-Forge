@@ -6,8 +6,9 @@
 #  - AETHERA_ENROLL_DIR and AETHERA_ENDPOINT given, no token: wait for the control plane to ask (it does by itself once the first owner has registered;
 #    Servers > "Use this machine" asks on demand). It drops
 #    enable-agent.json (join token and CA fingerprint) in that shared folder; agent-alive tells it something here can act on the
-#    request, agent-status.json reports progress back. The endpoint stays the loopback one (--keep-endpoint): this container shares the
-#    control plane's network namespace, whatever public address and port the control plane advertises.
+#    request, agent-status.json reports progress back. The endpoint stays the loopback one (--keep-endpoint): this container runs in the
+#    host network namespace (Docker Desktop: in the control plane's), where the gateway answers on 127.0.0.1, whatever public address
+#    and port the control plane advertises.
 set -eu
 STATE_DIR="${AETHERA_STATE_DIR:-/var/lib/aethera}"
 

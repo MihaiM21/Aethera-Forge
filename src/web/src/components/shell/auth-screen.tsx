@@ -1,5 +1,6 @@
 import * as React from "react";
 import { DotGrid } from "@/components/aethera/dot-grid";
+import { InsecureConnectionHint } from "./insecure-connection-hint";
 import { ThemeToggle } from "./theme-toggle";
 
 /** Full-screen frame for /login and /setup: grid canvas, drifting lime dots, theme toggle. */
@@ -11,6 +12,7 @@ export function AuthScreen({ children }: { children: React.ReactNode }) {
       </div>
       <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center px-6 py-12">
         {children}
+        <InsecureConnectionHint />
       </main>
     </DotGrid>
   );

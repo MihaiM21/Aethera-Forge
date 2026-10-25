@@ -4,7 +4,8 @@ using Aethera.Domain.Transport;
 
 namespace Aethera.Engine.Deployments;
 
-public enum DeploymentRunResult { Running, Failed, Cancelled }
+/// <summary><see cref="Retry"/>: a transient failure (the server could not be reached) that the job will retry; the deployment stays in progress.</summary>
+public enum DeploymentRunResult { Running, Failed, Cancelled, Retry }
 
 /// <summary>
 /// Drives a <see cref="Deployment"/> through the nine-step pipeline (ADR 0004): Source, Build, Image, TargetServer, then the
@@ -15,15 +16,44 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
 {
     private readonly Dictionary<string, IDeploymentStrategy> _strategies = strategies.ToDictionary(s => s.Name);
 
+    /// <summary>The failure behind a <see cref="DeploymentRunResult.Retry"/>.</summary>
+    public DeploymentFailure? TransientFailure { get; private set; }
+
+    /// <summary>
+    /// The strategy that runs <paramref name="plan"/> and, when it is not the requested one, why. Low-downtime starts the new container beside the
+    /// old one, which a published host port forbids (the port is taken) and a writable volume makes dangerous (two processes on one data directory
+    /// corrupt it): such a workload is recreated instead.
+    /// </summary>
+    public static (string Name, string? Note) ChooseStrategy(string requested, DeploymentPlan plan)
+    {
+        if (plan.Compose is not null) return (ComposeStrategy.StrategyName, null);
+        if (requested != DeploymentStrategies.LowDowntime) return (requested, null);
+
+        var reasons = new List<string>();
+        var ports = plan.Container.Ports?.Select(p => p.HostPort).Where(p => p > 0).Distinct().Order().ToList() ?? [];
+        if (ports.Count > 0) reasons.Add($"publishes host port {string.Join(", ", ports)}");
+        var writable = plan.Container.Mounts?.Where(m => m.Type is MountKind.Volume or MountKind.Bind && !m.ReadOnly).Select(m => m.Target).Distinct().Order().ToList() ?? [];
+        if (writable.Count > 0) reasons.Add($"has a writable volume ({string.Join(", ", writable)})");
+        return reasons.Count == 0
+            ? (requested, null)
+            : (DeploymentStrategies.Recreate,
+                $"Low-downtime needs two containers side by side, but this workload {string.Join(" and ", reasons)}: two processes cannot share them. The recreate strategy was used.");
+    }
+
     /// <param name="deployment">A deployment already moved to InProgress (<see cref="Deployment.Start"/>).</param>
     /// <param name="save">Persists the deployment after each step.</param>
+    /// <param name="finalAttempt">
+    /// False while the job will be retried: a transient failure (<see cref="FailureCodes.ServerUnavailable"/>) then leaves the deployment in progress
+    /// and returns <see cref="DeploymentRunResult.Retry"/>, so the next attempt redeploys from the frozen snapshot instead of finding a finished one.
+    /// </param>
     public async Task<DeploymentRunResult> RunAsync(
-        Deployment deployment, DeploymentPlan plan, Func<Deployment, CancellationToken, Task> save, CancellationToken ct)
+        Deployment deployment, DeploymentPlan plan, Func<Deployment, CancellationToken, Task> save, CancellationToken ct, bool finalAttempt = true)
     {
         Task Save(CancellationToken c) => save(deployment, c);
+        TransientFailure = null;
         try
         {
-            var strategyName = plan.Compose is not null ? ComposeStrategy.StrategyName : deployment.Strategy;
+            var (strategyName, strategyNote) = ChooseStrategy(deployment.Strategy, plan);
             if (!_strategies.TryGetValue(strategyName, out var strategy))
                 throw new DeploymentFailure(DeploymentStep.Source, FailureCodes.UnknownStrategy, $"Unknown deployment strategy '{deployment.Strategy}'.");
 
@@ -36,7 +66,7 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             deployment.CompleteStep(DeploymentStep.TargetServer, clock.UtcNow);
             await Save(ct);
 
-            var run = new DeploymentRun(deployment, plan, image, transport, clock, Save);
+            var run = new DeploymentRun(deployment, plan, image, transport, clock, Save, strategyNote);
             deployment.ContainerIds = [.. await strategy.ExecuteAsync(run, ct)];
 
             deployment.ImageRef = image;
@@ -49,6 +79,12 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             deployment.MarkCancelled(clock.UtcNow);
             await Save(CancellationToken.None);
             return DeploymentRunResult.Cancelled;
+        }
+        catch (DeploymentFailure f) when (!finalAttempt && f.Code == FailureCodes.ServerUnavailable)
+        {
+            TransientFailure = f;
+            await Save(CancellationToken.None);
+            return DeploymentRunResult.Retry;
         }
         catch (DeploymentFailure f)
         {
@@ -112,6 +148,35 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             await save(ct);
             return reference;
         }
+
+        // The pull policy: Always pulls, IfNotPresent pulls only an image the server does not have, Never never pulls (and says so when it is missing).
+        if (plan.PullPolicy != ImagePullPolicy.Always)
+        {
+            DockerImage? present = null;
+            try
+            {
+                present = await run.ExecuteAsync<ImageInspectCommand, DockerImage>(
+                    new ImageInspectCommand(reference), "image.inspect", DeploymentStep.Image, FailureCodes.ImageMissing, ct);
+            }
+            catch (DeploymentFailure f) when (f.Code == FailureCodes.ImageMissing)
+            {
+                // Not on the server (or not inspectable): pulled below unless the policy forbids it.
+            }
+
+            if (present is not null)
+            {
+                var repoDigest = present.RepoDigests.FirstOrDefault() ?? "";
+                d.ImageDigest = repoDigest.Contains('@') ? repoDigest[(repoDigest.IndexOf('@') + 1)..] : present.Id;
+                d.CompleteStep(DeploymentStep.Image, clock.UtcNow, JsonSerializer.Serialize(new { image = reference, pulled = false, policy = plan.PullPolicy.ToString() }));
+                await save(ct);
+                return reference;
+            }
+
+            if (plan.PullPolicy == ImagePullPolicy.Never)
+                throw new DeploymentFailure(DeploymentStep.Image, FailureCodes.ImageMissing,
+                    $"The image {reference} is not on the server and its pull policy is Never. Pull it there yourself or change the pull policy.");
+        }
+
         var pulled = await run.ExecuteAsync<ImagePullCommand, ImagePulled>(
             new ImagePullCommand(reference, plan.PullAuth), "image.pull", DeploymentStep.Image, FailureCodes.ImagePullFailed, ct);
         d.ImageDigest = pulled.Digest;

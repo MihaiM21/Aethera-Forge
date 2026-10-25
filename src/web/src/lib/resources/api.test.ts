@@ -86,4 +86,32 @@ describe("resources api client", () => {
       "POST /api/v1/system/maintenance/run",
     ]);
   });
+
+  it("reads the compose file of an application through the inspect endpoint", async () => {
+    const { api, calls } = setup();
+    await api.applications.composeInspect("a1");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/v1/applications/a1/compose/inspect"]);
+  });
+
+  it("lists DNS providers, and tolerates a server that does not have the endpoint yet", async () => {
+    const found = createResourcesApi(
+      createApiClient({
+        fetch: (async (input: string) =>
+          input.endsWith("/auth/csrf")
+            ? new Response(JSON.stringify({ token: "t" }))
+            : new Response(JSON.stringify({ items: [{ id: "p1", name: "Cloudflare" }], nextCursor: null }))) as unknown as typeof fetch,
+      }),
+    );
+    expect(await found.domains.dnsProviders()).toEqual([{ id: "p1", name: "Cloudflare" }]);
+
+    const missing = createResourcesApi(
+      createApiClient({
+        fetch: (async (input: string) =>
+          input.endsWith("/auth/csrf")
+            ? new Response(JSON.stringify({ token: "t" }))
+            : new Response(JSON.stringify({ type: "about:blank", title: "Not found", status: 404, code: "http.404" }), { status: 404, headers: { "content-type": "application/problem+json" } })) as unknown as typeof fetch,
+      }),
+    );
+    expect(await missing.domains.dnsProviders()).toEqual([]);
+  });
 });

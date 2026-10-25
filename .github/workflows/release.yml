@@ -116,11 +116,16 @@ jobs:
       - name: Release notes from CHANGELOG.md
         run: |
           version='${{ needs.version.outputs.version }}'
-          awk -v v="$version" '
-            $0 ~ "^## \\[" v "\\]" { found = 1; next }
-            found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md > release-notes.md
+          notes() {
+            awk -v v="$1" '
+              index($0, "## [" v "]") == 1 { found = 1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md
+          }
+          notes "$version" > release-notes.md
+          # A release candidate (0.1.0-rc.1) has no section of its own: it carries the notes of the release it leads up to (0.1.0).
+          if [ ! -s release-notes.md ] && [[ "$version" == *-* ]]; then notes "${version%%-*}" > release-notes.md; fi
           if [ ! -s release-notes.md ]; then echo "Release $version. See CHANGELOG.md." > release-notes.md; fi
           cat release-notes.md
       - name: Publish

@@ -19,6 +19,7 @@ public static class DeploymentsServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDeploymentStrategy, ComposeStrategy>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, DeployJobHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, LifecycleJobHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, TeardownJobHandler>());
         services.TryAddScoped<DeploymentService>();
         return services;
     }

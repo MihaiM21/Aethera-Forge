@@ -6,6 +6,10 @@
 #   aethera update [--version v]   back up the database, pull the new images, restart; roll back if the new version does not come up
 #   aethera backup                 write a database backup (pg_dump -Fc) to <dir>/backups
 #   aethera restore <file>         restore a backup into the database (stops the control plane meanwhile)
+#   aethera reset-password <email> [--stdin]
+#                                  set a new password for a user (printed once, or read from stdin), clear the lockout, sign them out
+#   aethera backup-decrypt <in> <out>   decrypt a backup of Aethera's own database downloaded from a backup destination (AEB1);
+#                                       <out> can then be given to `aethera restore`. Needs the master key of this installation.
 #   aethera version                the installed version
 #
 # The same script runs inside the updater container ("daemon" mode): the UI's "Update" button writes a request file that it picks up.
@@ -154,6 +158,7 @@ daemon() {
     if [ -s "$CTL/request.json" ]; then
       version="$(sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p' "$CTL/request.json" | head -n1)"
       mv "$CTL/request.json" "$CTL/request.taken"
+      version="${version#v}" # image tags have no leading v (the git tag and release assets do)
       case "$version" in
         ""|*[!0-9A-Za-z.+-]*) report failed "$version" "The update request named no valid version." ;;
         *) do_update "$version" || true ;;
@@ -191,6 +196,22 @@ case "$cmd" in
     dc up -d aethera
     say "Restored. The control plane is starting."
     ;;
+  reset-password)
+    # Runs a verb of the API binary inside the control-plane container (the database is reached with the container's own settings).
+    # Needs access to Docker, i.e. root: whoever can run this can already read the database and the .env.
+    require_install
+    [ "$(id -u)" -eq 0 ] || die "reset-password needs root: run it with sudo"
+    [ $# -ge 1 ] || die "usage: aethera reset-password <email> [--stdin]   (--stdin reads the new password from standard input)"
+    dc exec -T aethera dotnet Aethera.Api.dll reset-password "$@"
+    ;;
+  backup-decrypt)
+    require_install
+    [ $# -eq 2 ] && [ -f "$1" ] || die "usage: aethera backup-decrypt <encrypted backup file> <output file>"
+    # Runs in the control plane container, which has the master key; the file is piped through, so nothing needs mounting.
+    dc exec -T aethera dotnet Aethera.Api.dll backup-decrypt - - < "$1" > "$2.partial" || { rm -f "$2.partial"; die "could not decrypt $1 (wrong master key, or the file is damaged or incomplete)"; }
+    mv "$2.partial" "$2"
+    say "Decrypted: $2 (restore it with: aethera restore $2)"
+    ;;
   update)
     target=""
     while [ $# -gt 0 ]; do
@@ -202,10 +223,13 @@ case "$cmd" in
     require_install
     [ -n "$target" ] || target="$(latest_version)"
     [ -n "$target" ] || die "could not determine the latest release"
-    target="${target#v}"
+    target="${target#v}" # --version v0.1.0-rc.2 and 0.1.0-rc.2 both work: image tags have no leading v
+    case "$target" in
+      *[!0-9A-Za-z.+-]*|"") die "invalid version: $target" ;;
+    esac
     if [ "$target" = "$(env_get AETHERA_VERSION)" ]; then say "Already on $target."; exit 0; fi
     do_update "$target"
     ;;
-  help|-h|--help) sed -n '2,12p' "$0" ;;
+  help|-h|--help) sed -n '2,13p' "$0" ;;
   *) die "unknown command: $cmd (try 'aethera help')" ;;
 esac

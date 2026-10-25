@@ -11,7 +11,7 @@ internal sealed class SecretConfiguration : IEntityTypeConfiguration<Secret>
         b.ToTable("secrets", t =>
         {
             t.HasCheckConstraint("ck_secrets_single_scope", "num_nonnulls(project_id, environment_id, workload_id) <= 1");
-            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated')");
+            t.HasCheckConstraint("ck_secrets_purpose", "purpose IN ('user', 'registryCredential', 'sshCredential', 'gitCredential', 'serviceGenerated', 'backupCredential', 'notificationCredential', 'dnsCredential', 'basicAuth')");
         });
         b.Ignore(x => x.Scope); // derived from the scope FKs
         b.Property(x => x.Name).HasMaxLength(200);

@@ -40,6 +40,29 @@ func ValidateGitURL(raw string) error {
 	return fmt.Errorf("unsupported git url scheme %q", u.Scheme)
 }
 
+// ValidateGitSource applies the checks Clone makes before it touches the network: URL scheme, ref and commit.
+func ValidateGitSource(src *agentv1.GitSource) error { return validateGitSource(src, false) }
+
+func validateGitSource(src *agentv1.GitSource, allowLocalURL bool) error {
+	if !allowLocalURL {
+		if err := ValidateGitURL(src.GetUrl()); err != nil {
+			return err
+		}
+	} else if src.GetUrl() == "" || strings.HasPrefix(src.GetUrl(), "-") {
+		return fmt.Errorf("invalid git url")
+	}
+	if err := validateRef(src.GetRef()); err != nil {
+		return err
+	}
+	if c := src.GetCommit(); c != "" && !shaRe.MatchString(c) {
+		return fmt.Errorf("invalid commit sha")
+	}
+	return nil
+}
+
+// ShallowByDefault returns src with depth 1 when neither a depth nor an exact commit was asked for (what builds use).
+func ShallowByDefault(src *agentv1.GitSource) *agentv1.GitSource { return withDepth(src) }
+
 func validateRef(ref string) error {
 	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\r\n\x00") || strings.Contains(ref, "..") {
 		return fmt.Errorf("invalid git ref")
@@ -56,14 +79,19 @@ type Checkout struct {
 // Clone fetches src into dir and returns the checked-out commit. Credentials reach git through the environment (HTTPS
 // token) or a 0600 temp key file (SSH), so they never appear on a command line.
 func Clone(ctx context.Context, r Runner, src *agentv1.GitSource, dir string, log io.Writer) (*Checkout, error) {
-	if err := ValidateGitURL(src.GetUrl()); err != nil {
+	return clone(ctx, r, src, dir, log, false)
+}
+
+// CloneAllowingLocal is Clone for tests that clone a local bare repository: it accepts a file system path as the URL.
+// Production code must never call it (file:// and local paths are refused there to keep transports and local files out
+// of reach of a Git source supplied by a user).
+func CloneAllowingLocal(ctx context.Context, r Runner, src *agentv1.GitSource, dir string, log io.Writer) (*Checkout, error) {
+	return clone(ctx, r, src, dir, log, true)
+}
+
+func clone(ctx context.Context, r Runner, src *agentv1.GitSource, dir string, log io.Writer, allowLocalURL bool) (*Checkout, error) {
+	if err := validateGitSource(src, allowLocalURL); err != nil {
 		return nil, err
-	}
-	if err := validateRef(src.GetRef()); err != nil {
-		return nil, err
-	}
-	if c := src.GetCommit(); c != "" && !shaRe.MatchString(c) {
-		return nil, fmt.Errorf("invalid commit sha")
 	}
 
 	env := []string{"GIT_TERMINAL_PROMPT=0"}

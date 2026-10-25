@@ -1,10 +1,10 @@
 package ops
 
 import (
-	"os/exec"
 	"context"
 	"errors"
 	"io"
+	"os/exec"
 	"time"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
@@ -22,7 +22,10 @@ const (
 	// CapNixpacks is advertised only when the nixpacks CLI is installed on the host.
 	CapNixpacks = "build.nixpacks"
 	CapCompose  = "compose.v2"
-	CapProxy    = "proxy.traefik"
+	// CapComposeGit (compose projects checked out of a Git repository, ComposeInspect) is advertised when compose is wired
+	// and the git CLI is installed.
+	CapComposeGit = "compose.git"
+	CapProxy      = "proxy.traefik"
 )
 
 // logWriters opens a lossless log stream for a build/deploy operation. Output is masked with the secrets carried by the
@@ -80,8 +83,29 @@ func (d *Deps) buildDetect(ctx context.Context, env *dispatch.Env) (*agentv1.Com
 }
 
 // composeLog streams compose output under deploy:<command id>, the control plane's default stream for non-build commands.
-func (d *Deps) composeLog(env *dispatch.Env) (io.Writer, io.Writer, func(error)) {
-	return d.logWriters(env, "deploy:"+env.Cmd.GetCommandId(), agentv1.LogSource_LOG_SOURCE_DEPLOY)
+func (d *Deps) composeLog(env *dispatch.Env, src agentv1.LogSource) (io.Writer, io.Writer, func(error)) {
+	return d.logWriters(env, "deploy:"+env.Cmd.GetCommandId(), src)
+}
+
+func (d *Deps) lookPath() func(string) (string, error) {
+	if d.LookPath != nil {
+		return d.LookPath
+	}
+	return exec.LookPath
+}
+
+func (d *Deps) gitAvailable() bool {
+	_, err := d.lookPath()("git")
+	return err == nil
+}
+
+// needGit refuses a project with a Git source on an agent without the git CLI (the capability gate cannot: compose_up
+// itself is a compose.v2 command).
+func (d *Deps) needGit(p *agentv1.ComposeProject) error {
+	if p.GetGit() != nil && !d.gitAvailable() {
+		return dispatch.Errorf(agentv1.ErrorCode_ERROR_CODE_UNSUPPORTED, "this agent has no git installed, so it cannot deploy compose projects from a repository")
+	}
+	return nil
 }
 
 func composeResult(r *agentv1.ComposeResult) *agentv1.CommandResult {
@@ -90,7 +114,15 @@ func composeResult(r *agentv1.ComposeResult) *agentv1.CommandResult {
 
 func (d *Deps) composeUp(ctx context.Context, env *dispatch.Env) (*agentv1.CommandResult, error) {
 	req := env.Cmd.GetComposeUp()
-	out, errw, closeLog := d.composeLog(env)
+	if err := d.needGit(req.GetProject()); err != nil {
+		return nil, err
+	}
+	// A project from a repository that is built here streams its whole output (checkout, build, up) as build log.
+	src := agentv1.LogSource_LOG_SOURCE_DEPLOY
+	if req.GetProject().GetGit() != nil && req.GetBuild() {
+		src = agentv1.LogSource_LOG_SOURCE_BUILD
+	}
+	out, errw, closeLog := d.composeLog(env, src)
 	env.Progress("compose", "starting project "+req.GetProject().GetProjectName(), -1)
 	var wait time.Duration
 	if req.GetWaitTimeout() != nil {
@@ -109,7 +141,7 @@ func (d *Deps) composeUp(ctx context.Context, env *dispatch.Env) (*agentv1.Comma
 
 func (d *Deps) composeDown(ctx context.Context, env *dispatch.Env) (*agentv1.CommandResult, error) {
 	req := env.Cmd.GetComposeDown()
-	out, errw, closeLog := d.composeLog(env)
+	out, errw, closeLog := d.composeLog(env, agentv1.LogSource_LOG_SOURCE_DEPLOY)
 	var timeout time.Duration
 	if req.GetTimeout() != nil {
 		timeout = req.GetTimeout().AsDuration()
@@ -133,13 +165,29 @@ func (d *Deps) composePs(ctx context.Context, env *dispatch.Env) (*agentv1.Comma
 
 func (d *Deps) composePull(ctx context.Context, env *dispatch.Env) (*agentv1.CommandResult, error) {
 	req := env.Cmd.GetComposePull()
-	out, errw, closeLog := d.composeLog(env)
+	if err := d.needGit(req.GetProject()); err != nil {
+		return nil, err
+	}
+	out, errw, closeLog := d.composeLog(env, agentv1.LogSource_LOG_SOURCE_DEPLOY)
 	err := d.Compose.Pull(ctx, req.GetProject(), req.GetServices(), out, errw)
 	closeLog(err)
 	if err != nil {
 		return nil, composeError(err)
 	}
 	return empty(), nil
+}
+
+// composeInspect resolves a project without starting anything; policy findings come back in the result, not as an error.
+func (d *Deps) composeInspect(ctx context.Context, env *dispatch.Env) (*agentv1.CommandResult, error) {
+	req := env.Cmd.GetComposeInspect()
+	if err := d.needGit(req.GetProject()); err != nil {
+		return nil, err
+	}
+	res, err := d.Compose.Inspect(ctx, req.GetProject(), io.Discard)
+	if err != nil {
+		return nil, composeError(err)
+	}
+	return &agentv1.CommandResult{Result: &agentv1.CommandResult_ComposeInspect{ComposeInspect: res}}, nil
 }
 
 // composeError separates invalid input (including policy refusals of the compose file) from runtime failures.
@@ -149,7 +197,14 @@ func composeError(err error) error {
 	}
 	var ve *compose.ValidationError
 	if errors.As(err, &ve) {
+		if ve.Invalid {
+			return dispatch.Errorf(agentv1.ErrorCode_ERROR_CODE_INVALID_ARGUMENT, "%v", err)
+		}
 		return dispatch.Errorf(agentv1.ErrorCode_ERROR_CODE_POLICY_VIOLATION, "%v", err)
+	}
+	var f *build.Failure
+	if errors.As(err, &f) {
+		return &dispatch.Error{Code: f.Code, Msg: f.Error()}
 	}
 	return dispatch.Errorf(agentv1.ErrorCode_ERROR_CODE_BUILD_FAILED, "%v", err)
 }
@@ -173,6 +228,9 @@ func (d *Deps) registerPhase3(r func(string, string, dispatch.Handler)) {
 		r("compose_down", CapCompose, d.composeDown)
 		r("compose_ps", CapCompose, d.composePs)
 		r("compose_pull", CapCompose, d.composePull)
+		if d.gitAvailable() {
+			r("compose_inspect", CapComposeGit, d.composeInspect)
+		}
 	}
 	if d.Proxy != nil {
 		r("proxy_ensure", CapProxy, d.proxyEnsure)
@@ -194,6 +252,9 @@ func (d *Deps) phase3Capabilities() []string {
 	}
 	if d.Compose != nil {
 		c = append(c, CapCompose)
+		if d.gitAvailable() {
+			c = append(c, CapComposeGit)
+		}
 	}
 	if d.Proxy != nil {
 		c = append(c, CapProxy)

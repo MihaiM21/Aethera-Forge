@@ -1,9 +1,12 @@
 # Aethera server agent. Build context: the repository root.
-FROM golang:1.24-alpine AS build
+# Cross-compiled natively on the build machine: Go needs no emulation for another architecture (QEMU would make the arm64 image slow to build).
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
 WORKDIR /src
 COPY src/agent/ ./
 ARG VERSION=0.0.0-dev
-RUN CGO_ENABLED=0 go build -trimpath \
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
     -ldflags "-s -w -X github.com/mihaim21/aethera-forge/agent/internal/version.Version=${VERSION}" \
     -o /out/aethera-agent ./cmd/aethera-agent
 

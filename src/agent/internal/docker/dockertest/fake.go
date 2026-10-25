@@ -41,6 +41,13 @@ type Fake struct {
 	BlockList chan struct{}
 	// PullErr, when set, fails ImagePull.
 	PullErr error
+	// ExecFunc and HelperFunc script ContainerExec and RunHelper; Execs and
+	// Helpers record the calls (they contain env values: tests only).
+	ExecFunc   func(ctx context.Context, spec docker.ExecSpec) (int, error)
+	HelperFunc func(ctx context.Context, spec docker.HelperSpec) (int, error)
+	VolumeOpts map[string]map[string]string
+	Execs      []docker.ExecSpec
+	Helpers    []docker.HelperSpec
 	// InitialLogs are written first by ContainerLogs.
 	InitialLogs []LogLine
 	logCh       chan LogLine
@@ -484,6 +491,60 @@ func (f *Fake) Events(ctx context.Context) (<-chan docker.Event, <-chan error) {
 		}
 	}()
 	return out, errc
+}
+
+// ContainerExec records the spec and runs ExecFunc (default: exit code 0, no
+// output). The container must exist (ErrNotFound) and be running (ErrConflict).
+func (f *Fake) ContainerExec(ctx context.Context, spec docker.ExecSpec) (int, error) {
+	f.mu.Lock()
+	f.call("ContainerExec %s", spec.Container)
+	f.Execs = append(f.Execs, spec)
+	if err := f.unavailable(); err != nil {
+		f.mu.Unlock()
+		return 0, err
+	}
+	c := f.find(spec.Container)
+	if c == nil {
+		f.mu.Unlock()
+		return 0, fmt.Errorf("%w: container %s", docker.ErrNotFound, spec.Container)
+	}
+	if c.GetState() != agentv1.ContainerState_CONTAINER_STATE_RUNNING {
+		f.mu.Unlock()
+		return 0, fmt.Errorf("%w: container %s is not running", docker.ErrConflict, spec.Container)
+	}
+	fn := f.ExecFunc
+	f.mu.Unlock()
+	if fn == nil {
+		return 0, nil
+	}
+	return fn(ctx, spec)
+}
+
+// RunHelper records the spec and runs HelperFunc (default: exit code 0).
+func (f *Fake) RunHelper(ctx context.Context, spec docker.HelperSpec) (int, error) {
+	f.mu.Lock()
+	f.call("RunHelper %s %s", spec.Image, spec.Volume)
+	f.Helpers = append(f.Helpers, spec)
+	if err := f.unavailable(); err != nil {
+		f.mu.Unlock()
+		return 0, err
+	}
+	fn := f.HelperFunc
+	f.mu.Unlock()
+	if fn == nil {
+		return 0, nil
+	}
+	return fn(ctx, spec)
+}
+
+// VolumeOptions returns VolumeOpts[name] (nil when unset); the volume must exist.
+func (f *Fake) VolumeOptions(_ context.Context, name string) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.Volumes[name]; !ok {
+		return nil, fmt.Errorf("%w: volume %s", docker.ErrNotFound, name)
+	}
+	return f.VolumeOpts[name], nil
 }
 
 func (f *Fake) Close() error { return nil }

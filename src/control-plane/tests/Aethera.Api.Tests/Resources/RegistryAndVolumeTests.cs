@@ -116,13 +116,33 @@ public sealed class RegistryTests(ResourcesFixture fixture)
     }
 
     [RequiresDatabaseFact]
-    public async Task Test_IsNotImplementedYet()
+    public async Task Test_UsesTheStoredCredentials_ReportsTheVerdict_AndLeaksNothing()
     {
         var tenant = await fixture.NewTenantAsync();
-        var registry = await tenant.Admin.CreateAsync("/api/v1/registries", new { name = "T", url = "ghcr.io" });
+        var registry = await tenant.Admin.CreateAsync("/api/v1/registries", new { name = "T", url = "ghcr.io", username = "ci-bot", password = Password });
+
+        fixture.Registries.Result = new(Aethera.Infrastructure.Registries.RegistryTestOutcome.Unauthorized, "The token service rejected the stored username and password.", 401);
         var response = await tenant.Admin.PostAsync($"/api/v1/registries/{registry.Id()}/test", null);
-        await response.AssertProblemAsync(501, "not_implemented");
-        Assert.Equal("Not implemented", (await response.ReadAsync())["title"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(Password, text);
+        var body = System.Text.Json.Nodes.JsonNode.Parse(text)!;
+        Assert.Equal("unauthorized", body["result"]!.GetValue<string>());
+        Assert.Equal(401, body["httpStatus"]!.GetValue<int>());
+        Assert.Contains("rejected", body["message"]!.GetValue<string>());
+        Assert.Equal(("ghcr.io", "ci-bot", Password), fixture.Registries.LastCall);
+
+        fixture.Registries.Result = new(Aethera.Infrastructure.Registries.RegistryTestOutcome.Unreachable, "registry.invalid does not resolve.");
+        Assert.Equal("unreachable", (await (await tenant.Admin.PostAsync($"/api/v1/registries/{registry.Id()}/test", null)).ReadAsync())["result"]!.GetValue<string>());
+
+        Assert.Contains(await tenant.AuditAsync(registry.Id()), e => e.Action == "registry.tested");
+        Assert.All(await tenant.AuditAsync(), e => Assert.DoesNotContain(Password, e.MetadataJson));
+
+        var anonymous = await tenant.Admin.CreateAsync("/api/v1/registries", new { name = "Anon", url = "registry.example.com" });
+        fixture.Registries.Result = new(Aethera.Infrastructure.Registries.RegistryTestOutcome.Ok, "Reachable.", 200);
+        await tenant.Admin.PostAsync($"/api/v1/registries/{anonymous.Id()}/test", null);
+        Assert.Equal(("registry.example.com", null, null), fixture.Registries.LastCall);
+
         await (await tenant.Admin.PostAsync($"/api/v1/registries/{Guid.NewGuid()}/test", null)).AssertProblemAsync(404, "registry.not_found");
         await (await tenant.Developer.PostAsync($"/api/v1/registries/{registry.Id()}/test", null)).AssertProblemAsync(403, "auth.forbidden");
     }

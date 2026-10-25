@@ -1,0 +1,18 @@
+# Docker Desktop (Windows, macOS): put this machine's agent in the control plane's network namespace.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.desktop.yml --env-file deploy/.env up -d --build
+#
+# On a Linux server the agent container uses the host network namespace (docker-compose.yml, docker-compose.prod.yml). Docker Desktop runs
+# containers in a VM, where "host" is the VM and not the machine you are sitting at, and published ports do not reliably appear on the
+# VM's loopback. Sharing the control plane's namespace works everywhere: the agent dials the gateway on 127.0.0.1:9443 inside it.
+#
+# Limits of this mode (fine for trying Aethera out, why a real server uses the Linux mode):
+#  - the agent cannot reach containers that are only on an environment network, so TCP health checks of template services (PostgreSQL,
+#    MongoDB, Redis) fail from this agent;
+#  - when the aethera container is recreated the agent keeps the old, dead namespace until it exits (it does, after
+#    AETHERA_AGENT_EXIT_AFTER_OFFLINE, ten minutes by default) and is restarted by Docker; `docker compose restart agent` does it at once.
+services:
+  agent:
+    network_mode: "service:aethera"
+    environment:
+      AETHERA_ENDPOINT: 127.0.0.1:9443

@@ -26,7 +26,7 @@ public static class DeploymentSnapshotFactory
     };
 
     /// <summary>The environment network every workload joins by default, so an application reaches a service of its environment by its slug.</summary>
-    public static string EnvironmentNetwork(Guid environmentId) => $"aethera-env-{environmentId.ToString("N")[..8]}";
+    public static string EnvironmentNetwork(Guid environmentId) => DeploymentPlanBuilder.EnvironmentNetwork(environmentId);
 
     public static DeploymentSnapshot Create(Service service)
     {
@@ -63,18 +63,33 @@ public static class DeploymentSnapshotFactory
     {
         var networks = w.Networks.Where(n => n.Network is not null).OrderBy(n => n.Network.DockerName, StringComparer.Ordinal)
             .Select(n => new NetworkEntry(n.Network.DockerName, n.Network.IsInternal, n.Aliases)).ToList();
-        if (networks.Count == 0) networks.Add(new NetworkEntry(EnvironmentNetwork(w.EnvironmentId), false, [w.Slug]));
+        // Every workload joins the environment network: custom networks come in addition to it, never instead (a database template and an
+        // application of the environment reach each other by name only there).
+        var environmentNetwork = EnvironmentNetwork(w.EnvironmentId);
+        if (networks.All(n => n.DockerName != environmentNetwork)) networks.Insert(0, new NetworkEntry(environmentNetwork, false, [w.Slug]));
+
+        // The Docker volumes of the installation (its database, backups, certificates) are never mounted into a workload, by anyone: the API
+        // refuses such names, and a row that got in some other way stops the deployment here.
+        foreach (var volume in w.Volumes.Where(v => v.HostPath is not { Length: > 0 }))
+        {
+            if (VolumeNames.Classify(volume.Name, w.Slug, w.Id) == VolumeNameKind.Reserved)
+                throw new UnsupportedSourceException("volume.name_reserved",
+                    $"The volume '{volume.Name}' is a volume of the Aethera installation itself and cannot be mounted into a workload.");
+        }
+
         return new DeploymentSnapshot
         {
             WorkloadId = w.Id, EnvironmentId = w.EnvironmentId, Slug = w.Slug, SourceKind = kind,
-            Runtime = Runtime(w.Runtime),
+            Runtime = Runtime(w.Runtime) with { StopTimeoutSeconds = StopTimeoutSeconds(w) },
             Env = w.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => new EnvEntry(
                 e.Key, e.SecretId is null ? e.Value : null, e.SecretId, e.Secret?.CurrentVersion, e.IsBuildTime, e.IsRuntime)).ToList(),
             Ports = w.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
             Volumes = w.Volumes.OrderBy(v => v.Name, StringComparer.Ordinal).Select(v => new VolumeEntry(v.Name, v.MountPath, v.HostPath, v.ReadOnly)).ToList(),
             Domains = w.Domains.Where(d => !d.IsDeleted).OrderBy(d => d.Hostname, StringComparer.Ordinal)
-                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort)).ToList(),
+                .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort, d.ComposeService, d.RedirectTo, d.StripPathPrefix,
+                    d.BasicAuthSecretId, null, d.DnsProviderId)).ToList(),
             Networks = networks,
+            CustomLabels = w.CustomLabels.Count > 0 ? new Dictionary<string, string>(w.CustomLabels) : null,
         };
     }
 
@@ -90,9 +105,20 @@ public static class DeploymentSnapshotFactory
 
             case ApplicationSourceKind.Compose:
                 var compose = app.ComposeSource;
+                if (compose?.FilePath is { Length: > 0 } filePath)
+                {
+                    // The file is read from the repository by the agent (ADR 0010): the application's git source says where, which branch or commit.
+                    var composeGit = app.GitSource ?? throw new UnsupportedSourceException("source.not_configured",
+                        "A compose file in the repository needs the application's git source (repository, branch).");
+                    return s with
+                    {
+                        Git = new GitSnapshot(composeGit.RepositoryUrl, composeGit.Branch, composeGit.CommitPin, composeGit.GitCredentialId),
+                        Compose = new ComposeSnapshot("", null, filePath),
+                    };
+                }
+
                 if (compose?.InlineContent is not { Length: > 0 } content)
-                    throw new UnsupportedSourceException("source.unsupported",
-                        "Compose applications currently need the compose file pasted in (inline content); reading it from the repository is not supported yet.");
+                    throw new UnsupportedSourceException("source.not_configured", "The compose application has neither a file in the repository nor inline content.");
                 return s with { Compose = new ComposeSnapshot(content, null) };
 
             default:
@@ -114,6 +140,36 @@ public static class DeploymentSnapshotFactory
                         build?.OutputDirectory, build?.CacheEnabled ?? true, build?.TargetPlatform),
                 };
         }
+    }
+
+    /// <summary>The service templates of databases: they flush on SIGTERM, so they get 60 seconds before the kill instead of 30.</summary>
+    private static readonly HashSet<string> DatabaseTemplates = new(["postgres", "mysql", "mariadb", "redis", "mongodb", "influxdb"], StringComparer.OrdinalIgnoreCase);
+
+    private static int StopTimeoutSeconds(Workload w) =>
+        w is Service service && DatabaseTemplates.Contains(service.TemplateKey) ? RuntimeSnapshot.DatabaseStopTimeoutSeconds : RuntimeSnapshot.DefaultStopTimeoutSeconds;
+
+    /// <summary>A branch name that is safe to hand to git (the agent validates it again).</summary>
+    private static bool IsSafeBranch(string branch) =>
+        branch.Length is > 0 and <= 255 && branch[0] != '-' && branch[^1] != '/' && !branch.Contains("..", StringComparison.Ordinal)
+        && !branch.Contains("//", StringComparison.Ordinal) && !branch.EndsWith(".lock", StringComparison.Ordinal)
+        && branch.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '/' or '-' or '+' or '@');
+
+    private static bool IsCommitSha(string? sha) =>
+        sha is { Length: >= 7 and <= 64 } && sha.All(char.IsAsciiHexDigit);
+
+    /// <summary>
+    /// A webhook push deploys the branch that was pushed, at the commit that was pushed (the application's branch setting is only the default and
+    /// the filter's reference): a filter such as <c>release/*</c> matches several branches. Other triggers deploy the configured source.
+    /// </summary>
+    /// <exception cref="UnsupportedSourceException">The pushed reference is not a usable branch name.</exception>
+    public static DeploymentSnapshot ApplyTrigger(DeploymentSnapshot snapshot, DeploymentTrigger trigger, string? deploymentRef, string? commitSha)
+    {
+        if (trigger != DeploymentTrigger.Webhook || snapshot.Git is not { } git || deploymentRef is not { Length: > 0 }) return snapshot;
+        const string heads = "refs/heads/";
+        var branch = deploymentRef.StartsWith(heads, StringComparison.Ordinal) ? deploymentRef[heads.Length..] : deploymentRef;
+        if (!IsSafeBranch(branch))
+            throw new UnsupportedSourceException("source.invalid_ref", "The pushed branch name cannot be deployed.");
+        return snapshot with { Git = git with { Branch = branch, CommitPin = IsCommitSha(commitSha) ? commitSha : git.CommitPin } };
     }
 
     private static RuntimeSnapshot Runtime(RuntimeConfig r) => new()

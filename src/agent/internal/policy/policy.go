@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
 	"github.com/mihaim21/aethera-forge/agent/internal/config"
@@ -73,6 +74,10 @@ type Policy struct {
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
 	// subnets lists Docker network subnets (injectable; may be nil).
 	subnets func(ctx context.Context) ([]netip.Prefix, error)
+
+	// The agent's own container, for the exec check (see exec.go).
+	selfOnce sync.Once
+	self     []string
 }
 
 // New compiles the policy for cfg.
@@ -316,6 +321,9 @@ func contains(list []string, s string) bool {
 // CheckCommand validates the policy-relevant parts of a command. It must be
 // cheap: it runs before the command is acked.
 func (p *Policy) CheckCommand(ctx context.Context, cmd *agentv1.Command) error {
+	if handled, err := p.checkExecCommands(ctx, cmd); handled {
+		return err
+	}
 	switch r := cmd.GetRequest().(type) {
 	case *agentv1.Command_ContainerCreate:
 		return p.CheckContainerSpec(r.ContainerCreate.GetSpec())
