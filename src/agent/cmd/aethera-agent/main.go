@@ -91,6 +91,7 @@ func runEnroll(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	token := fs.String("token", "", "one-time join token ('-' reads stdin; default $AETHERA_JOIN_TOKEN)")
 	pin := fs.String("ca-sha256", "", "SHA-256 fingerprint of the control plane CA (hex)")
 	name := fs.String("name", "", "optional display name for this server")
+	keepEndpoint := fs.Bool("keep-endpoint", false, "keep --endpoint as the control plane address instead of the one the control plane advertises")
 	stateDir := fs.String("state-dir", "", "state directory (default from config, /var/lib/aethera)")
 	cfgPath := fs.String("config", config.DefaultPath, "path to agent.yaml")
 	if err := fs.Parse(args); err != nil {
@@ -120,7 +121,7 @@ func runEnroll(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	id, err := enroll.Enroll(ctx, enroll.Params{
-		Endpoint: *endpoint, Token: tok, CASHA256: *pin, Name: *name,
+		Endpoint: *endpoint, Token: tok, CASHA256: *pin, Name: *name, KeepEndpoint: *keepEndpoint,
 		Dir: state.Dir(cfg.StateDir), Version: version.Version,
 	})
 	if err != nil {

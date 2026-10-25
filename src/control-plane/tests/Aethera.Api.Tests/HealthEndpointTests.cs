@@ -21,4 +21,19 @@ public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
         var body = await response.Content.ReadFromJsonAsync<Health>();
         Assert.Equal("ok", body?.Status);
     }
+
+    [Fact]
+    public async Task InstallAgentScript_IsServedAnonymouslyAsAShellScriptWithUnixLineEndings()
+    {
+        using var client = factory.WithWebHostBuilder(b => b.UseEnvironment("Testing")).CreateClient();
+
+        var response = await client.GetAsync("/install-agent.sh");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.StartsWith("text/x-shellscript", response.Content.Headers.ContentType?.ToString());
+        var script = await response.Content.ReadAsStringAsync();
+        Assert.StartsWith("#!/usr/bin/env bash", script);
+        Assert.DoesNotContain('\r', script);
+        Assert.Contains("--ca-sha256", script);
+    }
 }

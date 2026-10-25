@@ -1,0 +1,135 @@
+# Aethera production stack: control plane (API + web UI), PostgreSQL, Redis and an agent for this machine.
+# Written next to its .env by install.sh; to run it by hand:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+#
+# Traefik: Aethera deploys and configures its own Traefik (container "aethera-traefik", ports 80/443) through the agent as soon as
+# a server has a domain. This file only puts the control plane on that proxy's network and labels it, so setting AETHERA_DOMAIN makes
+# the UI available on https://<domain> without a second proxy that would fight over ports 80 and 443.
+name: aethera
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aethera
+      POSTGRES_PASSWORD: ${AETHERA_DB_PASSWORD:?set by install.sh}
+      POSTGRES_DB: aethera
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aethera -d aethera"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  aethera:
+    image: ${AETHERA_IMAGE:-ghcr.io/mihaim21/aethera-forge/control-plane}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      ConnectionStrings__Aethera: Host=postgres;Port=5432;Database=aethera;Username=aethera;Password=${AETHERA_DB_PASSWORD}
+      ConnectionStrings__Redis: redis:6379
+      # What agents dial and what the gRPC server certificate names: a hostname or IP slave servers can reach.
+      Aethera__Agents__PublicEndpoint: ${AETHERA_PUBLIC_HOST:?set by install.sh}:${AETHERA_GRPC_PORT:-9443}
+      # Connect this machine's agent container as the "local" server once the first owner has registered (false: only Servers > Use this machine).
+      Aethera__Agents__AutoLocalServer: ${AETHERA_AUTO_LOCAL_SERVER:-true}
+      # AES-256 key (base64, 32 bytes) that encrypts secrets and the internal CA key. Losing it makes stored secrets unreadable.
+      AETHERA_MASTER_KEY: ${AETHERA_MASTER_KEY:?set by install.sh}
+      # Where new releases are looked up: GitHub by default; a mirror or GitHub Enterprise through AETHERA_UPDATE_API_URL; AETHERA_UPDATE_CHECK=false for air-gapped installs.
+      # The install command the UI prints for a new server fetches this script; behind HTTPS, set it to https://<domain>/install-agent.sh.
+      Aethera__Agents__InstallScriptUrl: ${AETHERA_INSTALL_AGENT_URL:-}
+      # Let's Encrypt: without an email the proxy serves HTTP only. AETHERA_ACME_STAGING=true uses the staging CA while testing.
+      Aethera__Proxy__AcmeEmail: ${AETHERA_ACME_EMAIL:-}
+      Aethera__Proxy__Staging: ${AETHERA_ACME_STAGING:-false}
+      Aethera__Updates__Repository: ${AETHERA_UPDATE_REPOSITORY:-MihaiM21/aethera-forge}
+      Aethera__Updates__ApiBaseUrl: ${AETHERA_UPDATE_API_URL:-https://api.github.com}
+      Aethera__Updates__Enabled: ${AETHERA_UPDATE_CHECK:-true}
+    ports:
+      - "${AETHERA_HTTP_PORT:-8080}:8080"
+      - "${AETHERA_GRPC_PORT:-9443}:9443"
+    volumes:
+      - aethera_data:/data
+    networks:
+      - default
+      - aethera-proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: aethera-proxy
+      traefik.http.routers.aethera-http.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
+      traefik.http.routers.aethera-http.entrypoints: web
+      traefik.http.routers.aethera-http.service: aethera
+      traefik.http.routers.aethera-https.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
+      traefik.http.routers.aethera-https.entrypoints: websecure
+      traefik.http.routers.aethera-https.service: aethera
+      traefik.http.routers.aethera-https.tls: "true"
+      traefik.http.routers.aethera-https.tls.certresolver: letsencrypt
+      traefik.http.services.aethera.loadbalancer.server.port: "8080"
+    healthcheck:
+      # The aspnet image has no curl: a raw HTTP request over bash's /dev/tcp (dash, the image's sh, has none).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # The agent of this machine, so a single server is enough: it waits, unenrolled, until the control plane has an owner, which then makes
+  # the "local" server and hands this container a one-time join token through the shared aethera_data volume (Servers > "Use this
+  # machine" does the same by hand). After that it is an ordinary agent. It shares the control plane's network namespace, so it reaches
+  # the agent gateway on 127.0.0.1:9443, a name the gateway's certificate always has, whatever the public host is.
+  agent:
+    image: ${AETHERA_AGENT_IMAGE:-ghcr.io/mihaim21/aethera-forge/agent}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - aethera
+    network_mode: "service:aethera"
+    environment:
+      AETHERA_ENDPOINT: 127.0.0.1:9443
+      AETHERA_ENROLL_DIR: /data/updater
+      AETHERA_AGENT_NAME: local
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside: bind mounts the agent creates are resolved by the host's Docker daemon.
+      - /var/lib/aethera:/var/lib/aethera
+      - aethera_data:/data
+
+  # One-click updates from the UI (--profile updater; install.sh enables it). Watches a request file the control plane writes, then
+  # backs up the database, pulls the new images and restarts the stack, rolling back if the new version does not come up. It holds the
+  # Docker socket (root-equivalent) and the installation directory; leave the profile out to update with `aethera update` on the host.
+  updater:
+    profiles: ["updater"]
+    image: ${AETHERA_UPDATER_IMAGE:-ghcr.io/mihaim21/aethera-forge/updater}:${AETHERA_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      AETHERA_DIR: ${AETHERA_DIR:-/opt/aethera}
+      AETHERA_HEALTH_TIMEOUT: ${AETHERA_HEALTH_TIMEOUT:-180}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside: `docker compose` resolves the project's files and bind mounts on the host.
+      - ${AETHERA_DIR:-/opt/aethera}:${AETHERA_DIR:-/opt/aethera}
+      - aethera_data:/data
+
+networks:
+  # The network Aethera's proxy and every routed application join. The agent reuses it when it exists.
+  aethera-proxy:
+    name: aethera-proxy
+
+volumes:
+  pgdata:
+  redisdata:
+  aethera_data:

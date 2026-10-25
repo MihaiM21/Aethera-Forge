@@ -80,6 +80,12 @@ export type ApiToken = S["ApiTokenResponse"];
 export type CreatedApiToken = S["CreatedApiTokenResponse"];
 export type AuditEvent = S["AuditEventDto"];
 export type Job = S["JobDto"];
+export type SystemVersion = S["SystemVersionDto"];
+export type LocalServer = S["LocalServerDto"];
+export type UpdaterState = S["UpdaterDto"];
+export type Maintenance = S["MaintenanceDto"];
+export type MaintenanceReport = S["MaintenanceReportDto"];
+export type Backup = S["BackupDto"];
 
 /** The nine pipeline steps in execution order (spec section 5). */
 export const DEPLOYMENT_STEPS: readonly DeploymentStep[] = [

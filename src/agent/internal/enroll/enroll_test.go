@@ -71,6 +71,31 @@ func TestEnrollStoresIdentityKeyAndCertificates(t *testing.T) {
 	}
 }
 
+func TestEnrollStoresTheAdvertisedEndpointUnlessToldToKeepTheDialedOne(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		cp, err := fakecp.Start(token, "srv-42")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cp.Advertised = "aethera.example.com:9443"
+		p := params(cp, state.Dir(t.TempDir()+"/aethera"))
+		p.KeepEndpoint = keep
+
+		id, err := enroll.Enroll(context.Background(), p)
+		cp.Stop()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := cp.Advertised
+		if keep {
+			want = cp.Addr
+		}
+		if id.Endpoint != want {
+			t.Fatalf("keep=%v: endpoint = %q, want %q", keep, id.Endpoint, want)
+		}
+	}
+}
+
 func TestEnrollAcceptsFormattedFingerprints(t *testing.T) {
 	cp, _ := fakecp.Start(token, "srv-1")
 	defer cp.Stop()

@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Aethera.Infrastructure.SelfOps;
 using Npgsql;
 
 namespace Aethera.Infrastructure.Persistence;
@@ -10,6 +13,7 @@ public static class PersistenceServiceCollectionExtensions
 {
     public const string ConnectionStringName = "Aethera";
     public const string AutoMigrateKey = "Aethera:Database:AutoMigrate";
+    public const string BackupBeforeMigrateKey = "Aethera:Database:BackupBeforeMigrate";
 
     /// <summary>
     /// Registers <see cref="AetheraDbContext"/> using <c>ConnectionStrings:Aethera</c>. The connection string is read
@@ -42,7 +46,11 @@ public static class PersistenceServiceCollectionExtensions
             .UseNpgsql(dataSource, npgsql => npgsql.MigrationsAssembly(typeof(AetheraDbContext).Assembly.GetName().Name))
             .UseSnakeCaseNamingConvention();
 
-    /// <summary>Applies pending migrations when <c>Aethera:Database:AutoMigrate</c> is true. Returns whether it ran.</summary>
+    /// <summary>
+    /// Applies pending migrations when <c>Aethera:Database:AutoMigrate</c> is true (see <see cref="SafeMigrator"/>: a database newer than the
+    /// code stops the start, an existing installation is backed up first unless <c>Aethera:Database:BackupBeforeMigrate</c> is false).
+    /// Returns whether it ran.
+    /// </summary>
     public static async Task<bool> MigrateAetheraDatabaseIfEnabledAsync(
         this IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
     {
@@ -50,7 +58,13 @@ public static class PersistenceServiceCollectionExtensions
 
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
-        await db.Database.MigrateAsync(cancellationToken);
+        var logger = (services.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance).CreateLogger("Aethera.Migrations");
+        var maintenance = configuration.GetSection(MaintenanceOptions.Section).Get<MaintenanceOptions>() ?? new MaintenanceOptions();
+        var backupEnabled = !bool.TryParse(configuration[BackupBeforeMigrateKey], out var flag) || flag;
+        var connectionString = configuration.GetConnectionString(ConnectionStringName);
+        var backup = backupEnabled && !string.IsNullOrWhiteSpace(connectionString) ? new DatabaseBackup(connectionString, maintenance.BackupDirectory, logger) : null;
+
+        await SafeMigrator.MigrateAsync(db, backup, maintenance.PreMigrationBackupsKept, DateTimeOffset.UtcNow, logger, cancellationToken);
         return true;
     }
 }

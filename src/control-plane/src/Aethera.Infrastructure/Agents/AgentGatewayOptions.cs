@@ -23,6 +23,12 @@ public sealed class AgentGatewayOptions
     /// </summary>
     public string? PublicEndpoint { get; set; }
 
+    /// <summary>
+    /// Connect the machine the control plane runs on as the <c>local</c> server as soon as the first owner has registered, when the agent
+    /// container of the compose project is waiting for it. Off: only the "Use this machine" button does it.
+    /// </summary>
+    public bool AutoLocalServer { get; set; } = true;
+
     /// <summary>URL of <c>install-agent.sh</c> used in the generated install command. Null = <c>&lt;API origin&gt;/install-agent.sh</c>.</summary>
     public string? InstallScriptUrl { get; set; }
 

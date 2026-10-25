@@ -4,7 +4,7 @@
 
 Aethera is an open-source self-hosted deployment and infrastructure management platform for running applications, services, and containers on your own servers. It is an alternative to tools like Coolify, built and tested against real production infrastructure.
 
-**Status:** early development (Phase 0, foundation). See [`docs/roadmap.md`](docs/roadmap.md) and [`docs/plan.md`](docs/plan.md).
+**Status:** MVP feature-complete (phases 0-5), pre-release. Next: the first tagged release, then multi-server roles, secure networking, backups and alerts. See [`docs/roadmap.md`](docs/roadmap.md) and [`docs/plan.md`](docs/plan.md).
 
 ## Components
 
@@ -15,9 +15,21 @@ Aethera is an open-source self-hosted deployment and infrastructure management p
 | Web UI | Next.js (App Router, static export), Tailwind v4, shadcn/ui | `src/web` |
 | Agent protocol | Protobuf / gRPC | `proto` |
 
-## Deploy with Docker Compose
+## Install
 
-Master (UI, API, PostgreSQL, Redis; the master key is generated on first start and kept in the `aethera_data` volume, back it up):
+On a Linux server, as root:
+
+```bash
+curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- --admin-email you@example.com --host aethera.example.com
+```
+
+Until a release is published the script builds the images from source on its own (a few minutes; `--from-source [ref]` forces that). On Windows or macOS with Docker Desktop: `pwsh deploy/install.ps1` from a checkout (or `irm https://raw.githubusercontent.com/MihaiM21/Aethera-Forge/master/deploy/install.ps1 | iex`), then open http://localhost:8080.
+
+It installs Docker if needed, generates the secrets, starts the control plane with PostgreSQL and Redis, creates the owner and enrolls an agent for the machine. More servers join with one command from the UI. Updates, backups and housekeeping are built in (Settings > System, or `aethera update`). Full guide: [`docs/install.md`](docs/install.md); coming from Coolify: [`docs/migration-from-coolify.md`](docs/migration-from-coolify.md); how it fits together: [`docs/architecture/`](docs/architecture/README.md).
+
+## Development stack with Docker Compose
+
+Builds the images from this checkout (no updater; for a real installation use the installer above). Master (UI, API, PostgreSQL, Redis; the master key is generated on first start and kept in the `aethera_data` volume, back it up):
 
 ```bash
 cp deploy/.env.example deploy/.env        # set AETHERA_PUBLIC_HOST to a name/IP the slaves can reach
@@ -66,9 +78,13 @@ src/agent/           Go agent module
 src/web/             Next.js app
 proto/               Agent protocol (.proto), configured by buf.yaml / buf.gen.yaml
 deploy/              Docker Compose files and deployment assets
-docs/                Plan, roadmap, architecture decision records, product spec
+docs/                Plan, roadmap, install and migration guides, architecture decision records, product spec
 scripts/             Tooling scripts (e.g. Claude Code session bootstrap)
 ```
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 

@@ -8,7 +8,7 @@ src/control-plane/   .NET 10 solution Aethera.slnx: src/{Aethera.Api,Domain,Infr
 src/agent/           Go module github.com/mihaim21/aethera-forge/agent (cmd/aethera-agent, internal/*, gen/ = generated proto code)
 src/web/             Next.js (App Router, static export, Tailwind v4, shadcn/ui), pnpm
 proto/               Agent protocol (buf). buf.yaml / buf.gen.yaml at repo root
-deploy/              docker-compose.dev.yml (Postgres 17, Redis 7)
+deploy/              docker-compose.dev.yml (Postgres 17, Redis 7), docker-compose.prod.yml + install.sh + install-agent.sh + aethera-ctl.sh (packaging, ADR 0009), docker/ (Dockerfiles)
 scripts/             session-start.sh (Claude Code cloud bootstrap)
 ```
 Dependency direction (.NET): Api -> Infrastructure, Engine -> Domain. Domain depends on nothing. NuGet versions live only in `Directory.Packages.props`; shared settings (net10.0, nullable, warnings as errors) in `Directory.Build.props`.
@@ -37,6 +37,8 @@ su postgres -s /bin/bash -c "cd /tmp && $PGBIN/pg_ctl -D $D/data -m immediate st
 `bash deploy/smoke.sh` runs the whole Phase 1 stack end to end (web export, API, throw-away Postgres/Redis, curl, headless Chromium) and takes the same `AETHERA_DB` / `AETHERA_REDIS` if you want it to use yours. The API serves the web export from `Aethera:Web:Root` (default `wwwroot`; in Development `src/web/out`); restart it after a new `pnpm build`.
 
 `E2E_PHASES=ui bash deploy/agent-e2e.sh` is the Phase 4 check: the real API, a real agent with Docker-in-Docker and a Playwright run of the whole product UI (wizard, deployment, rollback, a service from a template, ops pages) with dark and light screenshots in `src/web/screenshots/phase4`. It needs Docker, Node and a Chrome or Edge (`PLAYWRIGHT_CHROMIUM_EXECUTABLE` overrides the lookup).
+
+`bash deploy/install-e2e.sh` is the Phase 5 check: `install.sh` on a throw-away Docker-in-Docker host, then the updater for real (an update, a failed pull, a rollback with the database restored) and a `pg_dump` backup. It builds the images when they are missing (minutes the first time) and needs Docker only.
 
 Agent:
 ```bash

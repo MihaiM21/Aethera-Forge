@@ -389,6 +389,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/agent/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update the agent on a server to the newest release
+         * @description A job: the agent downloads the release binary over HTTPS, verifies its SHA-256, swaps itself and rolls back if the new one does not reconnect.
+         */
+        post: operations["updateServerAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -1734,6 +1754,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The running version, the newest release and the state of the updater
+         * @description `latest` comes from the last release check (GitHub, every few hours; `checkEnabled` false = not looked up). `updater.available` is false when no updater container is running.
+         */
+        get: operations["getSystemVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/version/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Look for a new release now */
+        post: operations["checkSystemVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update the control plane to the newest release
+         * @description Asks the updater container to back up the database, pull the new images and restart the stack. The API restarts: poll `GET /system/version` until it answers again.
+         */
+        post: operations["startSystemUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Retention settings, database backups and the last maintenance run */
+        get: operations["getSystemMaintenance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/maintenance/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run maintenance now: retention, a database backup and a prune of every connected server */
+        post: operations["runSystemMaintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/local-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether this machine (the one the control plane runs on) is a deployment server yet */
+        get: operations["getLocalServer"];
+        put?: never;
+        /**
+         * Make this machine a deployment server
+         * @description Creates the `local` server (roles master and build) and a one-time join token, and hands it to the agent container of this machine, which waits next to the control plane (it is also done automatically after the first owner registers). Poll `GET /system/local-server` until `connected`.
+         */
+        post: operations["enableLocalServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1898,6 +2030,14 @@ export interface components {
             since: unknown;
             stale: boolean;
             detail: null | string;
+        };
+        BackupDto: {
+            name: string;
+            /** Format: int64 */
+            sizeBytes: number | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            kind: string;
         };
         BuildCandidateDto: {
             engine: string;
@@ -2653,11 +2793,72 @@ export interface components {
             observedAt: unknown;
             stale: boolean;
         };
+        LocalServerDto: {
+            updaterAvailable: boolean;
+            state: string;
+            message: null | string;
+            /** Format: uuid */
+            serverId: null | string;
+            connected: boolean;
+        };
         LoginRequest: {
             email: string;
             password: string;
             /** @default false */
             rememberMe: boolean;
+        };
+        MaintenanceDto: {
+            settings: components["schemas"]["MaintenanceSettingsDto"];
+            backupAvailable: boolean;
+            backups: components["schemas"]["BackupDto"][];
+            /** Format: date-time */
+            lastBackupAt: unknown;
+            /** Format: date-time */
+            lastPruneAt: unknown;
+            lastRun: null | components["schemas"]["MaintenanceReportDto"];
+        };
+        MaintenanceReportDto: {
+            /** Format: date-time */
+            at: unknown;
+            /** Format: int64 */
+            logChunksDeleted: number | string;
+            /** Format: int64 */
+            eventsDeleted: number | string;
+            /** Format: int64 */
+            webhookDeliveriesDeleted: number | string;
+            /** Format: int64 */
+            auditEventsDeleted: number | string;
+            /** Format: int64 */
+            sessionsDeleted: number | string;
+            /** Format: int64 */
+            idempotencyRecordsDeleted: number | string;
+            /** Format: int32 */
+            pruneJobsQueued: number | string;
+            backupTaken: null | string;
+            /** Format: int32 */
+            backupsDeleted: number | string;
+            errors: string[];
+        };
+        MaintenanceSettingsDto: {
+            enabled: boolean;
+            /** Format: int32 */
+            logRetentionDays: number | string;
+            /** Format: int32 */
+            eventRetentionDays: number | string;
+            /** Format: int32 */
+            auditRetentionDays: number | string;
+            /** Format: int32 */
+            sessionRetentionDays: number | string;
+            pruneEnabled: boolean;
+            /** Format: double */
+            pruneIntervalHours: number | string;
+            /** Format: int32 */
+            pruneKeepHours: number | string;
+            backupEnabled: boolean;
+            /** Format: double */
+            backupIntervalHours: number | string;
+            /** Format: int32 */
+            backupsKept: number | string;
         };
         MeResponse: {
             user: components["schemas"]["UserSummary"];
@@ -2932,6 +3133,14 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+        };
+        ReleaseDto: {
+            version: string;
+            url: string;
+            notes: null | string;
+            preRelease: boolean;
+            /** Format: date-time */
+            publishedAt: unknown;
         };
         ResourceEventResponse: {
             /** Format: uuid */
@@ -3289,12 +3498,28 @@ export interface components {
             /** Format: double */
             latencyMilliseconds: number | string;
         };
+        StartUpdateRequest: {
+            version?: null | string;
+        };
         /** @enum {unknown} */
         StepStatus: "running" | "succeeded" | "failed" | "skipped" | "cancelled";
+        SystemVersionDto: {
+            current: string;
+            latest: null | components["schemas"]["ReleaseDto"];
+            updateAvailable: boolean;
+            checkEnabled: boolean;
+            /** Format: date-time */
+            checkedAt: unknown;
+            checkError: null | string;
+            updater: components["schemas"]["UpdaterDto"];
+        };
         ToolInfo: {
             name: string;
             version: string;
             path: string;
+        };
+        UpdateAgentRequest: {
+            version?: null | string;
         };
         UpdateApplicationRequest: {
             name?: null | string;
@@ -3389,6 +3614,14 @@ export interface components {
             hostPath?: null | string;
             readOnly?: null | boolean;
             backupEnabled?: null | boolean;
+        };
+        UpdaterDto: {
+            available: boolean;
+            state: string;
+            targetVersion: null | string;
+            message: null | string;
+            /** Format: date-time */
+            updatedAt: unknown;
         };
         UserResponse: {
             /** Format: uuid */
@@ -4950,6 +5183,68 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateServerAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["UpdateAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12126,6 +12421,366 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getSystemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemVersionDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    checkSystemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemVersionDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    startSystemUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": null | components["schemas"]["StartUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdaterDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getSystemMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    runSystemMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceReportDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getLocalServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalServerDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    enableLocalServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalServerDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

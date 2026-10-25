@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SystemTab } from "./system-tab";
 import { useAuth } from "@/lib/auth/auth-context";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { ApiToken, AuditEvent, GitCredential, OrganizationRole, User } from "@/lib/resources/types";
@@ -542,16 +543,16 @@ function AuditTab({ api }: { api: ResourcesApi }) {
 
 // ------------------------------------------------------------------------------------------------ Page
 
-export const SETTINGS_TABS = ["account", "members", "tokens", "git", "audit"] as const;
+export const SETTINGS_TABS = ["account", "members", "tokens", "git", "audit", "system"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export function settingsTabFromHash(hash: string, admin: boolean): SettingsTab {
   const h = hash.replace(/^#/, "");
   const known = (SETTINGS_TABS as readonly string[]).includes(h) ? (h as SettingsTab) : "account";
-  return !admin && (known === "members" || known === "audit" || known === "git") ? "account" : known;
+  return !admin && (known === "members" || known === "audit" || known === "git" || known === "system") ? "account" : known;
 }
 
-/** Settings: your account and tokens for everyone; members, git credentials and the audit log for administrators. */
+/** Settings: your account and tokens for everyone; members, git credentials, the audit log and system (updates, backups) for administrators. */
 export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
   const { me } = useAuth();
   const admin = isAdminRole(me?.role);
@@ -576,7 +577,7 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
       <PageHeader eyebrow="Configuration" title="Settings" description="Account, organization members, API tokens and the audit trail." />
       {!admin && (
         <p role="note" className="flex items-center gap-2 border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-          <ShieldIcon className="size-3.5 text-lime" aria-hidden="true" /> Members, git credentials and the audit log need the administrator role.
+          <ShieldIcon className="size-3.5 text-lime" aria-hidden="true" /> Members, git credentials, the audit log and system settings need the administrator role.
         </p>
       )}
       <Tabs value={tab} onValueChange={onTab}>
@@ -586,6 +587,7 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           <TabsTrigger value="tokens">API tokens</TabsTrigger>
           {admin && <TabsTrigger value="git">Git credentials</TabsTrigger>}
           {admin && <TabsTrigger value="audit">Audit log</TabsTrigger>}
+          {admin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
         <TabsContent value="account">
           <AccountTab api={api} />
@@ -594,6 +596,7 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
         <TabsContent value="tokens">{tab === "tokens" && <TokensTab api={api} admin={admin} />}</TabsContent>
         {admin && <TabsContent value="git">{tab === "git" && <GitTab api={api} />}</TabsContent>}
         {admin && <TabsContent value="audit">{tab === "audit" && <AuditTab api={api} />}</TabsContent>}
+        {admin && <TabsContent value="system">{tab === "system" && <SystemTab api={api} />}</TabsContent>}
       </Tabs>
     </div>
   );

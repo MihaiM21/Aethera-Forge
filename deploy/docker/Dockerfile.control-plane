@@ -11,12 +11,33 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api
 WORKDIR /src
 COPY proto/ proto/
 COPY src/control-plane/ src/control-plane/
+# Embedded into the API and served at /install-agent.sh.
+COPY deploy/install-agent.sh deploy/install-agent.sh
+ARG VERSION=0.0.0-dev
 # The OpenAPI document is generated at build time into src/web/openapi (committed); skip it here.
 RUN dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -o /app \
-    -p:OpenApiGenerateDocuments=false
+    -p:OpenApiGenerateDocuments=false -p:Version=${VERSION} -p:InformationalVersion=${VERSION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG VERSION=0.0.0-dev
+LABEL org.opencontainers.image.title="Aethera control plane" \
+      org.opencontainers.image.source="https://github.com/MihaiM21/aethera-forge" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
+# pg_dump for the scheduled and the pre-migration database backups. The client must be at least as new as the server (PostgreSQL 17 in
+# the compose files), which Ubuntu's own archive does not have: the PostgreSQL project's repository does.
+ARG PG_CLIENT_MAJOR=17
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-${PG_CLIENT_MAJOR} \
+    && apt-get purge -y --auto-remove gnupg \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=api /app ./
 COPY --from=web /src/web/out ./wwwroot
 COPY deploy/docker/control-plane-entrypoint.sh /usr/local/bin/aethera-entrypoint

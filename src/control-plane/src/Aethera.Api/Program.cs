@@ -5,10 +5,12 @@ using Aethera.Api.Features.Auth;
 using Aethera.Api.Features.Deployments;
 using Aethera.Api.Features.Jobs;
 using Aethera.Api.Features.Resources;
+using Aethera.Api.Features.SystemOps;
 using Aethera.Api.Http;
 using Aethera.Api.OpenApi;
 using Aethera.Api.Web;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.SelfOps;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,7 @@ builder.Services.AddResources(builder.Configuration);  // WP1.2
 builder.Services.AddJobs(builder.Configuration);       // WP1.3
 builder.Services.AddAgentGateway(builder.Configuration); // WP2.2: internal CA, mTLS gRPC gateway, agent transport
 builder.Services.AddDeployments(builder.Configuration);  // WP3.2: deployment engine, strategies, deploy/lifecycle jobs
+builder.Services.AddSelfOps(builder.Configuration);      // WP5.2: update checks, updater channel, scheduled maintenance
 
 var app = builder.Build();
 
@@ -38,6 +41,7 @@ api.MapJobs();                 // WP1.3
 api.MapAgents();               // WP2.2
 api.MapDeployments();          // WP3.2-3.4: deployments, rollback, build detection, proxy, webhook management
 api.MapAuditLog();             // WP4.4: audit log viewer
+api.MapSystem();               // WP5.2: version, updates, maintenance, agent update
 api.MapContributors();         // test/extension seam
 app.MapGitWebhooks();          // WP3.4: POST /webhooks/git/{endpointId} (anonymous, signature-verified)
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root

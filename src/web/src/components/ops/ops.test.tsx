@@ -38,6 +38,13 @@ describe("dashboard", () => {
     expect(deriveAlerts([up], [makeApp()], [], { cpu: 10, memory: 10, disk: 10 })).toEqual([]);
   });
 
+  it("announces an available update first, linking to the system settings", () => {
+    const alerts = deriveAlerts([up], [makeApp({ id: "a1", name: "web", status: "failed" })], [], { cpu: null, memory: null, disk: null }, { current: "1.0.0", latest: "1.2.0" });
+    expect(alerts[0]).toEqual({ key: "update", tone: "warning", text: "Aethera 1.2.0 is available (running 1.0.0)", href: "/settings#system" });
+    expect(alerts).toHaveLength(2);
+    expect(deriveAlerts([up], [], [], { cpu: null, memory: null, disk: null }, null)).toEqual([]);
+  });
+
   it("averages cpu and sums memory and disk over servers with fresh metrics", () => {
     const host = (cpu: number, used: number) => ({ timestamp: NOW, cpuPercent: cpu, memoryUsedBytes: used, memoryTotalBytes: 100, diskUsedBytes: used, diskTotalBytes: 200 });
     const usage = aggregateUsage([
@@ -86,6 +93,8 @@ describe("settings", () => {
     expect(settingsTabFromHash("#audit", true)).toBe("audit");
     expect(settingsTabFromHash("#tokens", false)).toBe("tokens");
     expect(settingsTabFromHash("", true)).toBe("account");
+    expect(settingsTabFromHash("#system", true)).toBe("system");
+    expect(settingsTabFromHash("#system", false)).toBe("account");
   });
 
   it("hides members, git credentials and the audit log from a developer", async () => {
@@ -95,6 +104,7 @@ describe("settings", () => {
     expect(screen.getByRole("tab", { name: "API tokens" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Members" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Audit log" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "System" })).not.toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent("administrator role");
   });
 
