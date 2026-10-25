@@ -147,7 +147,8 @@ func (p *Policy) ResolveLocalPath(rel string) (string, error) {
 
 // ResolveBelow joins rel below dir; rel must be a clean relative path.
 func ResolveBelow(dir, rel string) (string, error) {
-	if rel == "" || hasControl(rel) || strings.ContainsRune(rel, '\\') {
+	// ':' is refused on every OS, so a Windows drive path ("C:/x") is not taken as a relative name on Linux either.
+	if rel == "" || hasControl(rel) || strings.ContainsAny(rel, `\:`) {
 		return "", invalid("invalid backup path")
 	}
 	if strings.HasPrefix(rel, "/") || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" {
