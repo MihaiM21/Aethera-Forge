@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,10 +19,60 @@ type denyBinds struct{}
 
 func (denyBinds) CheckBindSource(src string) error { return errors.New("denied " + src) }
 
-type recorder struct{ calls []build.Cmd }
+// recorder is a fake runner: it records every command, answers `ps` and `config`, and plays git (a checkout writes
+// composeFile into the working directory).
+type recorder struct {
+	calls []build.Cmd
+	// config is the output of `docker compose config`; the default is one nginx service.
+	config string
+	// configFlagErr makes `config --no-env-resolution` fail as an old compose would.
+	configFlagErr bool
+	// composeFile (name -> content) is written into the checkout by `git checkout`.
+	composeFile map[string]string
+	sha         string
+	failBuild   bool
+	// envSeen is the --env-file content of the latest command that had one.
+	envSeen string
+}
 
 func (r *recorder) Run(_ context.Context, c build.Cmd) error {
 	r.calls = append(r.calls, c)
+	if f := argAfter(c.Args, "--env-file"); f != "" {
+		b, _ := os.ReadFile(f)
+		r.envSeen = string(b)
+	}
+	if c.Name == "git" && len(c.Args) > 0 {
+		switch c.Args[0] {
+		case "checkout":
+			for name, content := range r.composeFile {
+				if err := os.WriteFile(filepath.Join(c.Dir, name), []byte(content), 0o644); err != nil {
+					return err
+				}
+			}
+		case "rev-parse":
+			sha := r.sha
+			if sha == "" {
+				sha = "0123456789abcdef0123456789abcdef01234567"
+			}
+			c.Stdout.Write([]byte(sha + "\n"))
+		}
+		return nil
+	}
+	if has(c.Args, "config") {
+		if r.configFlagErr && has(c.Args, "--no-env-resolution") {
+			c.Stderr.Write([]byte("unknown flag: --no-env-resolution"))
+			return &exec.ExitError{}
+		}
+		cfg := r.config
+		if cfg == "" {
+			cfg = `{"services":{"web":{"image":"nginx"}}}`
+		}
+		c.Stdout.Write([]byte(cfg))
+		return nil
+	}
+	if r.failBuild && has(c.Args, "build") {
+		return errors.New("boom")
+	}
 	if len(c.Args) > 0 && c.Stdout != nil {
 		for _, a := range c.Args {
 			if a == "ps" {
@@ -31,6 +82,15 @@ func (r *recorder) Run(_ context.Context, c build.Cmd) error {
 		}
 	}
 	return nil
+}
+
+func has(args []string, s string) bool {
+	for _, a := range args {
+		if a == s {
+			return true
+		}
+	}
+	return false
 }
 
 func TestValidateRejectsHostPower(t *testing.T) {
@@ -92,8 +152,8 @@ func TestUpWritesFilesAndRunsCompose(t *testing.T) {
 	if len(res.Services) != 2 || res.Services[0].Service != "db" || res.Services[1].Ports[0].HostPort != 8080 {
 		t.Fatalf("services = %v", res.Services)
 	}
-	up := strings.Join(r.calls[0].Args, " ")
-	for _, want := range []string{"compose -p shop", "up -d", "--pull always", "--remove-orphans", "--wait --wait-timeout 90", "compose.aethera.yaml", "--env-file"} {
+	up := strings.Join(r.calls[1].Args, " ") // the first call resolves the configuration
+	for _, want := range []string{"compose -p shop --project-directory " + filepath.Join(dir, "shop"), "up -d", "--pull always", "--remove-orphans", "--wait --wait-timeout 90", "compose.aethera.yaml", "--env-file"} {
 		if !strings.Contains(up, want) {
 			t.Errorf("missing %q in %s", want, up)
 		}
@@ -101,13 +161,42 @@ func TestUpWritesFilesAndRunsCompose(t *testing.T) {
 	if strings.Contains(up, "s3cret") {
 		t.Error("secret on command line")
 	}
-	env, err := os.ReadFile(filepath.Join(dir, "shop", ".env"))
-	if err != nil || string(env) != "PW=s3cret\n" {
-		t.Fatalf("env file = %q, %v", env, err)
+	// The interpolation file only exists while the command runs, and nothing with a value is left in the project directory.
+	if r.envSeen != "PW='s3cret'\n" {
+		t.Fatalf("env file during the run = %q", r.envSeen)
 	}
+	if f := argAfter(r.calls[1].Args, "--env-file"); f == "" {
+		t.Fatal("no --env-file")
+	} else if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Errorf("env file still there: %v", err)
+	}
+	assertNoSecretOnDisk(t, dir, "s3cret")
 	if got, _ := os.ReadFile(filepath.Join(dir, "shop", "compose.yaml")); string(got) != p.ComposeFile {
 		t.Error("user compose file must be stored verbatim")
 	}
+}
+
+func argAfter(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// assertNoSecretOnDisk fails when any file below dir contains the secret.
+func assertNoSecretOnDisk(t *testing.T, dir, secret string) {
+	t.Helper()
+	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), secret) {
+			t.Errorf("%s still holds the secret", p)
+		}
+		return nil
+	})
 }
 
 func TestPrepareRejectsBadInput(t *testing.T) {

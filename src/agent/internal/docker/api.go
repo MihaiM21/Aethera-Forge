@@ -127,6 +127,21 @@ type API interface {
 	NetworkConnect(ctx context.Context, req *agentv1.NetworkConnect) error
 	NetworkDisconnect(ctx context.Context, network, container string, force bool) error
 
+	// ContainerExec runs spec.Argv inside a running container (the Docker exec
+	// API, no shell) and blocks until the process ended; it returns its exit
+	// code. NOT_FOUND / CONFLICT (ErrNotFound / ErrConflict) when the container
+	// is missing or not running. When ctx ends the process is killed where
+	// possible and ctx.Err() is returned.
+	ContainerExec(ctx context.Context, spec ExecSpec) (exitCode int, err error)
+	// RunHelper runs a short-lived helper container with one named volume at
+	// HelperVolumeTarget (image pulled when missing), streams its output, and
+	// always removes it. It returns the exit code.
+	RunHelper(ctx context.Context, spec HelperSpec) (exitCode int, err error)
+
+	// VolumeOptions returns the driver options a named volume was created
+	// with (a "local" volume with o=bind is a host path in disguise).
+	VolumeOptions(ctx context.Context, name string) (map[string]string, error)
+
 	// BuildCachePrune removes build cache and returns the reclaimed bytes.
 	BuildCachePrune(ctx context.Context) (int64, error)
 

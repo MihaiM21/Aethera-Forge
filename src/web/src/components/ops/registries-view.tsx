@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ContainerIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { ContainerIcon, Loader2Icon, PencilIcon, PlugZapIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { DotGrid } from "@/components/aethera/dot-grid";
 import { EmptyState } from "@/components/aethera/empty-state";
 import { PageHeader } from "@/components/aethera/page-header";
@@ -14,7 +14,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
-import type { Registry } from "@/lib/resources/types";
+import type { Registry, RegistryTestResult } from "@/lib/resources/types";
 import { formatAgo } from "@/lib/servers/format";
 import { usePolled } from "@/lib/servers/use-polled";
 
@@ -73,6 +73,14 @@ export function RegistriesView({ api = resourcesApi }: { api?: ResourcesApi }) {
   const list = usePolled((signal) => api.registries.list({ limit: 100, sort: "name" }, { signal }), "registries", { intervalMs: 30_000 });
   const [editing, setEditing] = React.useState<Registry | "new" | null>(null);
   const act = useAction();
+  const [testing, setTesting] = React.useState<string | null>(null);
+  const [verdicts, setVerdicts] = React.useState<Record<string, RegistryTestResult>>({});
+  async function test(id: string) {
+    setTesting(id);
+    const verdict = await act.run(() => api.registries.test(id));
+    setTesting(null);
+    if (verdict) setVerdicts((v) => ({ ...v, [id]: verdict }));
+  }
   const rows = list.data?.items ?? [];
   return (
     <div className="flex flex-col gap-6">
@@ -113,6 +121,9 @@ export function RegistriesView({ api = resourcesApi }: { api?: ResourcesApi }) {
               <div className="flex items-center gap-2">
                 <Badge tone={r.hasCredentials ? "success" : "neutral"}>{r.hasCredentials ? "credentials stored" : "anonymous"}</Badge>
                 <span className="font-mono text-2xs text-muted-foreground">{formatAgo(r.updatedAt)}</span>
+                <Button size="sm" variant="outline" aria-label={`Test ${r.name}`} disabled={testing === r.id} onClick={() => void test(r.id)}>
+                  {testing === r.id ? <Loader2Icon className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <PlugZapIcon aria-hidden="true" />} Test
+                </Button>
                 <Button size="icon-sm" variant="ghost" aria-label={`Edit ${r.name}`} onClick={() => setEditing(r)}>
                   <PencilIcon aria-hidden="true" />
                 </Button>
@@ -128,6 +139,14 @@ export function RegistriesView({ api = resourcesApi }: { api?: ResourcesApi }) {
                   <Trash2Icon aria-hidden="true" />
                 </Button>
               </div>
+              {verdicts[r.id] && (
+                <p
+                  role="status"
+                  className={`w-full font-mono text-xs ${verdicts[r.id].result === "ok" ? "text-success" : verdicts[r.id].result === "unauthorized" ? "text-warning" : "text-danger"}`}
+                >
+                  {verdicts[r.id].result}: {verdicts[r.id].message}
+                </p>
+              )}
             </li>
           ))}
         </ul>

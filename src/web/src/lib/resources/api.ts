@@ -6,7 +6,10 @@ import type {
   AuditEvent,
   BuildDetectResponse,
   CreateApplicationRequest,
+  ComposeInspect,
   CreateDomainRequest,
+  DnsProviderOption,
+  UpdateDomainRequest,
   CreateEnvVarRequest,
   CreateProjectRequest,
   CreateRegistryRequest,
@@ -31,6 +34,7 @@ import type {
   ProjectFromTemplate,
   ProjectTemplate,
   Registry,
+  RegistryTestResult,
   RuntimeLogs,
   Secret,
   Service,
@@ -93,6 +97,8 @@ export function createResourcesApi(client: ApiClient) {
       update: (id: string, body: UpdateApplicationRequest) => client.patch<Application>(workload("applications", id), body),
       remove: (id: string, confirm: string) => client.delete<void>(workload("applications", id), { query: { confirm } }),
       deploy: (id: string) => client.post<Deployment>(`${workload("applications", id)}/deployments`, {}),
+      /** Reads the compose file on the application's server: its services and ports (a service picker for domains). */
+      composeInspect: (id: string) => client.post<ComposeInspect>(`${workload("applications", id)}/compose/inspect`),
       redeploy: (id: string) => client.post<Deployment>(`${workload("applications", id)}/redeploy`),
       lifecycle: (id: string, action: "start" | "stop" | "restart") => client.post<Job>(`${workload("applications", id)}/${action}`),
       deployments: (id: string, q: { limit?: number; cursor?: string; status?: string } = {}, o: Signal = {}) =>
@@ -148,7 +154,17 @@ export function createResourcesApi(client: ApiClient) {
           signal: o.signal,
         }),
       create: (kind: "applications" | "services", id: string, body: CreateDomainRequest) => client.post<Domain>(`${workload(kind, id)}/domains`, body),
-      update: (id: string, body: Partial<CreateDomainRequest>) => client.patch<Domain>(`/domains/${enc(id)}`, body),
+      update: (id: string, body: UpdateDomainRequest) => client.patch<Domain>(`/domains/${enc(id)}`, body),
+      /** DNS providers for DNS-01 certificates; an empty list while the endpoint does not exist (older server). */
+      dnsProviders: async (o: Signal = {}): Promise<DnsProviderOption[]> => {
+        try {
+          const page = await client.get<Page<DnsProviderOption>>("/dns-providers", { query: { limit: 100 }, signal: o.signal });
+          return page.items;
+        } catch (e) {
+          if (typeof e === "object" && e !== null && (e as { status?: number }).status === 404) return [];
+          throw e;
+        }
+      },
       remove: (id: string) => client.delete<void>(`/domains/${enc(id)}`),
       verifyDns: (id: string) => client.post<Domain>(`/domains/${enc(id)}/verify-dns`),
     },
@@ -190,6 +206,8 @@ export function createResourcesApi(client: ApiClient) {
       create: (body: CreateRegistryRequest) => client.post<Registry>("/registries", body),
       update: (id: string, body: Partial<CreateRegistryRequest>) => client.patch<Registry>(`/registries/${enc(id)}`, body),
       remove: (id: string) => client.delete<void>(`/registries/${enc(id)}`),
+      /** The control plane calls the registry's v2 API with the stored credentials: result is ok, unauthorized or unreachable. */
+      test: (id: string) => client.post<RegistryTestResult>(`/registries/${enc(id)}/test`),
     },
 
     gitCredentials: {

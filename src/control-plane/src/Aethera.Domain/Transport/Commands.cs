@@ -97,6 +97,10 @@ public sealed record ComposePsCommand(ComposeProjectSpec Project, bool All = tru
 public sealed record ComposePullCommand(ComposeProjectSpec Project, IReadOnlyList<string>? Services = null)
     : ServerCommand<Unit>("compose.pull", TransportCapabilities.Compose, TimeSpan.FromMinutes(10));
 
+/// <summary>Resolves the project (checking out its repository when it has one) and lists its services without starting anything.</summary>
+public sealed record ComposeInspectCommand(ComposeProjectSpec Project)
+    : ServerCommand<ComposeInspection>("compose.inspect", TransportCapabilities.Compose, TimeSpan.FromMinutes(5), ReadOnly: true);
+
 // ---- builds --------------------------------------------------------------------------------------------------------------------------
 
 public sealed record BuildImageCommand(BuildSpec Spec)
@@ -140,3 +144,26 @@ public sealed record SystemPruneCommand(
 
 public sealed record AgentSelfUpdateCommand(string Url, string Sha256, string TargetVersion, byte[]? Signature = null)
     : ServerCommand<SelfUpdateOutcome>("agent.self_update", TransportCapabilities.SelfUpdate, TimeSpan.FromMinutes(5));
+
+// ---- exec and backups (ADR 0010) -----------------------------------------------------------------------------------------------------
+
+/// <summary>
+/// Runs a program inside a running container (scheduled tasks). Never on the host. Succeeds whenever the program ran to completion;
+/// the outcome's exit code says whether the task succeeded.
+/// </summary>
+public sealed record ContainerExecCommand(
+    string Container, IReadOnlyList<string> Argv, IReadOnlyList<EnvVarSpec>? Env = null, string? User = null, string? WorkingDir = null, int OutputTailBytes = 0)
+    : ServerCommand<ContainerExecOutcome>("container.exec", TransportCapabilities.ContainerOps, TimeSpan.FromHours(1));
+
+/// <summary>Produces, encrypts and stores a backup stream.</summary>
+public sealed record BackupRunCommand(string BackupId, BackupSourceSpec Source, BackupLocationSpec Target, BackupEncryptionSpec Encryption)
+    : ServerCommand<BackupRunOutcome>("backup.run", TransportCapabilities.ContainerOps, TimeSpan.FromHours(6));
+
+/// <summary>Reads, verifies, decrypts and restores a stored backup. Destructive: the API requires explicit confirmation.</summary>
+public sealed record BackupRestoreCommand(
+    string BackupId, BackupLocationSpec Source, BackupEncryptionSpec Encryption, BackupSinkSpec Sink, string? ExpectedSha256 = null)
+    : ServerCommand<BackupRestoreOutcome>("backup.restore", TransportCapabilities.ContainerOps, TimeSpan.FromHours(6));
+
+/// <summary>Deletes stored backup objects (retention); missing objects are not an error.</summary>
+public sealed record BackupDeleteCommand(IReadOnlyList<BackupLocationSpec> Locations)
+    : ServerCommand<Unit>("backup.delete", TransportCapabilities.ContainerOps, TimeSpan.FromMinutes(5));

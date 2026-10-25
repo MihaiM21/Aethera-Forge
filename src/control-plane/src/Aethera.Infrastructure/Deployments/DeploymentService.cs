@@ -24,6 +24,13 @@ public sealed class LifecyclePayload
     public LifecycleAction Action { get; set; }
 }
 
+/// <summary>Payload of <c>application.teardown</c>: the workload was deleted; its containers (and compose project) go.</summary>
+public sealed class TeardownPayload
+{
+    public Guid WorkloadId { get; set; }
+    public Guid ServerId { get; set; }
+}
+
 /// <summary>A request the current state of the application does not allow (mapped to a 409 by the API).</summary>
 public sealed class DeploymentConflictException(string code, string message) : Exception(message)
 {
@@ -35,9 +42,36 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
 {
     public const string DeployJobType = "application.deploy";
     public const string LifecycleJobType = "application.lifecycle";
+    public const string TeardownJobType = "application.teardown";
+
+    /// <summary>
+    /// Attempts of a deploy job. An attempt that fails because the server cannot be reached leaves the deployment resumable; the last one
+    /// ends it Failed (the job's retries are what makes a webhook push during an agent reconnect work).
+    /// </summary>
+    public const int DeployMaxAttempts = 3;
 
     /// <summary>The per-application lock key shared by every job that changes the application (ADR 0004).</summary>
     public static string LockKey(Guid applicationId) => $"app:{applicationId}";
+
+    /// <summary>
+    /// True when the workload ever put something on its server: a deployment that started (or is running). A workload that was never deployed has
+    /// no container to remove.
+    /// </summary>
+    public Task<bool> HasDeploymentsAsync(Guid workloadId, CancellationToken ct = default) =>
+        db.Deployments.AsNoTracking().AnyAsync(d => d.WorkloadId == workloadId && d.Status != DeploymentStatus.Queued && d.Status != DeploymentStatus.Cancelled, ct);
+
+    /// <summary>
+    /// Queues the removal of a deleted workload's containers (compose: <c>compose down</c> without volumes) and, with them, its proxy routes (they are
+    /// labels of the containers). Under the workload's lock key, so it runs after a deployment that is in flight. Volumes are kept. Call it after the
+    /// soft delete is tracked: the job and the delete are saved together.
+    /// </summary>
+    /// <param name="resourceType"><c>application</c> or <c>service</c> (what Jobs shows).</param>
+    public async Task<Job> QueueTeardownAsync(Workload workload, string resourceType, CancellationToken ct = default) =>
+        await jobs.EnqueueAsync(new JobRequest(TeardownJobType, new TeardownPayload { WorkloadId = workload.Id, ServerId = workload.ServerId })
+        {
+            OrganizationId = await OrganizationOfAsync(workload.ServerId, ct), Resource = new JobResource(resourceType, workload.Id), LockKey = LockKey(workload.Id),
+            MaxAttempts = 3,
+        }, ct);
 
     /// <summary>Queues a deployment from the application's current configuration (or a redeploy of it).</summary>
     public Task<QueuedDeployment> DeployAsync(Guid applicationId, DeploymentTrigger trigger, DeploymentRequestInfo? info = null, CancellationToken ct = default) =>
@@ -101,6 +135,7 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                 var job = await jobs.EnqueueAsync(new JobRequest(DeployJobType, new DeployPayload { DeploymentId = deployment.Id })
                 {
                     OrganizationId = await OrganizationOfAsync(app.ServerId, ct), Resource = new JobResource("application", app.Id), LockKey = LockKey(app.Id),
+                    MaxAttempts = DeployMaxAttempts,
                 }, ct);
                 // The row is not touched again: the worker may already be running it, and its writes must not race ours. The handler records JobId.
                 return new QueuedDeployment(deployment, job.Id);

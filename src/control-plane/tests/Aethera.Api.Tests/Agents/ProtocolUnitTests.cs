@@ -139,6 +139,15 @@ public sealed class CommandMapperTests
             [new DiscoveryRefreshCommand(), Command.RequestOneofCase.DiscoveryRefresh],
             [new SystemPruneCommand(StoppedContainers: true, KeepImages: ["a:1"]), Command.RequestOneofCase.SystemPrune],
             [new AgentSelfUpdateCommand("https://example.com/agent", new string('a', 64), "1.2.3"), Command.RequestOneofCase.AgentSelfUpdate],
+            [new ComposeInspectCommand(Project with { ComposeFile = "", Git = new GitSourceSpec("https://github.com/acme/shop.git", "main"), ComposePath = "deploy/compose.yaml" }),
+                Command.RequestOneofCase.ComposeInspect],
+            [new ContainerExecCommand("web", ["sh", "-c", "php artisan schedule:run"], [EnvVarSpec.OfSecret("TOKEN", "exec-secret")]), Command.RequestOneofCase.ContainerExec],
+            [new BackupRunCommand("b1", new ExecDumpSource("db", ["pg_dump", "-Fc"], [EnvVarSpec.OfSecret("PGPASSWORD", "pg-secret")]),
+                new S3LocationSpec("https://r2.example.com", null, "bucket", "a/b.aeb", "AKIA", new DomainSecretValue("s3-secret")),
+                new BackupEncryptionSpec(new DomainSecretValue("a2V5"), "mk1-abcdef01")), Command.RequestOneofCase.BackupRun],
+            [new BackupRestoreCommand("b1", new LocalBackupLocationSpec("x/b.aeb"), new BackupEncryptionSpec(new DomainSecretValue("a2V5"), "mk1-abcdef01"),
+                new VolumeRestoreSink("data", ClearFirst: true), new string('b', 64)), Command.RequestOneofCase.BackupRestore],
+            [new BackupDeleteCommand([new LocalBackupLocationSpec("x/b.aeb")]), Command.RequestOneofCase.BackupDelete],
         };
 
     [Fact]

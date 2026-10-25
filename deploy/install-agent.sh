@@ -9,7 +9,7 @@
 #   --endpoint <h:p>    gRPC address of the control plane (or AETHERA_ENDPOINT)
 #   --ca-sha256 <hex>   fingerprint of the control plane's CA, pinned on first contact (or AETHERA_CA_SHA256)
 #   --name <name>       name the agent reports (default: the host name)
-#   --version <v>       agent release to install (default: latest), e.g. v0.1.0
+#   --version <v>       agent release to install (default: latest, the newest non-pre-release), e.g. v0.1.0, 0.1.0 or 0.1.0-rc.1
 #   --download-url <u>  base URL holding aethera-agent-linux-<arch> and SHA256SUMS (default: the GitHub release)
 #   --no-docker         do not install Docker when it is missing (fail instead)
 #
@@ -78,7 +78,7 @@ systemctl enable --now docker >/dev/null 2>&1 || true
 # ---- binary -----------------------------------------------------------------------------------------------------------
 if [ -z "$DOWNLOAD_URL" ]; then
   if [ "$VERSION" = latest ]; then DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download"
-  else DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION"; fi
+  else DOWNLOAD_URL="https://github.com/$REPO/releases/download/v${VERSION#v}"; fi # the git tag always has the v; --version takes either form
 fi
 case "$DOWNLOAD_URL" in https://*) ;; *) die "the download URL must use https" ;; esac
 

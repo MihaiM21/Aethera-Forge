@@ -13,14 +13,29 @@ Aethera is a control plane (API and web UI, PostgreSQL, Redis) plus one agent pe
 
 ```bash
 curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- \
-  --admin-email you@example.com --host aethera.example.com
+  --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
 ```
+
+`--acme-email` is **required for HTTPS**: it is the Let's Encrypt account for the certificates of your domains. Without it Aethera's proxy has no certificate resolver and an application domain set to HTTPS would never get a certificate. Give it even if you only plan to use HTTPS later; it can also be added afterwards (First steps, 2).
+
+Release candidates (`v0.1.0-rc.N`) are GitHub pre-releases, which `releases/latest` does not return: install one with `--version`, either spelling works (`--version 0.1.0-rc.1` or `--version v0.1.0-rc.1`):
+
+```bash
+curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/download/v0.1.0-rc.1/install.sh | sudo bash -s -- \
+  --version 0.1.0-rc.1 --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
+```
+
+> **Beta.** Aethera 0.1 is beta software. The API and the configuration may still change between 0.x releases, and updates are only as safe as the backups you hold: take one (`aethera backup`, and the backups described in [backups.md](backups.md)) before every update.
 
 No release published yet (or you want a branch)? The installer falls back to building the images from the repository on this machine, or do it explicitly with `--from-source [branch-or-tag]`. That mode has no updater container and no `aethera` command; run the installer again to update. On Windows or macOS (Docker Desktop) use `deploy/install.ps1`, which does the same for a local machine.
 
 **One server is enough.** The stack always contains an agent container for the machine it runs on, like Coolify's localhost: it waits, and as soon as the first owner exists the control plane creates the `local` server (roles master and build) with a one-time join token and hands it to that agent. Nothing to copy, nothing to click: a minute after you have registered, the machine is a deployment server and you can create applications on it. More servers are added later from **Servers > Add server**.
 
 Without `--admin-email` nothing is created by the installer: open `http://<server>:8080` and register, the first account becomes the owner (and the machine connects itself right after). With it, the installer creates the owner (the generated password is printed once, change it in Settings) and waits until the machine is connected.
+
+**How the agent of this machine is networked.** On a Linux server the agent container runs in the **host network namespace** (`network_mode: host`), exactly like the systemd agent on every other server. It dials the control plane on `127.0.0.1:9443` (the gateway port published by the `aethera` container), reaches the containers on every Docker network (the health checks of your databases and apps) and simply reconnects when the control plane restarts. If the control plane stays unreachable for ten minutes the agent exits and Docker restarts it. **Docker Desktop (Windows, macOS, `install.ps1`) has no real host namespace**: there `docker-compose.desktop.yml` keeps the agent in the control plane's network namespace instead. That is fine to try Aethera out, but the agent then cannot reach containers that are only on an environment network (TCP health checks of template databases fail) and needs `docker compose restart agent` after the control plane container was recreated. Run real workloads on a Linux server.
+
+**Bind mounts** (a host path mounted into a container, administrator role) are only allowed **under `/var/lib/aethera`**, the agent's state directory: put the file there (for example `/var/lib/aethera/prometheus/prometheus.yml`) and mount that path. Any other host path is refused when the deployment starts, even though the form accepts it. Servers installed with `install-agent.sh` can widen this in their own `/etc/aethera/agent.yaml` (`policy.allowed_bind_prefixes`); the agent container of this machine has no such file.
 
 Do not want this machine to deploy anything (the control plane on its own, all work on other servers)? Install with `--no-agent`, or set `AETHERA_AUTO_LOCAL_SERVER=false` in the `.env` and stop the `agent` service. The automatic connection happens once, on a fresh installation: delete the `local` server and it stays deleted. **Servers > Use this machine** connects it on demand.
 
@@ -39,20 +54,21 @@ What the installer does, in order:
 | Option | Environment | Default | |
 |---|---|---|---|
 | `--dir <path>` | `AETHERA_DIR` | `/opt/aethera` | installation directory |
-| `--version <v>` | `AETHERA_VERSION` | `latest` | release to install, e.g. `v0.1.0` |
+| `--version <v>` | `AETHERA_VERSION` | `latest` | release to install, with or without the `v`: `0.1.0`, `v0.1.0`, `0.1.0-rc.1`. `latest` is the newest release that is not a pre-release. |
 | `--host <name-or-ip>` | `AETHERA_PUBLIC_HOST` | detected public IP | what **other servers** use to reach this machine's port 9443 (the agent gateway's certificate names it). Use a DNS name if the IP may change. |
 | `--domain <name>` | `AETHERA_DOMAIN` | none | serve the UI on `https://<name>` through Aethera's proxy |
 | `--acme-email <email>` | `AETHERA_ACME_EMAIL` | none | Let's Encrypt account for HTTPS certificates (also `AETHERA_ACME_STAGING=true` for the staging CA) |
 | `--admin-email`, `--admin-password`, `--admin-name`, `--org-name` | `AETHERA_ADMIN_*`, `AETHERA_ORG_NAME` | | the first owner; the password is generated and printed when omitted |
+| | `AETHERA_PUBLIC_URL` (`Aethera:PublicUrl` in the API) | `https://<domain>` with `--domain`, else `http://<host>:<http port>` | the address people open the UI at: the control plane builds the links in emails and notifications from it. The installer writes it to the `.env`; set the variable when you run the installer to override it, and edit it in the `.env` (then `docker compose ... up -d aethera`) whenever you change `AETHERA_DOMAIN` or put a different proxy in front. |
 | `--no-agent` | | | do not start an agent for this machine (the control plane alone) |
 | `--http-port`, `--grpc-port` | `AETHERA_HTTP_PORT`, `AETHERA_GRPC_PORT` | 8080, 9443 | host ports |
 
-Also read from the environment and written to the `.env`: `AETHERA_IMAGE`, `AETHERA_AGENT_IMAGE`, `AETHERA_UPDATER_IMAGE` (images from a private registry or mirror), `AETHERA_UPDATE_API_URL` (a GitHub mirror or Enterprise), `AETHERA_UPDATE_CHECK=false` (no release lookups, for air-gapped installs).
+Also read from the environment and written to the `.env`: `AETHERA_IMAGE`, `AETHERA_AGENT_IMAGE`, `AETHERA_UPDATER_IMAGE` (images from a private registry or mirror), `AETHERA_UPDATE_API_URL` (a GitHub mirror or Enterprise), `AETHERA_UPDATE_CHECK=false` (no release lookups, for air-gapped installs), `AETHERA_TRUSTED_PROXIES` (comma-separated IPs or CIDRs of a reverse proxy in front of Aethera whose `X-Forwarded-For`/`-Proto` are believed; leave empty with Aethera's own proxy), `AETHERA_AGENT_EXIT_AFTER_OFFLINE` (how long this machine's agent may be cut off from the control plane before it exits and is restarted, default `10m`).
 
 ## First steps
 
-1. Sign in at `http://<server>:8080`.
-2. **HTTPS and a domain for the UI** (optional): install with `--acme-email you@example.com` (the Let's Encrypt account; without it the proxy serves HTTP only) and `--domain aethera.example.com` after pointing a DNS record at the server. The proxy appears on the `local` server with the first deployment that has a domain (or `POST /servers/{id}/proxy/ensure`); the UI is then served on `https://aethera.example.com` as well. To change these later edit `AETHERA_ACME_EMAIL` and `AETHERA_DOMAIN` in `/opt/aethera/.env` and run `docker compose -f /opt/aethera/docker-compose.yml --env-file /opt/aethera/.env up -d aethera`. Port 8080 keeps working throughout.
+1. Sign in at `http://<server>:8080`. This is plain HTTP, so the login page shows a "not using HTTPS" notice: your password and session cookie cross the network unencrypted until the UI has a domain and a certificate (step 2). Do the first sign-in from a network you trust and set up step 2 early. Locked out, or forgot the owner's password? Run `sudo aethera reset-password you@example.com` on the server (see "Operating it").
+2. **HTTPS and a domain for the UI** (optional): install with `--acme-email you@example.com` (the Let's Encrypt account; without it the proxy serves HTTP only) and `--domain aethera.example.com` after pointing a DNS record at the server. The proxy appears on the `local` server with the first deployment that has a domain (or `POST /servers/{id}/proxy/ensure`); the UI is then served on `https://aethera.example.com` as well. To change these later edit `AETHERA_ACME_EMAIL`, `AETHERA_DOMAIN` and `AETHERA_PUBLIC_URL` (set it to `https://aethera.example.com`, so the links in emails point at the domain) in `/opt/aethera/.env` and run `docker compose -f /opt/aethera/docker-compose.yml --env-file /opt/aethera/.env up -d aethera`. Port 8080 keeps working throughout.
 3. **Create a project and an application** (Applications > New): pick a repository or an image, the build method, environment variables, the server and a domain. See the [Coolify migration guide](migration-from-coolify.md) for a worked example.
 4. **Add more servers**: Servers > Add server, then run the printed command on the new machine:
 
@@ -71,12 +87,14 @@ aethera status                # containers and version
 aethera logs aethera          # follow a service's log (aethera, postgres, redis, agent, updater)
 aethera backup                # pg_dump into /opt/aethera/backups
 aethera restore <file>        # replace the database with a backup (stops the control plane meanwhile)
+sudo aethera reset-password <email>            # new random password (printed once); clears the lockout, signs the user out everywhere
+printf '%s\n' 'new password, 12+ characters' | sudo aethera reset-password <email> --stdin
 aethera update                # back up, pull the newest release, restart, roll back if it does not start
 ```
 
 **Updates.** Settings > System shows the running version and the newest release (checked every six hours against the project's GitHub releases) with its notes. *Update to X* does what `aethera update` does: backs up the database, pulls the new images, restarts, and puts the old version and the backup back if the new one does not start. The UI is unavailable for about a minute. Pre-update backups are kept (the newest five). Agents on other servers update from their server's Settings tab ("Update agent"); the agent checks the download's checksum and rolls back by itself if the new version does not reconnect.
 
-**Backups.** The control plane backs up its own database every day (the newest seven are kept) to the `aethera_data` volume, `/data/backups`, and before every migration. They stay on the machine: copy them off the host (`docker cp aethera-aethera-1:/data/backups .`, or mount the volume into your backup tool). What is *not* covered: the data of your own applications and services (their Docker volumes). Back those up on the server (there is no service backup in the UI yet).
+**Backups.** The control plane backs up its own database every day (the newest seven are kept) to the `aethera_data` volume, `/data/backups`, and before every migration. They stay on the machine: copy them off the host (`docker cp aethera-aethera-1:/data/backups .`, or mount the volume into your backup tool). What is *not* covered: the data of your own applications and services (their Docker volumes). Back those up with the scheduled backups to an S3-compatible destination described in [backups.md](backups.md).
 
 **Housekeeping.** Aethera deletes build and deploy logs after 30 days, status events after 90, audit events after a year, and prunes unused images, networks and build cache on every connected server once a week (never volumes, never stopped containers, and always keeping the images your rollbacks need). Settings > System shows the effective values and the last run; they are configured with `Aethera__Maintenance__*` environment variables on the `aethera` service (for example `Aethera__Maintenance__AuditRetentionDays=0` keeps the audit log forever).
 
@@ -98,6 +116,9 @@ Applications deployed by Aethera are separate containers: remove them in the UI 
 | "database newer than this version" at start | The database was migrated by a newer release. Start that release, or restore a backup taken before the upgrade (`aethera restore`). Aethera refuses to run old code on a newer schema. |
 | The update button says there is no updater | The installation was not made by `install.sh`, or the updater container is not running (`aethera status`). Use `sudo aethera update` on the server. |
 | An update failed | Settings > System shows the reason (`could not be pulled`: no registry access and the images are not local; `did not start; rolled back`: the new version's own log is in `aethera logs aethera`). The database backup it took is `aethera-pre-update-*.dump`. |
+| Signing in "works" but you land on the login page again | Older builds only. From 0.1 the session cookie works over plain HTTP too; if you still see it, check that nothing in front of Aethera strips `Set-Cookie`. |
+| `docker compose up` says `denied` or `manifest unknown` when pulling | Maintainers: GHCR packages created by the first push are **private**. Open each of `control-plane`, `agent` and `updater` under the repository owner's *Packages* and set the visibility to Public (once, right after the first tag), or users must `docker login ghcr.io`. `manifest unknown` usually means a typo in `--version`: image tags have no `v` (`0.1.0-rc.1`), the installer fixes that for you. |
+| A template database stays "failed" at the health check | The agent of that server must reach the container on its environment network: this works on Linux; on Docker Desktop the agent is cut off from environment networks (see "How the agent of this machine is networked"). |
 | No release is found | The server cannot reach `api.github.com` (set `AETHERA_UPDATE_API_URL` to a mirror or `AETHERA_UPDATE_CHECK=false`), or no release has been published. |
 
 ## Building from source

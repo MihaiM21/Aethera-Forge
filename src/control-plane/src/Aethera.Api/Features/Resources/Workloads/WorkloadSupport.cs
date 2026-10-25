@@ -1,6 +1,9 @@
 using Aethera.Api.Http.Errors;
 using Aethera.Domain;
+using Aethera.Engine.Deployments;
+using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
 namespace Aethera.Api.Features.Resources.Workloads;
@@ -43,6 +46,27 @@ internal static class WorkloadSupport
     {
         foreach (var domain in await db.Domains.Where(d => d.WorkloadId == workloadId && d.ServerId != serverId).ToListAsync(ct))
             domain.ServerId = serverId;
+    }
+
+    /// <summary>
+    /// What deleting an application or service answers when its containers are being removed: the teardown job (visible in Jobs) and the Docker
+    /// volumes that are kept (deleting never removes data).
+    /// </summary>
+    public sealed record WorkloadDeletedResponse(Guid JobId, IReadOnlyList<string> VolumesKept);
+
+    /// <summary>
+    /// After the soft delete is tracked: queues the teardown of the workload's containers (stop, remove; routes go with them) when it ever
+    /// deployed anything. Returns the answer: 202 with the job and the kept volumes, or 204 for a workload that never ran.
+    /// </summary>
+    public static async Task<(Results<NoContent, Accepted<WorkloadDeletedResponse>> Result, Guid? JobId, IReadOnlyList<string> VolumesKept)> QueueTeardownAsync(
+        AetheraDbContext db, DeploymentService deployments, Workload workload, string resourceType, CancellationToken ct)
+    {
+        var kept = (await db.Volumes.AsNoTracking().Where(v => v.WorkloadId == workload.Id && v.HostPath == null).Select(v => v.Name).ToListAsync(ct))
+            .Select(name => VolumeNames.DockerName(workload.Slug, workload.Id, name)).Order(StringComparer.Ordinal).ToList();
+        if (!await deployments.HasDeploymentsAsync(workload.Id, ct)) return (TypedResults.NoContent(), null, kept);
+
+        var job = await deployments.QueueTeardownAsync(workload, resourceType, ct);
+        return (TypedResults.Accepted(ResourceHttp.Path("jobs", job.Id), new WorkloadDeletedResponse(job.Id, kept)), job.Id, kept);
     }
 
     public static void SoftDeleteDomains(AetheraDbContext db, IEnumerable<WorkloadDomain> domains, DateTimeOffset now)

@@ -31,7 +31,7 @@ public sealed class LowDowntimeStrategy : IDeploymentStrategy
         var created = await run.ExecuteAsync<ContainerCreateCommand, ContainerCreated>(
             new ContainerCreateCommand(plan.Container with { Image = run.Image, Name = newName }, Start: true, ReplaceExisting: true),
             "container.create", DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
-        d.CompleteStep(DeploymentStep.Container, run.Clock.UtcNow, JsonSerializer.Serialize(new { containerId = created.ContainerId, name = newName }));
+        d.CompleteStep(DeploymentStep.Container, run.Clock.UtcNow, run.ContainerStepDetails(created.ContainerId, newName));
         await run.SaveAsync(ct);
 
         d.SkipStep(DeploymentStep.Domain, run.Clock.UtcNow);
@@ -63,9 +63,9 @@ public sealed class LowDowntimeStrategy : IDeploymentStrategy
             throw;
         }
 
+        // The new container is healthy: the old one stops gracefully (it drains its requests), then goes.
         if (plan.PreviousContainer is { Length: > 0 } old)
-            await run.ExecuteAsync<ContainerRemoveCommand, Unit>(
-                new ContainerRemoveCommand(old, Force: true), "container.remove_old", DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
+            await run.StopAndRemoveAsync(old, "container.remove_old", ct);
 
         await run.SaveAsync(ct);
         return [created.ContainerId];

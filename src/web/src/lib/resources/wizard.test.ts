@@ -76,9 +76,31 @@ describe("toCreateRequest", () => {
     const img = toCreateRequest({ ...base, method: "dockerImage", image: "nginx", tag: "1.27" });
     expect(img.image).toMatchObject({ image: "nginx", tag: "1.27" });
     expect(img.gitSource).toBeUndefined();
-    const compose = toCreateRequest({ ...base, method: "compose", composeContent: "services: {}" });
+    const compose = toCreateRequest({ ...base, method: "compose", composeSource: "inline", composeContent: "services: {}" });
     expect(compose.compose).toEqual({ inlineContent: "services: {}" });
     expect(compose.runtime).toBeUndefined();
+  });
+
+  it("builds a compose application from the repository: git source and path, no build config, no inline file", () => {
+    const req = toCreateRequest({
+      ...base, method: "compose", composeSource: "repo", composePath: " deploy/docker-compose.yml ", repoUrl: "git@github.com:acme/shop.git", branch: "main", credentialId: "cred-1",
+    });
+    expect(req.sourceKind).toBe("compose");
+    expect(req.compose).toEqual({ filePath: "deploy/docker-compose.yml" });
+    expect(req.gitSource).toMatchObject({ repositoryUrl: "git@github.com:acme/shop.git", branch: "main", gitCredentialId: "cred-1", provider: "gitHub" });
+    expect(req.build).toBeUndefined();
+    expect(req.runtime).toBeUndefined();
+  });
+
+  it("validates the compose source: a path inside the repository, or pasted content", () => {
+    const repo = { ...base, method: "compose" as const, composeSource: "repo" as const, repoUrl: "https://github.com/a/b.git" };
+    expect(validateStep("source", { ...repo, composePath: "docker-compose.yml" })).toEqual({});
+    for (const bad of ["", "/etc/compose.yml", "../x.yml", "a/../../x.yml", "a\\b.yml", "-f"]) expect(validateStep("source", { ...repo, composePath: bad }).composePath).toBeDefined();
+    expect(validateStep("source", { ...repo, repoUrl: "", composePath: "x.yml" }).repoUrl).toBeDefined();
+    const inline = { ...base, method: "compose" as const, composeSource: "inline" as const };
+    expect(validateStep("source", inline).composeContent).toBeDefined();
+    expect(validateStep("source", { ...inline, composeContent: "services: {}" })).toEqual({});
+    expect(validateStep("domain", { ...inline, hostname: "not a host" })).toEqual({}); // compose domains are added per service later
   });
 
   it("uses a tcp health check when no path is given", () => {

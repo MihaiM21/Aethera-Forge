@@ -50,8 +50,9 @@ public sealed class DomainTests(ResourcesFixture fixture)
     {
         var tenant = await fixture.NewTenantAsync();
         var (_, _, _, appId) = await tenant.CreateStackAsync();
-        var domain = await tenant.Developer.CreateAsync("/api/v1/domains", new { workloadId = appId, hostname = $"*.Wild-{Guid.NewGuid().ToString("N")[..6]}.example.com" });
-        Assert.StartsWith("*.wild-", domain["hostname"]!.GetValue<string>());
+        // A wildcard host is a valid name; it only needs a DNS provider (DomainOptionsTests covers the accepted case).
+        var errors = await (await tenant.Developer.PostAsync("/api/v1/domains", new { workloadId = appId, hostname = $"*.Wild-{Guid.NewGuid().ToString("N")[..6]}.example.com" })).ValidationErrorsAsync();
+        Assert.Equal([("/dnsProviderId", "domain.wildcard_needs_dns_provider")], errors);
     }
 
     [RequiresDatabaseFact]
@@ -219,7 +220,8 @@ public sealed class DomainTests(ResourcesFixture fixture)
         var tenant = await fixture.NewTenantAsync();
         var (_, _, _, appId) = await tenant.CreateStackAsync();
         var suffix = Guid.NewGuid().ToString("N")[..8];
-        var domain = await tenant.Developer.CreateAsync("/api/v1/domains", new { workloadId = appId, hostname = $"*.wild-{suffix}.example.com" });
+        var domain = await tenant.Developer.CreateAsync("/api/v1/domains",
+            new { workloadId = appId, hostname = $"*.wild-{suffix}.example.com", dnsProviderId = await tenant.SeedDnsProviderAsync() });
         tenant.Dns(fixture, $"aethera-dns-check.wild-{suffix}.example.com", "203.0.113.10");
         Assert.Equal("ok", (await (await tenant.Developer.PostAsync($"/api/v1/domains/{domain.Id()}/verify-dns", null)).ReadAsync())["status"]!.GetValue<string>());
     }

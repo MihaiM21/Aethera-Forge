@@ -69,7 +69,9 @@ $values["AETHERA_GRPC_PORT"] = "$GrpcPort"
 [IO.File]::WriteAllText($envFile, (($values.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "`n") + "`n")
 
 Say "Building and starting Aethera (several minutes the first time)"
-docker compose -f (Join-Path $deploy "docker-compose.yml") --env-file $envFile up -d --build
+# Docker Desktop has no real host network namespace: the desktop override keeps the agent in the control plane's namespace (ADR 0009).
+$compose = @("-f", (Join-Path $deploy "docker-compose.yml"), "-f", (Join-Path $deploy "docker-compose.desktop.yml"))
+docker compose @compose --env-file $envFile up -d --build
 if ($LASTEXITCODE -ne 0) { Die "docker compose failed (see the output above)." }
 
 $base = "http://localhost:$HttpPort"
@@ -78,13 +80,13 @@ $ready = $false
 for ($i = 0; $i -lt 90 -and -not $ready; $i++) {
   try { $ready = (Invoke-WebRequest "$base/ready" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } catch { Start-Sleep -Seconds 2 }
 }
-if (-not $ready) { Die "the control plane did not become ready: docker compose -f `"$deploy/docker-compose.yml`" logs aethera" }
+if (-not $ready) { Die "the control plane did not become ready: docker compose -f `"$deploy/docker-compose.yml`" -f `"$deploy/docker-compose.desktop.yml`" logs aethera" }
 
 Write-Host ""
 Say "Aethera is running."
 Write-Host "    URL:       $base   (the first account you register becomes the owner)"
 Write-Host "    Server:    this computer becomes a deployment server by itself once you have registered (Servers page)"
 Write-Host "    Files:     $deploy  (.env holds the generated secrets: back it up)"
-Write-Host "    Logs:      docker compose -f `"$deploy/docker-compose.yml`" --env-file `"$envFile`" logs -f"
+Write-Host "    Logs:      docker compose -f `"$deploy/docker-compose.yml`" -f `"$deploy/docker-compose.desktop.yml`" --env-file `"$envFile`" logs -f"
 Write-Host "    Update:    run this script again"
 if (-not $NoOpen) { Start-Process $base }

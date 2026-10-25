@@ -2,15 +2,25 @@ using Aethera.Api.Features.Audit;
 using Aethera.Api;
 using Aethera.Api.Features.Agents;
 using Aethera.Api.Features.Auth;
+using Aethera.Api.Features.Backups;
 using Aethera.Api.Features.Deployments;
+using Aethera.Api.Features.DnsProviders;
 using Aethera.Api.Features.Jobs;
+using Aethera.Api.Features.Notifications;
 using Aethera.Api.Features.Resources;
+using Aethera.Api.Features.ScheduledTasks;
 using Aethera.Api.Features.SystemOps;
 using Aethera.Api.Http;
 using Aethera.Api.OpenApi;
 using Aethera.Api.Web;
 using Aethera.Infrastructure.Persistence;
 using Aethera.Infrastructure.SelfOps;
+
+// Host tools that run instead of the web application (`aethera backup-decrypt`, `aethera reset-password` run them inside the container).
+if (args is [BackupDecryptCommand.Name, ..])
+    return await BackupDecryptCommand.RunAsync(args[1..], Console.Error);
+if (await Aethera.Api.HostCommands.ResetPasswordCommand.TryRunAsync(args, Console.In, Console.Out, Console.Error) is { } hostCommandExit)
+    return hostCommandExit;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +32,10 @@ builder.Services.AddJobs(builder.Configuration);       // WP1.3
 builder.Services.AddAgentGateway(builder.Configuration); // WP2.2: internal CA, mTLS gRPC gateway, agent transport
 builder.Services.AddDeployments(builder.Configuration);  // WP3.2: deployment engine, strategies, deploy/lifecycle jobs
 builder.Services.AddSelfOps(builder.Configuration);      // WP5.2: update checks, updater channel, scheduled maintenance
+builder.Services.AddNotifications(builder.Configuration);  // R1.2: email, channels, alerts (INotifier)
+builder.Services.AddBackups(builder.Configuration);        // R1.1: destinations, policies, runs, restores
+builder.Services.AddScheduledTasks(builder.Configuration); // R1.3: tasks run inside workload containers
+builder.Services.AddDns(builder.Configuration);            // R1.5: DNS providers (Cloudflare) and the DNS check
 
 var app = builder.Build();
 
@@ -42,6 +56,10 @@ api.MapAgents();               // WP2.2
 api.MapDeployments();          // WP3.2-3.4: deployments, rollback, build detection, proxy, webhook management
 api.MapAuditLog();             // WP4.4: audit log viewer
 api.MapSystem();               // WP5.2: version, updates, maintenance, agent update
+api.MapNotifications();        // R1.2
+api.MapBackups();              // R1.1
+api.MapScheduledTasks();       // R1.3
+api.MapDns();                  // R1.5: DNS providers
 api.MapContributors();         // test/extension seam
 app.MapGitWebhooks();          // WP3.4: POST /webhooks/git/{endpointId} (anonymous, signature-verified)
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root
@@ -49,6 +67,7 @@ app.MapAgentGateway();         // WP2.2: AgentService + EnrollmentService (gRPC,
 app.UseAetheraStaticWeb();     // ADR 0005: the Next.js export, for every path no endpoint claimed
 
 app.Run();
+return 0;
 
 // Exposed so integration tests can use WebApplicationFactory<Program>.
 public partial class Program;

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { StatusDot, type Tone } from "@/components/aethera/status-dot";
+import { Badge } from "@/components/ui/badge";
 import {
   useConnectionStatus,
   type ConnectionStatus,
@@ -70,7 +71,12 @@ export function StatusBarView({
         />
         <span className="flex items-center gap-1.5 truncate">{text}</span>
       </div>
-      <span className="hidden shrink-0 sm:inline">v{pkg.version}</span>
+      <span className="hidden shrink-0 items-center gap-1.5 sm:inline-flex">
+        v{pkg.version}
+        <Badge tone="warning" title="Aethera 0.x is beta: the API and the configuration may change. Back up before updating.">
+          beta
+        </Badge>
+      </span>
     </footer>
   );
 }

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1"
+	"github.com/mihaim21/aethera-forge/agent/internal/backup"
 	"github.com/mihaim21/aethera-forge/agent/internal/build"
 	"github.com/mihaim21/aethera-forge/agent/internal/compose"
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
@@ -54,6 +55,9 @@ type Deps struct {
 	Builder *build.Service
 	Compose *compose.Service
 	Proxy   *proxy.Manager
+	// Exec (container.exec) and Backup (backup.v1) are the R1 subsystems (ADR 0010); nil is not registered.
+	Exec   *backup.Executor
+	Backup *backup.Service
 	// LookPath finds host tools (nixpacks); exec.LookPath when nil.
 	LookPath func(file string) (string, error)
 
@@ -66,7 +70,8 @@ func (d *Deps) Capabilities() []string {
 	if d.Updater != nil {
 		caps = append(caps, CapSelfUpdate)
 	}
-	return append(caps, d.phase3Capabilities()...)
+	caps = append(caps, d.phase3Capabilities()...)
+	return append(caps, d.r1Capabilities()...)
 }
 
 func (d *Deps) now() time.Time {
@@ -114,6 +119,8 @@ func Register(disp *dispatch.Dispatcher, d *Deps) {
 	r("discovery_refresh", CapDiscovery, d.discoveryRefresh)
 	r("system_prune", CapPrune, d.systemPrune)
 	d.registerPhase3(r)
+	d.registerExec(r)
+	d.registerBackup(r)
 	if d.Updater != nil {
 		r("agent_self_update", CapSelfUpdate, d.agentSelfUpdate)
 	}

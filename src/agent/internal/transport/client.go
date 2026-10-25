@@ -30,6 +30,10 @@ import (
 // pointless until it is enrolled again.
 var ErrRevoked = errors.New("agent revoked by the control plane: re-enroll with a new join token")
 
+// ErrGaveUp means the control plane stayed unreachable for Options.GiveUpAfter. The caller exits so that a supervisor (the container
+// restart policy) starts the agent afresh, in whatever network namespace is current by then.
+var ErrGaveUp = errors.New("control plane unreachable for too long: exiting so the supervisor restarts the agent")
+
 const (
 	maxMsgSize         = 8 << 20
 	defaultWelcomeWait = 30 * time.Second
@@ -97,6 +101,9 @@ type Options struct {
 	// OnTLSFailure is called when attempts fail because of certificate errors.
 	HealthyAfter time.Duration
 	TLSRetry     time.Duration
+	// GiveUpAfter makes Run return ErrGaveUp when no session was established for this long (measured from the start of Run or from
+	// the end of the last session). Zero, the default, retries forever.
+	GiveUpAfter time.Duration
 }
 
 // Client maintains the connection.
@@ -181,10 +188,17 @@ type outcome struct {
 
 // Run connects and reconnects until ctx ends or the agent is revoked.
 func (c *Client) Run(ctx context.Context) error {
+	lastOnline := c.o.Clock.Now()
 	for ctx.Err() == nil {
 		out := c.connectOnce(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if out.welcomed || out.disconnect != nil { // the control plane answered, even if only to turn us away
+			lastOnline = c.o.Clock.Now()
+		} else if c.o.GiveUpAfter > 0 && !out.reloaded && c.o.Clock.Now().Sub(lastOnline) >= c.o.GiveUpAfter {
+			c.log.Error("control plane unreachable; giving up so the supervisor restarts the agent", "offline_for", c.o.Clock.Now().Sub(lastOnline).String())
+			return ErrGaveUp
 		}
 		if out.disconnect != nil && out.disconnect.GetReason() == agentv1.DisconnectReason_DISCONNECT_REASON_REVOKED {
 			c.log.Error("control plane revoked this agent; not reconnecting until re-enrolled")

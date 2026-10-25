@@ -26,6 +26,7 @@ internal static class ApplicationEndpoints
             .Accepts<UpdateApplicationRequest>("application/merge-patch+json", "application/json")
             .ValidatePatch<UpdateApplicationRequest>().RequireWrite();
         group.MapDelete("/{id:guid}", Delete).WithName("deleteApplication").RequireWrite();
+        ComposeEndpoints.Map(group);
     }
 
     // ---- handlers -------------------------------------------------------------------------------------------------------------------
@@ -106,6 +107,17 @@ internal static class ApplicationEndpoints
         if (patch.Has("runtime.ports")) TrustChecks.CheckPorts(actor, trust, body.Runtime?.Ports, app.Ports);
 
         var changed = new List<string>();
+        if (patch.Has("customLabels"))
+        {
+            // Custom labels can add Traefik routers and middlewares to the container: Administrators only (ADR 0010). An unchanged map passes.
+            var labels = body.CustomLabels ?? [];
+            if (!actor.IsAdmin() && !(labels.Count == app.CustomLabels.Count && labels.All(l => app.CustomLabels.TryGetValue(l.Key, out var v) && v == l.Value)))
+                throw new ApiProblemException(new ApiProblem(StatusCodes.Status403Forbidden, "labels.requires_admin",
+                    "Custom container labels can change how the proxy routes traffic and need the Administrator role."));
+            app.CustomLabels = new Dictionary<string, string>(labels);
+            changed.Add("customLabels");
+        }
+
         if (patch.Has("name") && body.Name is { } name) { app.Name = name.Trim(); changed.Add("name"); }
         if (patch.Has("description")) { app.Description = body.Description; changed.Add("description"); }
         if (patch.Has("serverId"))
@@ -145,8 +157,13 @@ internal static class ApplicationEndpoints
         return TypedResults.Ok(ToResponse(app));
     }
 
-    private static async Task<NoContent> Delete(
-        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock, CancellationToken ct)
+    /// <summary>
+    /// Soft-deletes the application right away and queues the removal of its containers (202 with the job and the volumes that are kept; 204 when
+    /// it never ran): a deleted application must stop serving its domain. Volumes are never deleted.
+    /// </summary>
+    private static async Task<Results<NoContent, Accepted<WorkloadSupport.WorkloadDeletedResponse>>> Delete(
+        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
+        Aethera.Infrastructure.Deployments.DeploymentService deployments, CancellationToken ct)
     {
         var org = actor.Org();
         var app = await db.ApplicationsOf(org).FirstOrDefaultAsync(a => a.Id == id, ct)
@@ -157,8 +174,9 @@ internal static class ApplicationEndpoints
         var now = clock.UtcNow;
         app.MarkDeleted(now);
         WorkloadSupport.SoftDeleteDomains(db, await db.Domains.Where(d => d.WorkloadId == id).ToListAsync(ct), now);
-        await audit.RecordAsync("application.deleted", "application", id, new { slug = app.Slug, environmentId = app.EnvironmentId }, ct);
-        return TypedResults.NoContent();
+        var (result, jobId, kept) = await WorkloadSupport.QueueTeardownAsync(db, deployments, app, "application", ct);
+        await audit.RecordAsync("application.deleted", "application", id, new { slug = app.Slug, environmentId = app.EnvironmentId, teardownJobId = jobId, volumesKept = kept }, ct);
+        return result;
     }
 
     // ---- loading / mapping ----------------------------------------------------------------------------------------------------------
@@ -180,7 +198,7 @@ internal static class ApplicationEndpoints
             ? new BuildConfigResponse(b.Engine, b.Context, b.DockerfilePath, b.DockerfileInline, b.InstallCommand, b.BuildCommand, b.StartCommand,
                 b.OutputDirectory, ToJson(b.BuildArgs), b.CacheEnabled, b.TargetPlatform)
             : null,
-        RuntimeMapper.ToResponse(a), a.CreatedAt, a.UpdatedAt);
+        RuntimeMapper.ToResponse(a), ToJson(a.CustomLabels), a.CreatedAt, a.UpdatedAt);
 
     // A JsonObject, not a dictionary: dictionary keys would be run through the camelCase policy, and build argument names are exact.
     private static JsonObject ToJson(IReadOnlyDictionary<string, string> values)
@@ -236,12 +254,13 @@ internal static class ApplicationEndpoints
             if (existing is null)
             {
                 if (string.IsNullOrWhiteSpace(image.Image)) throw Required("/image/image");
-                existing = app.ImageSource = new ImageSource { ApplicationId = app.Id, Application = app, Image = image.Image };
+                // Pull on every deployment unless told otherwise: redeploying a mutable tag (latest, 1) must fetch the new image.
+                existing = app.ImageSource = new ImageSource { ApplicationId = app.Id, Application = app, Image = image.Image, PullPolicy = ImagePullPolicy.Always };
             }
 
             if (has("image.image") && image.Image is { } reference) existing.Image = reference;
             if (has("image.tag")) existing.Tag = image.Tag ?? "latest";
-            if (has("image.pullPolicy")) existing.PullPolicy = EnumText.Parse<ImagePullPolicy>(image.PullPolicy) ?? ImagePullPolicy.IfNotPresent;
+            if (has("image.pullPolicy")) existing.PullPolicy = EnumText.Parse<ImagePullPolicy>(image.PullPolicy) ?? ImagePullPolicy.Always;
             if (has("image.registryId"))
             {
                 if (image.RegistryId is { } registryId) await db.RequireRegistryAsync(org, registryId, "/image/registryId", ct);

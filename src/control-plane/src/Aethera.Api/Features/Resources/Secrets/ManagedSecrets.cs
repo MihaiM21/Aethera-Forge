@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Aethera.Api.Features.Resources.Secrets;
 
-/// <summary>The resource that owns a managed secret (<c>type</c> is <c>registry</c>, <c>server</c>, <c>gitCredential</c> or <c>service</c>).</summary>
+/// <summary>The resource that owns a managed secret (<c>type</c> is <c>registry</c>, <c>server</c>, <c>gitCredential</c>, <c>domain</c> or <c>service</c>).</summary>
 public sealed record SecretOwnerResponse(string Type, Guid Id, string? Name);
 
 /// <summary>
@@ -35,6 +35,16 @@ public static class ManagedSecrets
                      .Select(c => new { Secret = c.SecretId, c.Id, c.Name }).ToListAsync(ct))
             owners.TryAdd(c.Secret, new SecretOwnerResponse("gitCredential", c.Id, c.Name));
 
+        foreach (var d in await db.Domains.AsNoTracking().Where(d => d.BasicAuthSecretId != null && ids.Contains(d.BasicAuthSecretId.Value))
+                     .Select(d => new { Secret = d.BasicAuthSecretId!.Value, d.Id, d.Hostname }).ToListAsync(ct))
+            owners.TryAdd(d.Secret, new SecretOwnerResponse("domain", d.Id, d.Hostname));
+        foreach (var d in await db.BackupDestinations.AsNoTracking().Where(d => d.SecretAccessKeySecretId != null && ids.Contains(d.SecretAccessKeySecretId.Value))
+                     .Select(d => new { Secret = d.SecretAccessKeySecretId!.Value, d.Id, d.Name }).ToListAsync(ct))
+            owners.TryAdd(d.Secret, new SecretOwnerResponse("backupDestination", d.Id, d.Name));
+        foreach (var d in await db.DnsProviders.AsNoTracking().Where(d => ids.Contains(d.ApiTokenSecretId))
+                     .Select(d => new { Secret = d.ApiTokenSecretId, d.Id, d.Name }).ToListAsync(ct))
+            owners.TryAdd(d.Secret, new SecretOwnerResponse("dnsProvider", d.Id, d.Name));
+
         var workloadIds = managed.Where(s => s.Purpose == SecretPurpose.ServiceGenerated && s.WorkloadId is not null).Select(s => s.WorkloadId!.Value).ToList();
         if (workloadIds.Count > 0)
         {
@@ -59,7 +69,10 @@ public static class ManagedSecrets
             { Type: "registry" } => $"Use PATCH /api/v1/registries/{owner.Id} (an Administrator changes the password there).",
             { Type: "server" } => $"Use PATCH /api/v1/servers/{owner.Id} to replace the SSH credential.",
             { Type: "gitCredential" } => $"Use PATCH /api/v1/git-credentials/{owner.Id}.",
-            { Type: "service" } => $"It was generated for /api/v1/services/{owner.Id} and is managed through that service.",
+            { Type: "domain" } => $"It holds the basic auth users of /api/v1/domains/{owner.Id}; change them there.",
+            { Type: "dnsProvider" } => $"Use PATCH /api/v1/dns-providers/{owner.Id} (an Administrator changes the API token there).",
+            { Type: "backupDestination" } => $"Use PATCH /api/v1/backup-destinations/{owner.Id} (an Administrator changes the access key there).",
+            { Type: "service" } =>$"It was generated for /api/v1/services/{owner.Id} and is managed through that service.",
             _ => "Use the endpoint of the resource it belongs to.",
         };
         throw new ApiProblemException(ApiProblems.Conflict(ResourceProblemCodes.SecretManaged,

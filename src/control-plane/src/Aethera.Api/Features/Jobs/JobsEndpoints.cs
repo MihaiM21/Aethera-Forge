@@ -281,6 +281,10 @@ public static class JobsEndpoints
 
         if (job is null) return ApiProblems.Conflict(ProblemCodes.ConcurrencyConflict, "The job keeps changing; try again.");
 
+        // A deploy job cancelled before a worker started it never runs its handler: its deployment must not stay "Queued" for ever.
+        if (job.Status == JobStatus.Cancelled)
+            await Aethera.Infrastructure.Deployments.DeploymentCancellation.OnJobCancelledAsync(db, clock, job, cancellationToken);
+
         // A running job learns from the notification (immediately) or from its next heartbeat (at the latest).
         if (job.Status == JobStatus.Running) await store.NotifyAsync(JobStore.CancelChannel, job.Id.ToString(), cancellationToken);
         await events.PublishUpdatedAsync(job);

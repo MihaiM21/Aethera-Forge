@@ -121,6 +121,9 @@ internal static class ProtoConvert
         message.Env.Add(project.Env.ToProto());
         AddAll(message.Profiles, project.Profiles);
         if (project.RegistryAuths is not null) message.RegistryAuths.Add(project.RegistryAuths.Select(a => a.ToProto()!));
+        if (project.Git is not null) message.Git = project.Git.ToProto();
+        message.ComposePath = project.ComposePath ?? "";
+        message.BuildArgs.Add(project.BuildArgs.ToProto());
         return message;
     }
 
@@ -239,7 +242,64 @@ internal static class ProtoConvert
 
     public static ComposeOutcome ToDomain(this P.ComposeResult r) => new(r.ProjectName, r.Services.Select(s => new ComposeServiceInfo(
         s.Service, s.ContainerId, s.ContainerName, s.Image, EnumOf<ContainerRunState>((int)s.State), EnumOf<ContainerHealthState>((int)s.Health), s.ExitCode,
-        s.Ports.Select(ToDomain).ToList())).ToList());
+        s.Ports.Select(ToDomain).ToList())).ToList(), r.CommitSha is { Length: > 0 } sha ? sha : null);
+
+    public static ComposeInspection ToDomain(this P.ComposeInspectResult r) => new(
+        r.Services.Select(s => new ComposeServiceDefinition(s.Name, s.Image, s.HasBuild, s.Ports.Select(p => (int)p).ToList())).ToList(),
+        r.CommitSha, r.ComposeSha256, r.Violations.ToList());
+
+    public static ContainerExecOutcome ToDomain(this P.ContainerExecResult r) =>
+        new(r.ExitCode, r.OutputTail.ToStringUtf8(), r.OutputTruncated, r.Duration.AsTimeSpan());
+
+    public static BackupRunOutcome ToDomain(this P.BackupRunResult r) =>
+        new(r.BackupId, r.RawSizeBytes, r.StoredSizeBytes, r.StoredSha256, r.Duration.AsTimeSpan());
+
+    public static BackupRestoreOutcome ToDomain(this P.BackupRestoreResult r) => new(r.RestoredBytes, r.Duration.AsTimeSpan());
+
+    public static P.BackupSource ToProto(this BackupSourceSpec source) => source switch
+    {
+        ExecDumpSource e => new P.BackupSource { Exec = Fill(new P.ExecDump { Container = e.Container, User = e.User ?? "" }, e.Argv, e.Env) },
+        VolumeArchiveSource v => new P.BackupSource { Volume = new P.VolumeArchive { Volume = v.Volume, HelperImage = v.HelperImage ?? "" } },
+        _ => throw new ArgumentOutOfRangeException(nameof(source), source.GetType().Name, "Unknown backup source."),
+    };
+
+    public static P.BackupSink ToProto(this BackupSinkSpec sink) => sink switch
+    {
+        ExecRestoreSink e => new P.BackupSink { Exec = Fill(new P.ExecRestore { Container = e.Container, User = e.User ?? "" }, e.Argv, e.Env) },
+        VolumeRestoreSink v => new P.BackupSink { Volume = new P.VolumeRestore { Volume = v.Volume, HelperImage = v.HelperImage ?? "", ClearFirst = v.ClearFirst } },
+        _ => throw new ArgumentOutOfRangeException(nameof(sink), sink.GetType().Name, "Unknown backup sink."),
+    };
+
+    public static P.BackupLocation ToProto(this BackupLocationSpec location) => location switch
+    {
+        S3LocationSpec s3 => new P.BackupLocation
+        {
+            S3 = new P.S3Location
+            {
+                Endpoint = s3.Endpoint, Region = s3.Region ?? "", Bucket = s3.Bucket, Key = s3.Key, AccessKeyId = s3.AccessKeyId,
+                SecretAccessKey = s3.SecretAccessKey.ToProto(), ForcePathStyle = s3.ForcePathStyle,
+            },
+        },
+        LocalBackupLocationSpec local => new P.BackupLocation { Local = new P.LocalLocation { Path = local.Path } },
+        _ => throw new ArgumentOutOfRangeException(nameof(location), location.GetType().Name, "Unknown backup location."),
+    };
+
+    public static P.BackupEncryption ToProto(this BackupEncryptionSpec encryption) =>
+        new() { Key = encryption.Key.ToProto(), KeyId = encryption.KeyId };
+
+    private static P.ExecDump Fill(P.ExecDump message, IReadOnlyList<string> argv, IReadOnlyList<EnvVarSpec>? env)
+    {
+        message.Argv.Add(argv);
+        message.Env.Add(env.ToProto());
+        return message;
+    }
+
+    private static P.ExecRestore Fill(P.ExecRestore message, IReadOnlyList<string> argv, IReadOnlyList<EnvVarSpec>? env)
+    {
+        message.Argv.Add(argv);
+        message.Env.Add(env.ToProto());
+        return message;
+    }
 
     public static BuildOutcome ToDomain(this P.BuildResult r) => new(
         r.BuildId, r.ImageId, r.Digest, r.Tags.ToList(), r.RepoDigests.ToList(), r.SizeBytes, r.Duration.AsTimeSpan(), r.EngineUsed, r.CommitSha, r.Pushed, r.Platform, r.CacheHit);

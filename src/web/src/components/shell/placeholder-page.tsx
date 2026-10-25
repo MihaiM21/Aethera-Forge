@@ -47,11 +47,6 @@ const EMPTY: Record<string, { title: string; hint: string; cta: string }> = {
     hint: "Secrets are encrypted at rest, masked in the UI and redacted from logs.",
     cta: "New secret",
   },
-  "/monitoring": {
-    title: "Nothing to monitor yet",
-    hint: "Resource usage and health checks appear once a server is connected.",
-    cta: "Add server",
-  },
   "/settings": {
     title: "Settings are on the way",
     hint: "Account, organization, members and API tokens arrive in a later work package.",

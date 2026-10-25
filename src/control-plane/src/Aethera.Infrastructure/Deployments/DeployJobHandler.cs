@@ -26,6 +26,29 @@ public sealed class DeployJobHandler : IJobHandler
 
     public async Task ExecuteAsync(JobContext context, CancellationToken cancellationToken)
     {
+        try
+        {
+            await ExecuteDeploymentAsync(context, cancellationToken);
+        }
+        finally
+        {
+            // Notifications (ADR 0010): reads the stored outcome, publishes deployment.succeeded / deployment.failed, never throws.
+            await Notifications.DeploymentNotifications.PublishOutcomeAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
+        }
+    }
+
+    /// <summary>
+    /// What the handler knows when something goes wrong, so that every way out (an exception nobody planned for, a cancel, a lost secret) can end the
+    /// deployment and the workload instead of leaving "Deploying" behind forever.
+    /// </summary>
+    private sealed class RunState
+    {
+        public Workload? App { get; set; }
+        public Deployment? Previous { get; set; }
+    }
+
+    private async Task ExecuteDeploymentAsync(JobContext context, CancellationToken cancellationToken)
+    {
         var sp = context.Services;
         var db = sp.GetRequiredService<AetheraDbContext>();
         var clock = sp.GetRequiredService<IClock>();
@@ -36,9 +59,117 @@ public sealed class DeployJobHandler : IJobHandler
         if (deployment.IsTerminal || deployment.Status == DeploymentStatus.Running) return; // already finished (redelivery)
         deployment.JobId ??= context.JobId;
 
-        var app = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
+        // The last attempt of the job: a transient failure (the server cannot be reached) ends the deployment now, an earlier one leaves it resumable.
+        var finalAttempt = context.Attempt >= context.Job.MaxAttempts;
+        var state = new RunState();
+        try
+        {
+            await RunDeploymentAsync(context, db, clock, deployment, state, finalAttempt, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: true, FailureCodes.InternalError, "Deployment cancelled.");
+            throw;
+        }
+        catch (JobFailedException ex)
+        {
+            // Most paths that throw this settled the deployment first. One that did not (a lost secret) fails it here; a retryable failure
+            // with attempts left leaves it in progress for the next attempt.
+            var retrying = ex.Error.Retryable && !finalAttempt;
+            if (!retrying)
+                await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, ex.Error.Code, context.Secrets.Redact(ex.Error.Detail ?? ex.Error.Title));
+            throw;
+        }
+        catch (ServerTransportException ex) when (ex.Transient)
+        {
+            // The server could not be reached outside a pipeline step (reading the compose file): the same as a transient step failure.
+            if (!finalAttempt)
+            {
+                await NoteRetryAsync(db, clock, state.App, context.Secrets.Redact(ex.Message));
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
+            }
+
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, FailureCodes.ServerUnavailable, context.Secrets.Redact(ex.Message));
+            throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
+        }
+        catch (Exception ex)
+        {
+            // Anything else is a bug or a broken environment: the deployment and the workload end Failed with a code and a message that
+            // names the kind of error only (the text of an arbitrary exception can hold a connection string or a secret). The worker logs the rest.
+            await EndUnfinishedAsync(db, clock, deployment, state, cancelled: false, FailureCodes.InternalError,
+                $"An unexpected error stopped the deployment ({ex.GetType().Name}). The details are in the server log.");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Ends a deployment that the pipeline did not settle: Failed with <paramref name="code"/> (or Cancelled), the step it was at marked failed, and
+    /// the workload out of "Deploying". A no-op for a deployment that already ended. Best effort: it runs on error paths and must not hide the cause.
+    /// </summary>
+    private static async Task EndUnfinishedAsync(
+        AetheraDbContext db, IClock clock, Deployment deployment, RunState state, bool cancelled, string code, string message)
+    {
+        try
+        {
+            var ended = false;
+            for (var attempt = 0; attempt < 3 && !ended; attempt++)
+            {
+                if (deployment.Status is not (DeploymentStatus.Queued or DeploymentStatus.InProgress)) break;
+                var now = clock.UtcNow;
+                if (cancelled) deployment.MarkCancelled(now);
+                else deployment.MarkFailed(deployment.CurrentStep ?? DeploymentStep.Source, code, string.IsNullOrWhiteSpace(message) ? "The deployment failed." : message, now);
+                try
+                {
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    ended = true;
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    foreach (var entry in ex.Entries) await entry.ReloadAsync(CancellationToken.None);
+                }
+            }
+
+            if (ended && state.App is { } app)
+            {
+                // A Recreate deployment that got as far as the container step has removed the old container: nothing is serving any more.
+                var oldGone = deployment.Strategy == DeploymentStrategies.Recreate && deployment.CurrentStep is { } step && step >= DeploymentStep.Container;
+                await RestoreStatusAsync(db, clock, app, oldGone ? null : state.Previous,
+                    cancelled ? "Deployment cancelled." : deployment.FailureReason ?? message, failed: !cancelled);
+            }
+        }
+        catch (Exception)
+        {
+            // The caller rethrows the original problem; the job's own record of it survives.
+        }
+    }
+
+    /// <summary>The workload stays "Deploying" while the job waits for its next attempt, and says why.</summary>
+    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, Workload? app, string reason)
+    {
+        if (app is null) return;
+        try
+        {
+            await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+            {
+                app.Status = WorkloadStatus.Deploying;
+                app.StatusChangedAt = clock.UtcNow;
+                app.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
+            }, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Only a status line.
+        }
+    }
+
+    private async Task RunDeploymentAsync(
+        JobContext context, AetheraDbContext db, IClock clock, Deployment deployment, RunState state, bool finalAttempt, CancellationToken cancellationToken)
+    {
+        var sp = context.Services;
+
+        var app = state.App = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
-        var previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
+        var previous = state.Previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
 
         Deployment? rollbackTarget = deployment.RollbackOfDeploymentId is { } rb
             ? await db.Deployments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == rb, cancellationToken) : null;
@@ -71,29 +202,76 @@ public sealed class DeployJobHandler : IJobHandler
         var resolver = sp.GetRequiredService<IServerTransportResolver>();
         var proxyOptions = sp.GetRequiredService<IOptions<ProxyOptions>>().Value;
         var proxy = sp.GetRequiredService<IProxyProvider>();
-        if (snapshot.Domains.Count > 0 && await EnsureProxyAsync(db, resolver, proxy, proxyOptions, clock, deployment, context, cancellationToken) is { } proxyFailure)
+
+        // Compose (ADR 0010): which services the file has, so the override can name them all and a domain's service is checked.
+        IReadOnlyList<ComposeServiceDefinition>? composeServices = null;
+        if (snapshot.Compose is { } composeSnapshot)
         {
-            await RestoreStatusAsync(db, clock, app, previous, proxyFailure, failed: true);
-            throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure, "Domain");
+            try
+            {
+                composeServices = await DiscoverComposeServicesAsync(snapshot, composeSnapshot, secrets, gitCredential, resolver, deployment, context, cancellationToken);
+            }
+            catch (ComposeDiscoveryException ex)
+            {
+                deployment.MarkFailed(DeploymentStep.Source, ex.Code, ex.Message, clock.UtcNow);
+                await db.SaveChangesAsync(CancellationToken.None);
+                await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+                throw JobFailedException.Permanent(ex.Code, "The compose file cannot be deployed", ex.Message, "Source");
+            }
+        }
+
+        if (snapshot.Domains.Count > 0 && await EnsureProxyAsync(db, resolver, proxy, proxyOptions, sp, clock, deployment, finalAttempt, context, cancellationToken) is { } proxyFailure)
+        {
+            if (proxyFailure.Retry)
+            {
+                // Not marked failed: the job runs again and resumes this deployment.
+                await NoteRetryAsync(db, clock, app, proxyFailure.Message);
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
+            }
+
+            await RestoreStatusAsync(db, clock, app, previous, proxyFailure.Message, failed: true);
+            if (deployment.FailureCode == FailureCodes.ServerUnavailable)
+                throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
+            throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure.Message, "Domain");
         }
 
         var runner = new DeploymentRunner(new ResolvingServerTransport(resolver), sp.GetServices<IDeploymentStrategy>(), clock);
-        var plan = DeploymentPlanBuilder.Build(snapshot, new PlanContext
+        DeploymentPlan plan;
+        try
         {
-            ServerId = deployment.ServerId, DeploymentId = deployment.Id, DeploymentNumber = deployment.Number, JobId = context.JobId, BuildId = buildRecord?.Id,
-            OrganizationId = context.Job.OrganizationId,
-            PreviousContainer = previous?.ContainerIds.FirstOrDefault(),
-            ResolveSecret = (id, version) => secrets.TryGetValue((id, version), out var v) ? v : throw new InvalidOperationException("A pinned secret version is missing."),
-            GitCredential = gitCredential, Registry = registry, ExistingImage = rollbackTarget?.ImageRef,
-            Proxy = proxy, ProxyNetwork = proxyOptions.Network, OnLog = null,
-        });
+            plan = DeploymentPlanBuilder.Build(snapshot, new PlanContext
+            {
+                ServerId = deployment.ServerId, DeploymentId = deployment.Id, DeploymentNumber = deployment.Number, JobId = context.JobId, BuildId = buildRecord?.Id,
+                OrganizationId = context.Job.OrganizationId,
+                PreviousContainer = previous?.ContainerIds.FirstOrDefault(),
+                ResolveSecret = (id, version) => secrets.TryGetValue((id, version), out var v) ? v : throw new InvalidOperationException("A pinned secret version is missing."),
+                GitCredential = gitCredential, Registry = registry, ExistingImage = rollbackTarget?.ImageRef,
+                Proxy = proxy, ProxyNetwork = proxyOptions.Network, OnLog = null,
+                AcmeAvailable = ProxyConfigurator.AcmeAvailable(proxyOptions), ComposeServices = composeServices,
+            });
+        }
+        catch (ProxyRoutingException ex)
+        {
+            deployment.MarkFailed(DeploymentStep.Domain, "proxy.failed", ex.Message, clock.UtcNow);
+            await db.SaveChangesAsync(CancellationToken.None);
+            await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+            throw JobFailedException.Permanent("proxy.failed", "The domains cannot be routed", ex.Message, "Domain");
+        }
 
-        await context.Log.WriteSystemAsync($"Deploying {app.Name} #{deployment.Number} with the {deployment.Strategy} strategy.", cancellationToken);
-        var result = await runner.RunAsync(deployment, plan, async (_, ct) => await db.SaveChangesAsync(ct), cancellationToken);
+        var (effectiveStrategy, strategyNote) = DeploymentRunner.ChooseStrategy(deployment.Strategy, plan);
+        await context.Log.WriteSystemAsync($"Deploying {app.Name} #{deployment.Number} with the {effectiveStrategy} strategy.", cancellationToken);
+        if (strategyNote is not null) await context.Log.WriteSystemAsync(strategyNote, cancellationToken);
+        var result = await runner.RunAsync(deployment, plan, async (_, ct) => await db.SaveChangesAsync(ct), cancellationToken, finalAttempt);
         if (buildRecord is not null) await FinishBuildRecordAsync(db, clock, buildRecord, deployment, plan);
 
         switch (result)
         {
+            case DeploymentRunResult.Retry:
+                var transient = runner.TransientFailure!;
+                await context.Log.WriteSystemAsync($"The server could not be reached ({transient.Message}); the deployment will be retried.", CancellationToken.None);
+                await NoteRetryAsync(db, clock, app, transient.Message);
+                throw JobFailedException.Transient(transient.Code, "The server could not be reached", transient.Message, transient.Step.ToString());
+
             case DeploymentRunResult.Running:
                 await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
                 await context.Log.WriteSystemAsync($"Deployment #{deployment.Number} is running.", cancellationToken);
@@ -106,7 +284,7 @@ public sealed class DeployJobHandler : IJobHandler
                 return;
 
             default:
-                var failedAfterOldRemoved = previous is not null && deployment.Strategy == DeploymentStrategies.Recreate
+                var failedAfterOldRemoved = previous is not null && effectiveStrategy == DeploymentStrategies.Recreate
                                             && deployment.FailedStep is { } step && step >= DeploymentStep.Container;
                 await RestoreStatusAsync(db, clock, app, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
                 var code = deployment.FailureCode ?? "deployment.failed";
@@ -167,12 +345,16 @@ public sealed class DeployJobHandler : IJobHandler
         }, CancellationToken.None);
     }
 
-    /// <summary>Makes sure Traefik runs on the server before routes are attached. Returns a failure message, or null when the proxy is ready.</summary>
-    private static async Task<string?> EnsureProxyAsync(
-        AetheraDbContext db, IServerTransportResolver resolver, IProxyProvider proxy, ProxyOptions options, IClock clock, Deployment deployment,
-        JobContext context, CancellationToken ct)
+    /// <summary>A proxy that could not be set up. <see cref="Retry"/>: the server was unreachable and the job has attempts left; the deployment is left open.</summary>
+    private sealed record ProxyFailure(string Message, bool Retry);
+
+    /// <summary>Makes sure Traefik runs on the server before routes are attached. Returns the failure, or null when the proxy is ready.</summary>
+    private static async Task<ProxyFailure?> EnsureProxyAsync(
+        AetheraDbContext db, IServerTransportResolver resolver, IProxyProvider proxy, ProxyOptions options, IServiceProvider sp, IClock clock, Deployment deployment,
+        bool finalAttempt, JobContext context, CancellationToken ct)
     {
-        var command = proxy.BuildEnsureCommand(new ProxySettings(options.AcmeEmail, options.Network, options.Version, options.Staging));
+        var command = await ProxyConfigurator.BuildEnsureCommandAsync(
+            db, sp.GetRequiredService<ISecretProtector>(), proxy, options, deployment.ServerId, context.Secrets.Register, ct);
         try
         {
             await context.Log.WriteSystemAsync("Making sure the reverse proxy is running.", ct);
@@ -184,14 +366,43 @@ public sealed class DeployJobHandler : IJobHandler
             var message = $"The agent could not start the proxy: {resolved.Outcome.ErrorMessage ?? resolved.Outcome.Status.ToString()}";
             deployment.MarkFailed(DeploymentStep.Domain, "proxy.failed", message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            return message;
+            return new ProxyFailure(message, Retry: false);
         }
         catch (ServerTransportException ex)
         {
+            if (ex.Transient && !finalAttempt) return new ProxyFailure(ex.Message, Retry: true);
             deployment.MarkFailed(DeploymentStep.Domain, ex.Transient ? FailureCodes.ServerUnavailable : "proxy.failed", ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            return ex.Message;
+            return new ProxyFailure(ex.Message, Retry: false);
         }
+    }
+
+    /// <summary>
+    /// The services of the compose file (ADR 0010): an inline file is read here, a file in the repository by the agent (which also checks it
+    /// against the policy before anything is built).
+    /// </summary>
+    private static async Task<IReadOnlyList<ComposeServiceDefinition>?> DiscoverComposeServicesAsync(
+        DeploymentSnapshot snapshot, ComposeSnapshot compose, Dictionary<(Guid, int), string> secrets, GitCredentialSpec? gitCredential,
+        IServerTransportResolver resolver, Deployment deployment, JobContext context, CancellationToken ct)
+    {
+        if (compose.FilePath is not { Length: > 0 } filePath) return ComposeServiceDiscovery.FromInline(compose.Content);
+
+        var git = snapshot.Git ?? throw new ComposeDiscoveryException("source.not_configured", "A compose file in the repository needs a git source.");
+        await context.Log.WriteSystemAsync("Reading the compose file from the repository.", ct);
+        var project = new ComposeProjectSpec(DeploymentPlanBuilder.ComposeProjectName(snapshot), "")
+        {
+            Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: git.CommitPin is null ? 1 : 0, Credentials: gitCredential),
+            ComposePath = filePath,
+            Env = snapshot.Env.Where(e => e.Runtime || e.Build)
+                .Select(e => e.SecretId is { } id
+                    ? EnvVarSpec.OfSecret(e.Key, secrets.GetValueOrDefault((id, e.SecretVersion ?? 0), ""))
+                    : EnvVarSpec.OfPlain(e.Key, e.Value ?? "")).ToList(),
+        };
+        var inspection = await ComposeServiceDiscovery.InspectAsync(resolver, deployment.ServerId, project, new CommandOptions
+        {
+            IdempotencyKey = context.IdempotencyKey("compose.inspect"), JobId = context.JobId, OrganizationId = context.Job.OrganizationId,
+        }, ct);
+        return inspection.Services;
     }
 
     /// <summary>Loads an application or a service with everything the snapshot reads.</summary>
@@ -227,10 +438,14 @@ public sealed class DeployJobHandler : IJobHandler
             if (!DeploymentSnapshot.TryFromJson(rollbackTarget.ConfigSnapshotJson, out var frozen))
                 throw new UnsupportedSourceException("rollback.snapshot_missing", "The deployment being rolled back to has no stored configuration.");
             snapshot = frozen!;
+            // A compose file read from the repository follows the branch: a rollback pins the commit the target deployment ran.
+            if (snapshot.Compose?.FilePath is not null && snapshot.Git is { CommitPin: null } git && rollbackTarget.CommitSha is { Length: > 0 } sha)
+                snapshot = snapshot with { Git = git with { CommitPin = sha } };
         }
         else
         {
-            snapshot = DeploymentSnapshotFactory.Create(app);
+            // A webhook push deploys the pushed branch at the pushed commit, not the application's configured branch.
+            snapshot = DeploymentSnapshotFactory.ApplyTrigger(DeploymentSnapshotFactory.Create(app), deployment.Trigger, deployment.Ref, deployment.CommitSha);
         }
 
         deployment.Start(snapshot.ToJson(), clock.UtcNow);
@@ -265,7 +480,7 @@ public sealed class DeployJobHandler : IJobHandler
         await CleanupImagesAsync(db, sp, app, deployment, ct);
     }
 
-    private static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
+    internal static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
     {
         var now = clock.UtcNow;
         await ConcurrencySupport.SaveWithRetryAsync(db, () =>
@@ -331,6 +546,14 @@ public sealed class DeployJobHandler : IJobHandler
         foreach (var e in snapshot.Env.Where(e => e.SecretId is not null))
         {
             var key = (e.SecretId!.Value, e.SecretVersion ?? 0);
+            if (result.ContainsKey(key)) continue;
+            result[key] = await ReadSecretAsync(sp, key.Item1, key.Item2 == 0 ? null : key.Item2, context, ct);
+        }
+
+        // Basic auth htpasswd lines of the domains (bcrypt hashes, still not for the logs).
+        foreach (var d in snapshot.Domains.Where(d => d.BasicAuthSecretId is not null))
+        {
+            var key = (d.BasicAuthSecretId!.Value, d.BasicAuthSecretVersion ?? 0);
             if (result.ContainsKey(key)) continue;
             result[key] = await ReadSecretAsync(sp, key.Item1, key.Item2 == 0 ? null : key.Item2, context, ct);
         }

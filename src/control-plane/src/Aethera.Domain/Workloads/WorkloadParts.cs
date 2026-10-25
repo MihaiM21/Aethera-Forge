@@ -100,6 +100,9 @@ public enum DnsStatus
     Mismatch = 2,
     Missing = 3,
     Error = 4,
+
+    /// <summary>Every answer is a Cloudflare edge address (orange cloud): the origin cannot be verified without a DNS provider.</summary>
+    Proxied = 5,
 }
 
 /// <summary>A hostname (+ optional path prefix) routed to a workload by the reverse proxy.</summary>
@@ -128,6 +131,22 @@ public class WorkloadDomain : SoftDeletableEntity
     public DateTimeOffset? DnsCheckedAt { get; set; }
     public List<string> DnsResolvedIps { get; set; } = [];
     public string? ProxyRouteName { get; set; }
+
+    /// <summary>Compose applications: the compose service this domain routes to. Null for other workloads.</summary>
+    public string? ComposeService { get; set; }
+
+    /// <summary>When set, the host answers with a permanent redirect to this hostname (path and query kept) instead of serving the workload.</summary>
+    public string? RedirectTo { get; set; }
+
+    /// <summary>Remove <see cref="PathPrefix"/> before the request reaches the container.</summary>
+    public bool StripPathPrefix { get; set; }
+
+    /// <summary>HTTP basic auth: the htpasswd lines (bcrypt), a managed secret (<see cref="SecretPurpose.BasicAuth"/>). Null = no auth.</summary>
+    public Guid? BasicAuthSecretId { get; set; }
+
+    /// <summary>Issue the certificate with a DNS-01 challenge through this provider (required for wildcard hosts); null = HTTP-01.</summary>
+    public Guid? DnsProviderId { get; set; }
+    public DnsProvider? DnsProvider { get; set; }
 
     public void SetHostname(string hostname) => Hostname = NormalizeHostname(hostname);
 

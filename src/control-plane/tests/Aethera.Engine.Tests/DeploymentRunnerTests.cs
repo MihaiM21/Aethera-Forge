@@ -45,6 +45,8 @@ public class DeploymentRunnerTests
         ImagePullCommand => new ImagePulled("sha256:img", "sha256:dig", 1, [], false),
         NetworkCreateCommand n => new DockerNetwork("n1", n.NetworkName, "bridge", "local", false, true, false, [], new Dictionary<string, string>(), null, []),
         ContainerRemoveCommand => Unit.Value,
+        ContainerStopCommand s => new DockerContainer(s.Container, s.Container, "i", "i", ContainerRunState.Exited, "Exited", ContainerHealthState.None, null, null, null, 0, false, 0, new Dictionary<string, string>(), [], [], [], null),
+        ImageInspectCommand i => new DockerImage("sha256:img", [i.Image], ["x@sha256:dig"], 1, null, new Dictionary<string, string>(), "amd64", "linux", 0),
         ContainerCreateCommand => new ContainerCreated("c-new", "app", ContainerRunState.Running, []),
         HealthProbeCommand => new HealthProbeOutcome(true, 1, 200, TimeSpan.Zero, "ok", null),
         _ => null,
@@ -85,7 +87,7 @@ public class DeploymentRunnerTests
         Assert.True(d.IsRollbackPoint);
         Assert.Equal("nginx:latest", d.ImageRef);
         Assert.Equal(["c-new"], d.ContainerIds);
-        Assert.Equal(["image.pull", "network.create", "container.remove", "container.create", "health.probe"], t.Commands);
+        Assert.Equal(["image.pull", "network.create", "container.stop", "container.remove", "container.create", "health.probe"], t.Commands);
         Assert.Equal(StepStatus.Skipped, d.Steps.Single(s => s.Step == DeploymentStep.Build).Status);
     }
 

@@ -77,11 +77,11 @@ internal static class BuildEndpoints
 
     private static async Task<Ok<ProxyStatusDto>> EnsureProxy(
         Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IProxyProvider proxy, IOptions<ProxyOptions> options,
-        IServerTransportResolver resolver, CancellationToken ct)
+        IServerTransportResolver resolver, ISecretProtector protector, CancellationToken ct)
     {
         await db.GetServerAsync(actor.Org(), id, tracking: false, ct);
         var o = options.Value;
-        var command = proxy.BuildEnsureCommand(new ProxySettings(o.AcmeEmail, o.Network, o.Version, o.Staging));
+        var command = await ProxyConfigurator.BuildEnsureCommandAsync(db, protector, proxy, o, id, onSecret: null, ct);
         ResolvedOutcome<ProxyEnsured> resolved;
         try
         {

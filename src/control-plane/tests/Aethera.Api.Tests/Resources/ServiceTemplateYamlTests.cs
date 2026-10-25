@@ -101,6 +101,12 @@ public sealed class ServiceTemplateYamlTests
         Assert.Equal("postgres", keys[0]);
         Assert.Equal(keys.Count, keys.Distinct().Count());
         Assert.Equal(["server", "/data", "--console-address", ":9001"], ServiceTemplates.Find("minio")!.Command);
-        Assert.All(ServiceTemplates.All.Where(t => t.Key != "minio"), t => Assert.Null(t.Command));
+        // Redis applies its generated password through a start command: it must read it from the environment, never carry a value.
+        var redis = ServiceTemplates.Find("redis")!.Command!;
+        Assert.Equal(["sh", "-c"], redis.Take(2));
+        Assert.Contains("requirepass", redis[2]);
+        Assert.Contains("$REDIS_PASSWORD", redis[2]);
+        Assert.Contains("--appendonly yes", redis[2]);
+        Assert.All(ServiceTemplates.All.Where(t => t.Key is not ("minio" or "redis")), t => Assert.Null(t.Command));
     }
 }

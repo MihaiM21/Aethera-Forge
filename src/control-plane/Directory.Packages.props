@@ -23,6 +23,9 @@
     <PackageVersion Include="Scalar.AspNetCore" Version="2.17.13" />
     <!-- Trust model (ADR 0006): inline compose content is read into a plain YAML node tree, never deserialized into types -->
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="Cronos" Version="0.13.0" />
+    <PackageVersion Include="MailKit" Version="4.18.2" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.104.6" />
     <!-- Agent protocol (gRPC / protobuf) -->
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Core.Api" Version="2.84.0" />
