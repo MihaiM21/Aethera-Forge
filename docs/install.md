@@ -13,7 +13,7 @@ Aethera is a control plane (API and web UI, PostgreSQL, Redis) plus one agent pe
 
 ```bash
 curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- \
-  --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
+  --admin-email you@example.com --domain aethera.example.com --acme-email you@example.com
 ```
 
 `--acme-email` is **required for HTTPS**: it is the Let's Encrypt account for the certificates of your domains. Without it Aethera's proxy has no certificate resolver and an application domain set to HTTPS would never get a certificate. Give it even if you only plan to use HTTPS later; it can also be added afterwards (First steps, 2).
@@ -22,7 +22,7 @@ Release candidates (`v0.1.0-rc.N`) are GitHub pre-releases, which `releases/late
 
 ```bash
 curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/download/v0.1.0-rc.1/install.sh | sudo bash -s -- \
-  --version 0.1.0-rc.1 --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
+  --version 0.1.0-rc.1 --admin-email you@example.com --domain aethera.example.com --acme-email you@example.com
 ```
 
 > **Beta.** Aethera 0.1 is beta software. The API and the configuration may still change between 0.x releases, and updates are only as safe as the backups you hold: take one (`aethera backup`, and the backups described in [backups.md](backups.md)) before every update.

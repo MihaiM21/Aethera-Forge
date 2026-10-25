@@ -30,7 +30,7 @@ Decide the cut-over order: databases last (they hold state), stateless applicati
 
 ```bash
 curl -fsSL https://github.com/MihaiM21/aethera-forge/releases/latest/download/install.sh | sudo bash -s -- \
-  --admin-email you@example.com --host aethera.example.com --acme-email you@example.com
+  --admin-email you@example.com --domain aethera.example.com --acme-email you@example.com
 ```
 
 Back up `/opt/aethera/.env`. See [install.md](install.md) for the details and for adding more servers (for example a separate build or database server, which is a good idea for production).
