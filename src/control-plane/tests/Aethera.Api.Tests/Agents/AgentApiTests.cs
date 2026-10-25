@@ -216,6 +216,46 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
         Assert.NotNull((await WithDbAsync(db => db.AgentCertificates.AsNoTracking().SingleAsync(c => c.Serial == issued.Serial))).RevokedAt);
     }
 
+    [RequiresDatabaseFact]
+    public async Task Deleting_a_server_whose_row_keeps_changing_still_succeeds_without_if_match()
+    {
+        // A connected agent writes the server row all the time (heartbeats, status); a delete must not fail with "modified by someone else".
+        var tenant = await fixture.NewTenantAsync();
+        using var stop = new CancellationTokenSource();
+        var servers = new List<(Guid Id, string Name)>();
+        for (var i = 0; i < 5; i++)
+        {
+            var created = await tenant.CreateServerAsync();
+            servers.Add((Guid.Parse(created.Id()), created["name"]!.GetValue<string>()));
+        }
+
+        var writer = Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                await WithDbAsync(db => db.Database.ExecuteSqlAsync(
+                    $"UPDATE servers SET updated_at = now() WHERE id = ANY({servers.Select(s => s.Id).ToArray()}) AND deleted_at IS NULL"));
+                await Task.Delay(5);
+            }
+        });
+        try
+        {
+            foreach (var (id, name) in servers)
+            {
+                var response = await tenant.Admin.DeleteAsync($"{Base(id.ToString())}?confirm={Uri.EscapeDataString(name)}");
+                Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await writer;
+        }
+
+        Assert.All(await WithDbAsync(db => db.Servers.IgnoreQueryFilters().AsNoTracking().Where(s => servers.Select(x => x.Id).Contains(s.Id)).ToListAsync()),
+            s => Assert.NotNull(s.DeletedAt));
+    }
+
     // ================================================================ CA
 
     [RequiresDatabaseFact]

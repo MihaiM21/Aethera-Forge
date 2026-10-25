@@ -300,7 +300,24 @@ internal static class ServerEndpoints
         server.MarkDeleted(clock.UtcNow);
         if (server.SshCredentialSecretId is { } credential) await ManagedSecrets.ReleaseFromServerAsync(db, credential, id, ct);
         await ca.RevokeServerCertificatesAsync(db, id, "server deleted", clock.UtcNow, ct); // WP2.2: a deleted server's agent loses its identity
-        await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct);
+        // A connected agent keeps writing this row (heartbeats, status, discovery), so the xmin check can reject the delete between the load
+        // and the save. Without If-Match the caller did not pin a version: reload the row and delete it again. With If-Match it stays a 409.
+        var pinned = http.Request.Headers.IfMatch.Count > 0;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                if (attempt == 0) await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct); // saves
+                else await db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateConcurrencyException ex) when (!pinned && attempt < 3 && ex.Entries.All(e => e.Entity is Server))
+            {
+                foreach (var entry in ex.Entries) await entry.ReloadAsync(ct);
+                server.MarkDeleted(clock.UtcNow);
+            }
+        }
+
         sessions.Disconnect(id, Aethera.Agent.V1.DisconnectReason.Revoked, "The server was deleted."); // ADR 0002: close the live stream with REVOKED
         return TypedResults.NoContent();
     }
