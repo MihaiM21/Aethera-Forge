@@ -496,7 +496,7 @@ public sealed class JobWorkerHost : BackgroundService
             try
             {
                 await Task.Delay(_options.Reaper, stopping);
-                var reaped = await _store.ReapExpiredAsync(type => _handlers.TryGetValue(type, out var h) && h.Resumable, 50, stopping);
+                var reaped = await _store.ReapExpiredAsync(type => _handlers.TryGetValue(type, out var h) && h.Resumable, 50, stopping, WriteReapNoteAsync);
                 foreach (var (job, requeued) in reaped)
                     await AfterReapAsync(job, requeued);
             }
@@ -511,12 +511,12 @@ public sealed class JobWorkerHost : BackgroundService
         }
     }
 
-    private async Task AfterReapAsync(Job job, bool requeued)
-    {
-        var outcome = requeued ? "requeued" : job.Status == JobStatus.Cancelled ? "cancelled" : "failed";
-        _metrics.LeaseReaps.WithLabels(outcome).Inc();
-        _logger.LogWarning("Lease of job {JobId} ({Type}) expired: {Outcome}", job.Id, job.Type, outcome);
+    private static string ReapOutcome(Job job, bool requeued) => requeued ? "requeued" : job.Status == JobStatus.Cancelled ? "cancelled" : "failed";
 
+    /// <summary>The note in the job's log, written while the reaper still holds the row (see <see cref="JobStore.ReapExpiredAsync"/>).</summary>
+    private async Task WriteReapNoteAsync(Job job, bool requeued)
+    {
+        var outcome = ReapOutcome(job, requeued);
         try
         {
             await using var sink = await _sinks.CreateAsync("job:" + job.Id, null, LogSource.Job, CancellationToken.None);
@@ -530,6 +530,13 @@ public sealed class JobWorkerHost : BackgroundService
         {
             _logger.LogDebug(ex, "Could not write the reap note of job {JobId}", job.Id);
         }
+    }
+
+    private async Task AfterReapAsync(Job job, bool requeued)
+    {
+        var outcome = ReapOutcome(job, requeued);
+        _metrics.LeaseReaps.WithLabels(outcome).Inc();
+        _logger.LogWarning("Lease of job {JobId} ({Type}) expired: {Outcome}", job.Id, job.Type, outcome);
 
         if (job.IsTerminal)
         {
