@@ -40,6 +40,94 @@ public sealed class DeploymentRun(
             new ContainerRemoveCommand(container, Force: !stopped), operation, DeploymentStep.Container, FailureCodes.ContainerFailed, ct);
     }
 
+    /// <summary>Lines of a failed container's output copied into the deployment's log.</summary>
+    public const int FailureLogLines = 100;
+
+    /// <summary>
+    /// Runs the HealthCheck step against <paramref name="container"/> (skipped when the plan has no probe). A failure copies the container's last
+    /// lines of output into the deployment's log before it is thrown: why it did not come up is usually there.
+    /// </summary>
+    public async Task HealthCheckAsync(string container, CancellationToken ct)
+    {
+        var target = Plan.HealthFor?.Invoke(container) ?? Plan.Health;
+        if (target is null)
+        {
+            Deployment.SkipStep(DeploymentStep.HealthCheck, Clock.UtcNow);
+            return;
+        }
+
+        Deployment.BeginStep(DeploymentStep.HealthCheck, Clock.UtcNow);
+        try
+        {
+            var probe = await ExecuteAsync<HealthProbeCommand, HealthProbeOutcome>(
+                new HealthProbeCommand(target, Plan.HealthTimeout, Plan.HealthInterval, Plan.HealthRetries, Plan.HealthStartPeriod, Plan.HealthSuccessThreshold),
+                "health", DeploymentStep.HealthCheck, FailureCodes.HealthTimeout, ct);
+            Deployment.HealthCheckResultJson = System.Text.Json.JsonSerializer.Serialize(new { probe.Healthy, probe.Attempts, probe.HttpStatus, probe.Detail });
+            if (!probe.Healthy)
+                throw new DeploymentFailure(DeploymentStep.HealthCheck, FailureCodes.HealthTimeout,
+                    $"Health check failed after {probe.Attempts} attempts: {probe.Detail}");
+        }
+        catch (DeploymentFailure f) when (f.Code != FailureCodes.ServerUnavailable)
+        {
+            await CopyContainerLogsAsync(container);
+            throw;
+        }
+
+        Deployment.CompleteStep(DeploymentStep.HealthCheck, Clock.UtcNow);
+    }
+
+    /// <summary>Best effort: the last <see cref="FailureLogLines"/> lines of the container's output, into the deployment's log.</summary>
+    public async Task CopyContainerLogsAsync(string container)
+    {
+        if (Plan.WriteLog is null) return;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var any = false;
+            await foreach (var entry in transport.StreamLogsAsync(Plan.ServerId, new LogStreamRequest(container, Follow: false, Since: null, Tail: FailureLogLines), cts.Token))
+            {
+                if (!any) await NarrateAsync($"The last {FailureLogLines} lines of the container's output:");
+                any = true;
+                if (entry.Text.Length > 0) await Plan.WriteLog(entry.Stream, entry.Text.TrimEnd('\n'), cts.Token);
+            }
+
+            if (!any) await NarrateAsync("The container wrote no output.");
+        }
+        catch (Exception e) when (e is ServerTransportException or OperationCanceledException or InvalidOperationException or NotSupportedException)
+        {
+            await NarrateAsync("The container's output could not be read.");
+        }
+    }
+
+    /// <summary>Control-plane narration in the deployment's log; never fails the deployment.</summary>
+    public async Task NarrateAsync(string line)
+    {
+        if (Plan.Narrate is null) return;
+        try
+        {
+            await Plan.Narrate(line, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Logging is a convenience here.
+        }
+    }
+
+    /// <summary>Removes a container that did not make it, ignoring every error: the deployment already failed for a more useful reason.</summary>
+    public async Task TryRemoveAsync(string container, string operation)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await ExecuteAsync<ContainerRemoveCommand, Unit>(
+                new ContainerRemoveCommand(container, Force: true), operation, DeploymentStep.Container, FailureCodes.ContainerFailed, cts.Token);
+        }
+        catch (Exception)
+        {
+            // Best effort.
+        }
+    }
+
     /// <summary>The image to run: the build's tag or the pulled reference.</summary>
     public string Image { get; } = image;
 

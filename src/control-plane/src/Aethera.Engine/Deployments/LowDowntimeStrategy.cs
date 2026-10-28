@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Aethera.Domain;
 using Aethera.Domain.Transport;
 
@@ -36,30 +35,15 @@ public sealed class LowDowntimeStrategy : IDeploymentStrategy
 
         d.SkipStep(DeploymentStep.Domain, run.Clock.UtcNow);
 
-        var target = plan.HealthFor?.Invoke(newName) ?? plan.Health;
         try
         {
-            if (target is null)
-            {
-                d.SkipStep(DeploymentStep.HealthCheck, run.Clock.UtcNow);
-            }
-            else
-            {
-                d.BeginStep(DeploymentStep.HealthCheck, run.Clock.UtcNow);
-                var probe = await run.ExecuteAsync<HealthProbeCommand, HealthProbeOutcome>(
-                    new HealthProbeCommand(target, plan.HealthTimeout, plan.HealthInterval, plan.HealthRetries, plan.HealthStartPeriod),
-                    "health", DeploymentStep.HealthCheck, FailureCodes.HealthTimeout, ct);
-                d.HealthCheckResultJson = JsonSerializer.Serialize(new { probe.Healthy, probe.Attempts, probe.HttpStatus, probe.Detail });
-                if (!probe.Healthy)
-                    throw new DeploymentFailure(DeploymentStep.HealthCheck, FailureCodes.HealthTimeout,
-                        $"Health check failed after {probe.Attempts} attempts: {probe.Detail}");
-                d.CompleteStep(DeploymentStep.HealthCheck, run.Clock.UtcNow);
-            }
+            await run.HealthCheckAsync(newName, ct);
         }
         catch
         {
             // Leave the old container serving; best effort cleanup of the candidate that never became healthy.
-            await TryRemoveAsync(run, created.ContainerId);
+            await run.TryRemoveAsync(created.ContainerId, "container.remove_failed");
+            if (plan.PreviousContainer is { Length: > 0 }) await run.NarrateAsync("The previous version keeps serving.");
             throw;
         }
 
@@ -69,19 +53,5 @@ public sealed class LowDowntimeStrategy : IDeploymentStrategy
 
         await run.SaveAsync(ct);
         return [created.ContainerId];
-    }
-
-    private static async Task TryRemoveAsync(DeploymentRun run, string container)
-    {
-        try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await run.ExecuteAsync<ContainerRemoveCommand, Unit>(
-                new ContainerRemoveCommand(container, Force: true), "container.remove_failed", DeploymentStep.Container, FailureCodes.ContainerFailed, cts.Token);
-        }
-        catch (Exception)
-        {
-            // The deployment already failed for a more useful reason.
-        }
     }
 }

@@ -9,6 +9,17 @@ public sealed record ProxySettings(string? AcmeEmail, string Network = "aethera-
 {
     /// <summary>DNS-01 certificates (wildcards, certificates before the DNS switch). Null = only the HTTP-01 resolver.</summary>
     public DnsChallengeSettings? DnsChallenge { get; init; }
+
+    /// <summary>The control plane's own domain, routed by this server's proxy (ADR 0011). Null on every other server.</summary>
+    public ControlPlaneRoute? ControlPlane { get; init; }
+}
+
+/// <summary>The domain the Aethera UI and API are served on through the proxy (a file-provider route, not container labels).</summary>
+/// <param name="Upstream">Where the control plane listens on the proxy network.</param>
+public sealed record ControlPlaneRoute(string Host, bool Https, string Upstream = ControlPlaneRoute.DefaultUpstream)
+{
+    /// <summary>The network alias of the <c>aethera</c> service on <c>aethera-proxy</c> (<c>deploy/docker-compose.prod.yml</c>).</summary>
+    public const string DefaultUpstream = "http://aethera-control-plane:8080";
 }
 
 /// <summary>A DNS provider the proxy can solve ACME DNS-01 challenges with (ADR 0010). Only Cloudflare today.</summary>

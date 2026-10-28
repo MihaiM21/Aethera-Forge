@@ -87,7 +87,7 @@ public class DeploymentRunnerTests
         Assert.True(d.IsRollbackPoint);
         Assert.Equal("nginx:latest", d.ImageRef);
         Assert.Equal(["c-new"], d.ContainerIds);
-        Assert.Equal(["image.pull", "network.create", "container.stop", "container.remove", "container.create", "health.probe"], t.Commands);
+        Assert.Equal(["image.pull", "network.create", "container.stop", "container.create", "health.probe", "container.remove"], t.Commands);
         Assert.Equal(StepStatus.Skipped, d.Steps.Single(s => s.Step == DeploymentStep.Build).Status);
     }
 

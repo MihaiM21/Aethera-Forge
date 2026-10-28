@@ -158,8 +158,9 @@ public class HardeningTests
         Assert.True(stop >= 0 && remove > stop, string.Join(",", names));
         Assert.Equal(TimeSpan.FromSeconds(60), t.Commands.OfType<ContainerStopCommand>().Single().Timeout);
         Assert.Equal("c-old", t.Commands.OfType<ContainerStopCommand>().Single().Container);
-        // Stopped first, so the removal does not have to kill it.
-        Assert.False(t.Commands.OfType<ContainerRemoveCommand>().Single(r => r.Container == "c-old").Force);
+        // Low-downtime stops it first, so the removal does not have to kill it; recreate stopped it before the new one started and removes the
+        // stopped container (forced: it may have been restarted by its restart policy meanwhile).
+        Assert.Equal(strategy == DeploymentStrategies.Recreate, t.Commands.OfType<ContainerRemoveCommand>().Single(r => r.Container == "c-old").Force);
     }
 
     [Fact]
@@ -210,10 +211,11 @@ public class HardeningTests
         await Runner(t).RunAsync(d, Plan(spec), Noop, default);
 
         Assert.Equal(DeploymentStatus.Running, d.Status);
-        // Recreate: the container keeps its own name instead of the per-deployment one, and the old one is gone before the new one starts.
-        Assert.Equal("api", t.Commands.OfType<ContainerCreateCommand>().Single().Spec.Name);
+        // Recreate: the old one is stopped (freeing the port) before the new one starts, and removed once the new one is up.
+        Assert.Equal("api-1", t.Commands.OfType<ContainerCreateCommand>().Single().Spec.Name);
         var names = t.Names.ToList();
-        Assert.True(names.IndexOf("container.remove") < names.IndexOf("container.create"));
+        Assert.True(names.IndexOf("container.stop") < names.IndexOf("container.create"));
+        Assert.True(names.IndexOf("container.create") < names.IndexOf("container.remove"));
         var details = d.Steps.Single(s => s.Step == DeploymentStep.Container).DetailsJson!;
         Assert.Contains("strategyNote", details);
         Assert.Contains("host port 5000", details);

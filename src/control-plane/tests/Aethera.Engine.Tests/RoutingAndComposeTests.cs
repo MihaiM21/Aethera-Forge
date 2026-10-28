@@ -496,4 +496,64 @@ public partial class RoutingAndComposeTests
         Assert.Null(s.CustomLabels);
         Assert.Equal(s.ToJson(), DeploymentSnapshot.FromJson(s.ToJson()).ToJson());
     }
+
+    // ---- network_mode and the control plane's own route (ADR 0011) -------------------------------------------------------------------
+
+    [Fact]
+    public void A_service_in_another_ones_network_namespace_gets_no_networks()
+    {
+        IReadOnlyList<ComposeServiceDefinition> services = [new("web", "", true, [3000]), new("vpn", "wg", false, []), new("app", "x", false, [], "service:vpn")];
+        var root = Override(DeploymentPlanBuilder.Build(ComposeFromGit(), Context(services: services)));
+
+        var app = root.GetProperty("services").GetProperty("app");
+        Assert.False(app.TryGetProperty("networks", out _));
+        Assert.True(app.TryGetProperty("labels", out _));
+        Assert.True(root.GetProperty("services").GetProperty("vpn").TryGetProperty("networks", out _));
+    }
+
+    [Fact]
+    public void A_domain_on_a_service_without_its_own_network_fails_clearly()
+    {
+        IReadOnlyList<ComposeServiceDefinition> services = [new("web", "", true, [3000], "service:vpn"), new("vpn", "wg", false, [])];
+
+        var e = Assert.Throws<ProxyRoutingException>(() => DeploymentPlanBuilder.Build(ComposeFromGit(), Context(services: services)));
+        Assert.Contains("network_mode", e.Message);
+    }
+
+    [Fact]
+    public void Static_config_always_watches_the_dynamic_directory()
+    {
+        var yaml = Encoding.UTF8.GetString(new TraefikProxyProvider().BuildEnsureCommand(new ProxySettings(null)).Config);
+        Assert.Contains("  file:", yaml);
+        Assert.Contains($"directory: {TraefikProxyProvider.DynamicDirectory}", yaml);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void The_control_plane_route_is_a_file_provider_route_with_an_optional_https_redirect(bool https, bool acme)
+    {
+        var command = new TraefikProxyProvider().BuildEnsureCommand(
+            new ProxySettings(acme ? "ops@example.com" : null) { ControlPlane = new ControlPlaneRoute("aethera.example.com", https) });
+        var yaml = Encoding.UTF8.GetString(command.DynamicConfig!);
+
+        Assert.Contains("rule: \"Host(`aethera.example.com`)\"", yaml);
+        Assert.Contains("url: \"http://aethera-control-plane:8080\"", yaml);
+        Assert.Equal(https, yaml.Contains("aethera-https:"));
+        Assert.Equal(https, yaml.Contains("redirectScheme:"));
+        Assert.Equal(https && acme, yaml.Contains("certResolver: letsencrypt"));
+        Assert.DoesNotContain("\r", yaml);
+    }
+
+    [Fact]
+    public void Without_a_control_plane_domain_there_is_no_dynamic_configuration() =>
+        Assert.Null(new TraefikProxyProvider().BuildEnsureCommand(new ProxySettings("ops@example.com")).DynamicConfig);
+
+    [Theory]
+    [InlineData("*.example.com")]
+    [InlineData("a.example.com`) || Host(`evil.com")]
+    [InlineData("1.2.3.4")]
+    public void The_control_plane_host_cannot_be_a_wildcard_or_inject_into_the_rule(string host) =>
+        Assert.Throws<ArgumentException>(() => TraefikProxyProvider.ControlPlaneConfig(new ControlPlaneRoute(host, true), true));
 }

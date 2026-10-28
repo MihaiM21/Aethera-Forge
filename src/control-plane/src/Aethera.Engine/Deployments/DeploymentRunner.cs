@@ -66,8 +66,17 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             deployment.CompleteStep(DeploymentStep.TargetServer, clock.UtcNow);
             await Save(ct);
 
-            var run = new DeploymentRun(deployment, plan, image, transport, clock, Save, strategyNote);
-            deployment.ContainerIds = [.. await strategy.ExecuteAsync(run, ct)];
+            var final = await WithImageFactsAsync(deployment, plan, image, Save, ct);
+            plan.RanWithDetectedPort = final.DetectedPort;
+            var run = new DeploymentRun(deployment, final, image, transport, clock, Save, strategyNote);
+            try
+            {
+                deployment.ContainerIds = [.. await strategy.ExecuteAsync(run, ct)];
+            }
+            finally
+            {
+                plan.PreviousRestored = final.PreviousRestored;
+            }
 
             deployment.ImageRef = image;
             deployment.MarkRunning(clock.UtcNow);
@@ -91,6 +100,38 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             deployment.MarkFailed(f.Step, f.Code, f.Message, clock.UtcNow);
             await Save(CancellationToken.None);
             return DeploymentRunResult.Failed;
+        }
+    }
+
+    /// <summary>
+    /// The plan the strategy runs: rebuilt with what the image says about itself (its EXPOSE ports, its HEALTHCHECK) when the plan depends on it.
+    /// A routing problem that only shows now (a domain, but no port anywhere) fails the Domain step.
+    /// </summary>
+    private async Task<DeploymentPlan> WithImageFactsAsync(Deployment d, DeploymentPlan plan, string image, Func<CancellationToken, Task> save, CancellationToken ct)
+    {
+        if (plan.WithImage is not { } rebuild) return plan;
+        var run = new DeploymentRun(d, plan, image, transport, clock, save);
+        ImageFacts facts;
+        try
+        {
+            facts = ImageFacts.From(await run.ExecuteAsync<ImageInspectCommand, DockerImage>(
+                new ImageInspectCommand(image), "image.facts", DeploymentStep.Image, FailureCodes.ImageMissing, ct));
+        }
+        catch (DeploymentFailure f) when (f.Code != FailureCodes.ServerUnavailable)
+        {
+            facts = ImageFacts.Unknown; // the transport cannot inspect it: the configured ports (or none) stand
+        }
+
+        try
+        {
+            var final = rebuild(facts);
+            if (final.DetectedPort is { } port)
+                await run.NarrateAsync($"The application declares no port; using {port}, {(facts.PreferredPort == port ? "which its image exposes" : "the default of its build method")}.");
+            return final;
+        }
+        catch (Proxy.ProxyRoutingException e)
+        {
+            throw new DeploymentFailure(DeploymentStep.Domain, "proxy.failed", e.Message, e);
         }
     }
 

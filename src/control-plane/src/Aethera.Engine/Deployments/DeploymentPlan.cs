@@ -47,6 +47,30 @@ public sealed class DeploymentPlan
     public int HealthRetries { get; init; } = 15;
     public TimeSpan HealthStartPeriod { get; init; } = TimeSpan.Zero;
 
+    /// <summary>Consecutive successful probes required (the liveness check of a workload without a health check wants a few in a row).</summary>
+    public int HealthSuccessThreshold { get; init; } = 1;
+
+    /// <summary>
+    /// Rebuilds the container part of the plan once the image is known (its EXPOSE ports, its HEALTHCHECK). The runner inspects the image after
+    /// the Image step and runs the strategy with the result. Null = nothing depends on the image (compose, or a plan built with the facts).
+    /// </summary>
+    public Func<ImageFacts, DeploymentPlan>? WithImage { get; init; }
+
+    /// <summary>The container port taken from the image (or the build engine's default) because the workload declares none; set by the builder.</summary>
+    public int? DetectedPort { get; init; }
+
+    /// <summary>Set by the runner from the plan it ran: the port it detected, for the caller to store on the workload.</summary>
+    public int? RanWithDetectedPort { get; set; }
+
+    /// <summary>Set by a strategy that brought the previous container back after the new one failed: the old deployment is still the live one.</summary>
+    public bool PreviousRestored { get; set; }
+
+    /// <summary>Writes a line of the deployment's own log (a container's output on failure). Redacted by the sink.</summary>
+    public Func<LogStream, string, CancellationToken, ValueTask>? WriteLog { get; init; }
+
+    /// <summary>Writes control-plane narration to the deployment's log.</summary>
+    public Func<string, CancellationToken, ValueTask>? Narrate { get; init; }
+
     /// <summary>Container of the currently live deployment, replaced by this one.</summary>
     public string? PreviousContainer { get; init; }
 
@@ -62,4 +86,36 @@ public sealed class DeploymentPlan
     public Guid? JobId { get; init; }
     public Guid? OrganizationId { get; init; }
     public Action<LogEntry>? OnLog { get; init; }
+}
+
+/// <summary>What the image that is about to run says about itself (<c>image.inspect</c>).</summary>
+/// <param name="ExposedTcpPorts">The TCP ports of its EXPOSE instructions, ascending.</param>
+public sealed record ImageFacts(IReadOnlyList<int> ExposedTcpPorts, bool HasHealthcheck)
+{
+    /// <summary>Ports a web server usually listens on, in order of preference when an image exposes several.</summary>
+    private static readonly int[] WebPorts = [80, 8080, 3000, 8000, 5000, 4000, 8888];
+
+    public static readonly ImageFacts Unknown = new([], false);
+
+    public static ImageFacts From(DockerImage image)
+    {
+        var ports = new SortedSet<int>();
+        foreach (var entry in image.ExposedPorts ?? [])
+        {
+            var parts = entry.Split('/');
+            if (parts.Length > 1 && !parts[1].Equals("tcp", StringComparison.OrdinalIgnoreCase)) continue;
+            if (int.TryParse(parts[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var port) && port is > 0 and <= 65535)
+                ports.Add(port);
+        }
+
+        return new ImageFacts([.. ports], image.HasHealthcheck);
+    }
+
+    /// <summary>The port to route to: the only one, else the most web-like one, else the lowest.</summary>
+    public int? PreferredPort => ExposedTcpPorts.Count switch
+    {
+        0 => null,
+        1 => ExposedTcpPorts[0],
+        _ => WebPorts.Cast<int?>().FirstOrDefault(p => ExposedTcpPorts.Contains(p!.Value)) ?? ExposedTcpPorts[0],
+    };
 }
