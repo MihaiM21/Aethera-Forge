@@ -11,6 +11,7 @@ import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { MaintenanceReport, SystemVersion } from "@/lib/resources/types";
 import { formatAgo, formatBytes, formatDateTime } from "@/lib/servers/format";
 import { usePolled } from "@/lib/servers/use-polled";
+import { DomainHttpsSection } from "./domain-https-section";
 
 const IN_FLIGHT = new Set(["requested", "backing_up", "pulling", "restarting"]);
 
@@ -271,6 +272,7 @@ export function SystemTab({ api = resourcesApi, pollMs = 30_000 }: { api?: Resou
     <div className="flex flex-col gap-8">
       <VersionSection api={api} pollMs={pollMs} />
       <MaintenanceSection api={api} pollMs={pollMs} />
+      <DomainHttpsSection api={api} />
     </div>
   );
 }

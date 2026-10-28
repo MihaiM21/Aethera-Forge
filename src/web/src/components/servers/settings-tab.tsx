@@ -30,6 +30,8 @@ function GeneralForm({ server, api, onSaved }: { server: Server; api: ServersApi
   const [host, setHost] = React.useState(server.host);
   const [roles, setRoles] = React.useState<ReadonlySet<ServerRole>>(new Set(server.roles));
   const [lifecycle, setLifecycle] = React.useState<ServerLifecycle>(server.lifecycle);
+  const [publicIp, setPublicIp] = React.useState(server.publicIp ?? "");
+  const [wildcard, setWildcard] = React.useState(server.wildcardDomain ?? "");
   const [pending, setPending] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -40,7 +42,14 @@ function GeneralForm({ server, api, onSaved }: { server: Server; api: ServersApi
     setErrors({});
     setFormError(null);
     try {
-      const updated = await api.update(server.id, { name: name.trim(), host: host.trim(), roles: [...roles], lifecycle });
+      const updated = await api.update(server.id, {
+        name: name.trim(),
+        host: host.trim(),
+        roles: [...roles],
+        lifecycle,
+        publicIp: publicIp.trim() || null,
+        wildcardDomain: wildcard.trim() || null,
+      });
       onSaved(updated);
       toast.success("Server updated");
     } catch (err) {
@@ -63,6 +72,33 @@ function GeneralForm({ server, api, onSaved }: { server: Server; api: ServersApi
         </Field>
         <Field label="Host" error={errors["/host"]}>
           {(c) => <Input {...c} value={host} onChange={(e) => setHost(e.target.value)} className="font-mono" autoComplete="off" />}
+        </Field>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Public IP" error={errors["/publicIp"]} hint="What DNS records point to; automatic domains are made from it.">
+          {(c) => (
+            <Input {...c} value={publicIp} onChange={(e) => setPublicIp(e.target.value)} className="font-mono" placeholder="203.0.113.7" autoComplete="off" />
+          )}
+        </Field>
+        <Field
+          label="Wildcard domain"
+          error={errors["/wildcardDomain"]}
+          hint={
+            server.automaticDomainBase && !server.wildcardDomain
+              ? `New apps get <name>.${server.automaticDomainBase}. Set apps.example.com (with a *.apps.example.com DNS record) to use your own.`
+              : "New apps get <name>.<this domain>; needs a wildcard DNS record pointing at this server."
+          }
+        >
+          {(c) => (
+            <Input
+              {...c}
+              value={wildcard}
+              onChange={(e) => setWildcard(e.target.value)}
+              className="font-mono"
+              placeholder={server.automaticDomainBase ?? "apps.example.com"}
+              autoComplete="off"
+            />
+          )}
         </Field>
       </div>
       <fieldset className="grid gap-2">

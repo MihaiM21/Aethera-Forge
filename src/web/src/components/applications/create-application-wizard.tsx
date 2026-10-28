@@ -168,7 +168,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
           hostname: s.hostname.trim().toLowerCase(),
           httpsEnabled: s.https,
           isPrimary: true,
-          targetPort: Number(s.port),
+          targetPort: s.port.trim() ? Number(s.port) : null,
         });
         mark(i++, { state: "done" });
       }
@@ -494,10 +494,10 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
             )}
             {s.method !== "compose" && (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Container port" error={err("port")} hint="The port your application listens on.">
-                  {(c) => <Input {...c} inputMode="numeric" className="font-mono" value={s.port} onChange={(e) => set({ port: e.target.value })} />}
+                <Field label="Container port" error={err("port")} hint="The port your application listens on. Empty = the port its image exposes.">
+                  {(c) => <Input {...c} inputMode="numeric" className="font-mono" placeholder="auto (EXPOSE)" value={s.port} onChange={(e) => set({ port: e.target.value })} />}
                 </Field>
-                <Field label="Health check path" error={err("healthPath")} hint="Empty = a TCP check on the port.">
+                <Field label="Health check path" error={err("healthPath")} hint="Empty = the container must stay up (and pass its image's HEALTHCHECK).">
                   {(c) => <Input {...c} className="font-mono" placeholder="/health" value={s.healthPath} onChange={(e) => set({ healthPath: e.target.value })} />}
                 </Field>
               </div>
@@ -507,13 +507,17 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
 
         {key === "domain" && s.method === "compose" && (
           <p className="text-sm text-muted-foreground" role="status">
-            Each service of a compose application has its own domains. Create the application, then add them on its Domains tab, choosing the service that serves each one.
+            Each service of a compose application has its own domains. The first deployment gives the service that serves HTTP an automatic domain; add your own on the Domains tab, choosing the service that serves each one.
           </p>
         )}
 
         {key === "domain" && s.method !== "compose" && (
           <>
-            <Field label="Domain" error={err("hostname")} hint="Optional. Point its DNS record at the server, then HTTPS is issued automatically.">
+            <Field
+              label="Domain"
+              error={err("hostname")}
+              hint="Optional. Leave it empty for an automatic domain (<name>.<server ip>.sslip.io, or the server's wildcard domain). For your own, point its DNS record at the server; HTTPS is issued automatically."
+            >
               {(c) => <Input {...c} className="font-mono" placeholder="app.example.com" value={s.hostname} onChange={(e) => set({ hostname: e.target.value })} />}
             </Field>
             <label className="flex items-center gap-3 text-sm">
@@ -539,9 +543,9 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                       : "pasted compose file",
                 ],
                 ["Server", serverList.data?.items.find((x) => x.id === s.serverId)?.name],
-                ["Port", s.method === "compose" ? "from compose" : s.port],
+                ["Port", s.method === "compose" ? "from compose" : s.port.trim() || "auto (from the image)"],
                 ["Variables", String(envToCreate(s).length)],
-                ["Domain", s.method !== "compose" && s.hostname.trim() ? `${s.https ? "https" : "http"}://${s.hostname.trim()}` : "none"],
+                ["Domain", s.method !== "compose" && s.hostname.trim() ? `${s.https ? "https" : "http"}://${s.hostname.trim()}` : "automatic"],
               ]}
             />
             {progress && (

@@ -329,7 +329,10 @@ export function DomainsTab({ kind, id, compose = false, api = resourcesApi }: { 
       {list.loading && <Skeleton className="h-20 w-full" />}
       {list.data && rows.length === 0 && (
         <p className="flex items-center justify-center gap-2 border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-          <GlobeIcon className="size-4 text-lime" aria-hidden="true" /> No domains yet. Add one to route traffic and issue a certificate.
+          <GlobeIcon className="size-4 text-lime" aria-hidden="true" />
+          {compose
+            ? "No domains yet. The first deployment gives the service that serves HTTP an automatic one; or add your own."
+            : "No domains yet. Add one to route traffic and issue a certificate."}
         </p>
       )}
       <ul className="grid gap-2">
@@ -346,6 +349,11 @@ export function DomainsTab({ kind, id, compose = false, api = resourcesApi }: { 
                   </a>
                 )}
                 {d.isPrimary && <Badge tone="brand">primary</Badge>}
+                {d.isAutomatic && (
+                  <Badge tone="neutral" title="Generated from the server's wildcard domain (or sslip.io). Edit it, or add your own and remove this one.">
+                    auto
+                  </Badge>
+                )}
                 {d.composeService && <Badge tone="neutral">service {d.composeService}</Badge>}
                 {d.redirectTo && <Badge tone="neutral">→ {d.redirectTo}</Badge>}
                 {d.stripPathPrefix && <Badge tone="neutral">strip prefix</Badge>}

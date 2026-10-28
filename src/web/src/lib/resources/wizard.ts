@@ -74,7 +74,8 @@ export const initialWizardState: WizardState = {
   outputDirectory: "",
   env: [],
   serverId: "",
-  port: "3000",
+  // Empty = the port the image exposes (EXPOSE), read at deployment time.
+  port: "",
   healthPath: "",
   hostname: "",
   https: true,
@@ -106,9 +107,11 @@ export function usesRepo(s: Pick<WizardState, "method" | "composeSource">): bool
   return isRepoMethod(s.method) || (s.method === "compose" && s.composeSource === "repo");
 }
 
-/** Relative path inside the repository: no leading slash, no "..", no backslash (what the API accepts). */
+/** Path inside the repository: no "..", no backslash; one leading slash means the repository root, as Coolify writes it (what the API accepts). */
 export function isRelativePath(p: string): boolean {
-  return p !== "" && !p.startsWith("/") && !p.startsWith("~") && !p.startsWith("-") && !p.includes("\\") && !p.split("/").includes("..");
+  if (p === "" || p.startsWith("//")) return false;
+  const rest = p.startsWith("/") ? p.slice(1) : p;
+  return !rest.startsWith("~") && !rest.startsWith("-") && !rest.includes("\\") && !rest.split("/").includes("..");
 }
 
 export function providerOf(url: string): "gitHub" | "gitLab" | "generic" {
@@ -163,9 +166,9 @@ export function validateStep(step: StepKey, s: WizardState): Errors {
     }
     case "server":
       if (!s.serverId) e.serverId = "Pick the server that runs this application.";
-      if (s.method !== "compose") {
+      if (s.method !== "compose" && s.port.trim()) {
         const port = Number(s.port);
-        if (!Number.isInteger(port) || port < 1 || port > 65535) e.port = "Enter a port between 1 and 65535.";
+        if (!Number.isInteger(port) || port < 1 || port > 65535) e.port = "Enter a port between 1 and 65535, or leave it empty to use the one the image exposes.";
       }
       if (s.healthPath && !s.healthPath.startsWith("/")) e.healthPath = "The health check path starts with /.";
       break;
@@ -234,15 +237,20 @@ export function toCreateRequest(s: WizardState): CreateApplicationRequest {
         cacheEnabled: true,
       };
   }
-  if (s.method === "dockerImage") body.image = { image: s.image.trim(), tag: s.tag.trim(), registryId: nz(s.registryId) ?? null, pullPolicy: "ifNotPresent" };
+  // Always pulled, so a redeploy of :latest runs the image that was pushed since.
+  if (s.method === "dockerImage") body.image = { image: s.image.trim(), tag: s.tag.trim(), registryId: nz(s.registryId) ?? null, pullPolicy: "always" };
   if (s.method === "compose") body.compose = s.composeSource === "repo" ? { filePath: s.composePath.trim() } : { inlineContent: s.composeContent };
   if (s.method !== "compose") {
     const health = s.healthPath.trim();
+    const port = s.port.trim() ? Number(s.port) : undefined;
+    // Without a port the deployment uses the image's EXPOSE port; without a health path it checks the container stays up (and its HEALTHCHECK).
     body.runtime = {
-      ports: [{ containerPort: Number(s.port), isHttp: true }],
-      healthCheck: health ? { type: "http", path: health, port: Number(s.port) } : { type: "tcp", port: Number(s.port) },
+      ports: port ? [{ containerPort: port, isHttp: true }] : [],
+      healthCheck: health ? { type: "http", path: health, port } : port ? { type: "tcp", port } : { type: "none" },
     };
   }
+  // Your own domain replaces the automatic one (<name>.<server ip>.sslip.io or the server's wildcard domain).
+  body.autoDomain = s.method === "compose" || !s.hostname.trim();
   return body;
 }
 
