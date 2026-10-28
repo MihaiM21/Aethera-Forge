@@ -36,7 +36,9 @@ public sealed class SessionTests(GatewayFixture fixture)
         Assert.NotEmpty(welcome.ConfigVersion);
         Assert.InRange((welcome.ServerTime.ToDateTimeOffset() - DateTimeOffset.UtcNow).Duration().TotalSeconds, 0, 5);
 
-        await GatewayFixture.EventuallyAsync(async () => (await fixture.LoadServerAsync(serverId)).AgentStatus == AgentStatus.Connected, "agent status connected");
+        // A heartbeat can mark the server connected before the connect bookkeeping stored the hello's version: wait for both.
+        await GatewayFixture.EventuallyAsync(async () => await fixture.LoadServerAsync(serverId) is { AgentStatus: AgentStatus.Connected, AgentVersion: not null },
+            "agent status connected and the version recorded");
         var server = await fixture.LoadServerAsync(serverId);
         Assert.Equal("0.3.1", server.AgentVersion);
         Assert.Equal(ReachabilityStatus.Reachable, server.ReachabilityStatus); // a live stream proves the machine answers
