@@ -231,7 +231,7 @@ public sealed class DomainTests(ResourcesFixture fixture)
     {
         var tenant = await fixture.NewTenantAsync();
         var (serverId, envId, _, appId) = await tenant.CreateStackAsync();
-        var service = await tenant.Developer.CreateAsync("/api/v1/services", new { name = "grafana", environmentId = envId, serverId, templateKey = "grafana" });
+        var service = await tenant.Developer.CreateAsync("/api/v1/services", new { name = "grafana", environmentId = envId, serverId, templateKey = "grafana", autoDomain = false });
 
         var onApp = await tenant.Developer.CreateAsync($"/api/v1/applications/{appId}/domains", new { hostname = Host("nested") });
         Assert.Equal(appId, onApp["workloadId"]!.GetValue<string>());

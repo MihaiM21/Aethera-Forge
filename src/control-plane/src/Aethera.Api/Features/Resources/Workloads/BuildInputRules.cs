@@ -16,17 +16,29 @@ public static partial class BuildInputRules
     private static partial Regex ScpAddressPattern();
 
     /// <summary>
-    /// A path inside the repository: relative, <c>/</c>-separated, no <c>..</c> segment, no absolute root (<c>/</c>, <c>~</c>, a drive letter),
-    /// no backslash, no control character and not starting with <c>-</c>. Empty and null mean "not set" and are accepted.
+    /// A path inside the repository: relative, <c>/</c>-separated, no <c>..</c> segment, no absolute root (<c>~</c>, a drive letter), no
+    /// backslash, no control character and not starting with <c>-</c>. One leading <c>/</c> means the repository root, as Coolify writes a base
+    /// directory (<c>/apps/web</c>); <see cref="NormalizeRelativePath"/> removes it before the path is stored. Empty and null mean "not set".
     /// </summary>
     public static bool IsSafeRelativePath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return true;
         if (path.Any(char.IsControl) || path.Contains('\\')) return false;
         var text = path.Trim();
+        if (text.StartsWith("//", StringComparison.Ordinal)) return false;
+        if (text[0] == '/') text = text[1..];
+        if (text.Length == 0) return true; // "/" = the repository root
         if (text[0] is '/' or '~' or '-') return false;
         if (text.Length >= 2 && char.IsAsciiLetter(text[0]) && text[1] == ':') return false;
         return !text.Split('/').Contains("..");
+    }
+
+    /// <summary>A path accepted by <see cref="IsSafeRelativePath"/> as stored: trimmed, without the leading <c>/</c>; <paramref name="root"/> for the root.</summary>
+    public static string? NormalizeRelativePath(string? path, string? root = null)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return root;
+        var text = path.Trim().TrimStart('/');
+        return text.Length == 0 ? root : text;
     }
 
     /// <summary>

@@ -16,4 +16,13 @@ public sealed class ProxyOptions
 
     /// <summary>Use the Let's Encrypt staging CA (untrusted certificates, no rate limits) while testing.</summary>
     public bool Staging { get; set; }
+
+    /// <summary>
+    /// The domain of the Aethera UI (<c>AETHERA_DOMAIN</c>): the first value of Settings &gt; System, which wins once saved there (ADR 0011).
+    /// Empty = the UI is only served on its own port.
+    /// </summary>
+    public string? ControlPlaneDomain { get; set; }
+
+    /// <summary>Serve <see cref="ControlPlaneDomain"/> over HTTPS (HTTP redirects to it).</summary>
+    public bool ControlPlaneHttps { get; set; } = true;
 }

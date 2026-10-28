@@ -145,6 +145,8 @@ public sealed class Tenant(WebApplicationFactory<Program> factory, SeededIdentit
         {
             ["name"] = name ?? Unique("app"), ["environmentId"] = environmentId, ["serverId"] = serverId, ["sourceKind"] = "dockerImage",
             ["image"] = new JsonObject { ["image"] = "nginx", ["tag"] = "1.27" },
+            // Tests route their applications themselves; the automatic domain (ADR 0011) has its own tests and is opted into with extra.
+            ["autoDomain"] = false,
         };
         if (extra is not null)
             foreach (var (key, value) in JsonSerializer.SerializeToNode(extra, Json.Options)!.AsObject()) body[key] = value?.DeepClone();

@@ -135,7 +135,11 @@ internal static class AgentEndpoints
 
         var info = await ca.GetPublicInfoAsync(ct);
         var endpoint = settings.EffectivePublicEndpoint;
-        var script = settings.InstallScriptUrl is { Length: > 0 } configured ? configured : $"{http.Request.Scheme}://{http.Request.Host}/install-agent.sh";
+        // Over HTTPS once the UI has a domain (Settings > System): the script is then fetched with protection.
+        var publicUrl = await Infrastructure.Deployments.ProxySettingsStore.PublicUrlAsync(db, null, ct);
+        var script = settings.InstallScriptUrl is { Length: > 0 } configured ? configured
+            : publicUrl is { } url && url.StartsWith("https://", StringComparison.Ordinal) ? $"{url}/install-agent.sh"
+            : $"{http.Request.Scheme}://{http.Request.Host}/install-agent.sh";
         var command = $"curl -fsSL {script} | sudo bash -s -- --token {token} --endpoint {endpoint} --ca-sha256 {info.FingerprintSha256}{AgentInstallCommand.VersionArgument(AppVersion.Current)}";
         return TypedResults.Created($"{ResourceHttp.Path("servers", id)}/join-tokens",
             new JoinTokenResponse(record.Id, id, token, record.ExpiresAt, endpoint, info.FingerprintSha256, command));

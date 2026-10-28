@@ -4,8 +4,10 @@ using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
 using Aethera.Domain;
+using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 
 namespace Aethera.Api.Features.Resources.Workloads;
@@ -55,7 +57,7 @@ internal static class ApplicationEndpoints
 
     private static async Task<Created<ApplicationResponse>> Create(
         CreateApplicationRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
-        CancellationToken ct)
+        IOptions<ProxyOptions> proxy, CancellationToken ct)
     {
         var org = actor.Org();
         TrustChecks.CheckCompose(actor, trust, request.Compose?.InlineContent, "/compose/inlineContent");
@@ -78,6 +80,9 @@ internal static class ApplicationEndpoints
         RuntimeMapper.Apply(app, request.Runtime, _ => true);
 
         db.Applications.Add(app);
+        if (request.AutoDomain == false) app.AutoDomainAssigned = true;
+        else if (kind != ApplicationSourceKind.Compose)
+            await DefaultDomainService.AssignAsync(db, app, null, await ProxyConfigurator.AcmeAvailableAsync(db, proxy.Value, ct), ct);
         await audit.RecordAsync("application.created", "application", app.Id,
             new { name, slug, environmentId = environment.Id, projectId = environment.ProjectId, serverId = server.Id, sourceKind = kind }, ct);
 
@@ -271,7 +276,7 @@ internal static class ApplicationEndpoints
         if (compose is not null)
         {
             var existing = app.ComposeSource ??= new ComposeSource { ApplicationId = app.Id, Application = app };
-            if (has("compose.filePath")) existing.FilePath = string.IsNullOrWhiteSpace(compose.FilePath) ? null : compose.FilePath;
+            if (has("compose.filePath")) existing.FilePath = BuildInputRules.NormalizeRelativePath(compose.FilePath);
             if (has("compose.inlineContent")) existing.InlineContent = string.IsNullOrWhiteSpace(compose.InlineContent) ? null : compose.InlineContent;
             if (!(existing.FilePath is not null ^ existing.InlineContent is not null))
                 throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/compose/filePath", "required",
@@ -302,13 +307,13 @@ internal static class ApplicationEndpoints
                     existing.Engine = engine;
                 }
 
-                if (has("build.context") || resetBuild) existing.Context = build.Context ?? ".";
-                if (has("build.dockerfilePath") || resetBuild) existing.DockerfilePath = build.DockerfilePath;
+                if (has("build.context") || resetBuild) existing.Context = BuildInputRules.NormalizeRelativePath(build.Context, ".")!;
+                if (has("build.dockerfilePath") || resetBuild) existing.DockerfilePath = BuildInputRules.NormalizeRelativePath(build.DockerfilePath);
                 if (has("build.dockerfileInline") || resetBuild) existing.DockerfileInline = build.DockerfileInline;
                 if (has("build.installCommand") || resetBuild) existing.InstallCommand = build.InstallCommand;
                 if (has("build.buildCommand") || resetBuild) existing.BuildCommand = build.BuildCommand;
                 if (has("build.startCommand") || resetBuild) existing.StartCommand = build.StartCommand;
-                if (has("build.outputDirectory") || resetBuild) existing.OutputDirectory = build.OutputDirectory;
+                if (has("build.outputDirectory") || resetBuild) existing.OutputDirectory = BuildInputRules.NormalizeRelativePath(build.OutputDirectory);
                 if (has("build.cacheEnabled") || resetBuild) existing.CacheEnabled = build.CacheEnabled ?? true;
                 if (has("build.targetPlatform") || resetBuild) existing.TargetPlatform = build.TargetPlatform;
                 if (resetBuild) existing.BuildArgs = [];

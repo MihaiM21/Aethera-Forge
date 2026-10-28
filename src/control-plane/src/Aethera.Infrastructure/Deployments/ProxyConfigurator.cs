@@ -9,17 +9,20 @@ using Microsoft.EntityFrameworkCore;
 namespace Aethera.Infrastructure.Deployments;
 
 /// <summary>
-/// Builds the command that makes a server's proxy present and configured (ADR 0010). Besides the instance's ACME settings it adds the DNS-01
-/// resolver (<c>cloudflare</c>) and its token when a domain of the server uses a DNS provider. Used by every deployment with domains and by
-/// <c>POST /servers/{id}/proxy/ensure</c>, so a rotated token or a newly used provider reaches the proxy with the next ensure.
+/// Builds the command that makes a server's proxy present and configured (ADR 0010, 0011). Besides the instance's ACME settings it adds the DNS-01
+/// resolver (<c>cloudflare</c>) and its token when a domain of the server uses a DNS provider, and on the server that serves the control plane's
+/// own domain the route to it. Used whenever an agent connects, by every deployment with domains, by Settings &gt; System and by
+/// <c>POST /servers/{id}/proxy/ensure</c>, so a rotated token, a newly used provider or a new dashboard domain reaches the proxy with the next ensure.
 /// </summary>
 public static class ProxyConfigurator
 {
     /// <summary>Shown next to HTTPS domains while no ACME email is configured.</summary>
     public const string NoAcmeEmailWarning =
-        "No ACME email configured: HTTPS routes use Traefik's default certificate (browsers warn). Set it with the installer's --acme-email option or Aethera:Proxy:AcmeEmail.";
+        "No ACME email configured: HTTPS routes use Traefik's default certificate (browsers warn). Set it in Settings > System (Domain & HTTPS).";
 
-    public static bool AcmeAvailable(ProxyOptions options) => !string.IsNullOrWhiteSpace(options.AcmeEmail);
+    /// <summary>Whether the proxy has a Let's Encrypt account (Settings &gt; System, else the installer's <c>--acme-email</c>).</summary>
+    public static async Task<bool> AcmeAvailableAsync(AetheraDbContext db, ProxyOptions options, CancellationToken ct) =>
+        (await ProxySettingsStore.GetAsync(db, options, ct)).AcmeAvailable;
 
     /// <summary>
     /// The ensure command for <paramref name="serverId"/>. <paramref name="onSecret"/> receives the DNS token so the caller can register it for
@@ -28,8 +31,9 @@ public static class ProxyConfigurator
     public static async Task<ProxyEnsureCommand> BuildEnsureCommandAsync(
         AetheraDbContext db, ISecretProtector protector, IProxyProvider proxy, ProxyOptions options, Guid serverId, Action<string>? onSecret, CancellationToken ct)
     {
+        var settings = await ProxySettingsStore.GetAsync(db, options, ct);
         DnsChallengeSettings? dns = null;
-        if (AcmeAvailable(options))
+        if (settings.AcmeAvailable)
         {
             // One Cloudflare token per proxy (CF_DNS_API_TOKEN): the oldest provider that a domain of this server uses.
             var provider = await db.Domains.AsNoTracking()
@@ -46,7 +50,14 @@ public static class ProxyConfigurator
             }
         }
 
-        return proxy.BuildEnsureCommand(new ProxySettings(options.AcmeEmail, options.Network, options.Version, options.Staging) { DnsChallenge = dns });
+        ControlPlaneRoute? controlPlane = null;
+        if (settings.Dashboard.Domain is { Length: > 0 } domain && await ProxySettingsStore.DashboardServerIdAsync(db, settings.Dashboard, ct) == serverId)
+            controlPlane = new ControlPlaneRoute(domain, settings.Dashboard.Https);
+
+        return proxy.BuildEnsureCommand(new ProxySettings(settings.Acme.AcmeEmail, options.Network, options.Version, settings.Acme.Staging)
+        {
+            DnsChallenge = dns, ControlPlane = controlPlane,
+        });
     }
 
     /// <summary>The current plaintext of a secret, or null when it no longer exists. A secret that cannot be decrypted (wrong master key) is an error.</summary>

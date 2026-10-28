@@ -254,8 +254,11 @@ public sealed class ModelHelperTests
         var service = new Service { Name = "pg", Slug = "pg", TemplateKey = "postgres", Image = "postgres:17" };
 
         Assert.Equal(RestartPolicy.UnlessStopped, service.Runtime.RestartPolicy);
-        Assert.Equal(DeploymentStrategies.Recreate, service.Runtime.DeploymentStrategy);
+        // Low-downtime by default; the runner falls back to (safe) recreate for a workload that cannot run twice (a volume, a host port).
+        Assert.Equal(DeploymentStrategies.LowDowntime, service.Runtime.DeploymentStrategy);
         Assert.Equal(HealthCheckType.None, service.Runtime.HealthCheck.Type);
+        Assert.Equal(30, service.Runtime.HealthCheck.StartPeriodSeconds);
+        Assert.False(service.AutoDomainAssigned);
         Assert.Equal(DesiredState.Running, service.DesiredState);
     }
 

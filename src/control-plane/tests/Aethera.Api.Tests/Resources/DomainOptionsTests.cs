@@ -272,8 +272,8 @@ public sealed class DomainOptionsTests(ResourcesFixture fixture)
 
         var warning = Assert.Single(https["warnings"]!.AsArray())!.GetValue<string>();
         Assert.Contains("No ACME email configured", warning);
-        Assert.Contains("--acme-email", warning);
-        Assert.Contains("Aethera:Proxy:AcmeEmail", warning);
+        Assert.Contains("Settings > System", warning);
+
         Assert.Empty(http["warnings"]!.AsArray());
     }
 

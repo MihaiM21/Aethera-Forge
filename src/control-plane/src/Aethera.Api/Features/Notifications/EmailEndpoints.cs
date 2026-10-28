@@ -144,7 +144,7 @@ internal static class EmailEndpoints
         {
             OrganizationId = org, Type = "test", Kind = NotificationKinds.Test, Severity = AlertSeverity.Info, Title = "Test email",
             Message = "If you can read this, Aethera can send email through the settings you saved.", OccurredAt = now, Path = "/settings",
-        }, options.Value.PublicUrl);
+        }, await Infrastructure.Deployments.ProxySettingsStore.PublicUrlAsync(db, options.Value.PublicUrl, ct));
         var result = await dispatcher.SendEmailAsync(org, new EmailMessage(rendered.Subject, rendered.Text, rendered.Html, [email]), requireEnabled: false, ct);
 
         settings.LastTestedAt = now;

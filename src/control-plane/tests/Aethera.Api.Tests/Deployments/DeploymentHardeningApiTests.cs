@@ -295,9 +295,9 @@ public sealed partial class DeploymentApiTests
         var second = await WaitForAsync((await DeployAsync(t, appId)).Id(), d => d.Status == DeploymentStatus.Running, "second");
 
         Assert.Equal(DeploymentStatus.Running, second.Status);
-        var order = Transport.Commands.Select(c => c.Command).Where(c => c is ContainerRemoveCommand or ContainerCreateCommand).Select(c => c.GetType().Name).ToList();
-        Assert.Equal(["ContainerRemoveCommand", "ContainerCreateCommand"], order); // old one first: recreate, not side by side
-        Assert.DoesNotContain("-2", Received<ContainerCreateCommand>().Single().Spec.Name); // no per-deployment name of low-downtime
+        // Recreate, not side by side: the old one is stopped (freeing the port and the volume) before the new one starts, and removed once it is up.
+        var order = Transport.Commands.Select(c => c.Command).Where(c => c is ContainerStopCommand or ContainerRemoveCommand or ContainerCreateCommand).Select(c => c.GetType().Name).ToList();
+        Assert.Equal(["ContainerStopCommand", "ContainerCreateCommand", "ContainerRemoveCommand"], order);
         var details = second.Steps.Single(s => s.Step == DeploymentStep.Container).DetailsJson!;
         Assert.Contains("strategyNote", details);
         Assert.Contains("writable volume", details);

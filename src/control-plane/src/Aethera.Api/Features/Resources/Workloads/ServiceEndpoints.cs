@@ -7,10 +7,12 @@ using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
 using Aethera.Domain;
+using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Aethera.Api.Features.Resources.Workloads;
 
@@ -35,6 +37,9 @@ public sealed record CreateServiceRequest
     public JsonObject? Config { get; init; }
 
     public RuntimeRequest? Runtime { get; init; }
+
+    /// <summary>Give a service with a web interface (an HTTP port) an automatic domain (ADR 0011). Default true.</summary>
+    public bool? AutoDomain { get; init; }
 }
 
 public sealed record UpdateServiceRequest
@@ -146,7 +151,7 @@ internal static class ServiceEndpoints
 
     private static async Task<Created<ServiceResponse>> Create(
         CreateServiceRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, SecretVault vault,
-        TrustPolicy trust, CancellationToken ct)
+        TrustPolicy trust, IOptions<ProxyOptions> proxy, CancellationToken ct)
     {
         var org = actor.Org();
         CheckConfig(actor, trust, request.Config, null);
@@ -164,6 +169,9 @@ internal static class ServiceEndpoints
         if (request.Runtime is { } runtime) RuntimeMapper.Apply(service, runtime, RuntimeMapper.PresentIn(runtime));
 
         db.Services.Add(service);
+        if (request.AutoDomain != false && service.Ports.Any(p => p.IsHttp))
+            await DefaultDomainService.AssignAsync(db, service, null, await ProxyConfigurator.AcmeAvailableAsync(db, proxy.Value, ct), ct);
+        else if (request.AutoDomain == false) service.AutoDomainAssigned = true;
         await audit.RecordAsync("service.created", "service", service.Id,
             new { name, slug, environmentId = environment.Id, projectId = environment.ProjectId, serverId = server.Id, template = template.Key,
                   version = service.TemplateVersion, generatedSecrets = service.EnvironmentVariables.Count(v => v.Secret is not null) }, ct);
