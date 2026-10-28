@@ -6,7 +6,7 @@ Aethera is a control plane (API and web UI, PostgreSQL, Redis) plus one agent pe
 
 - A Linux server (Ubuntu, Debian, Fedora, RHEL-like or Alpine all work), amd64 or arm64, **1 vCPU and 2 GB RAM** at the very least (builds need more: 2 vCPU / 4 GB is comfortable).
 - Root access and `curl`. The installer installs Docker (with the Compose plugin) when it is missing.
-- Ports: **8080** for the UI and API (put a domain in front of it, below), **9443** for agents of *other* servers to reach the control plane (mutual TLS, no proxy in front of it), and **80 and 443** for the applications you deploy (Aethera runs its own Traefik on them).
+- Ports: **8080** for the UI and API (put a domain in front of it, below), **9443** for agents of *other* servers to reach the control plane (mutual TLS, no proxy in front of it), and **80 and 443** for the applications you deploy (Aethera starts its own Traefik on them as soon as the machine's agent connects).
 - A DNS name pointing at the server if you want HTTPS for the UI or for your applications.
 
 ## Install
@@ -56,8 +56,8 @@ What the installer does, in order:
 | `--dir <path>` | `AETHERA_DIR` | `/opt/aethera` | installation directory |
 | `--version <v>` | `AETHERA_VERSION` | `latest` | release to install, with or without the `v`: `0.1.0`, `v0.1.0`, `0.1.0-rc.1`. `latest` is the newest release that is not a pre-release. |
 | `--host <name-or-ip>` | `AETHERA_PUBLIC_HOST` | detected public IP | what **other servers** use to reach this machine's port 9443 (the agent gateway's certificate names it). Use a DNS name if the IP may change. |
-| `--domain <name>` | `AETHERA_DOMAIN` | none | serve the UI on `https://<name>` through Aethera's proxy |
-| `--acme-email <email>` | `AETHERA_ACME_EMAIL` | none | Let's Encrypt account for HTTPS certificates (also `AETHERA_ACME_STAGING=true` for the staging CA) |
+| `--domain <name>` | `AETHERA_DOMAIN` | none | serve the UI on `https://<name>` through Aethera's proxy; the first value of Settings > System, which wins once saved |
+| `--acme-email <email>` | `AETHERA_ACME_EMAIL` | none | Let's Encrypt account for HTTPS certificates (also `AETHERA_ACME_STAGING=true` for the staging CA); likewise only until saved in Settings |
 | `--admin-email`, `--admin-password`, `--admin-name`, `--org-name` | `AETHERA_ADMIN_*`, `AETHERA_ORG_NAME` | | the first owner; the password is generated and printed when omitted |
 | | `AETHERA_PUBLIC_URL` (`Aethera:PublicUrl` in the API) | `https://<domain>` with `--domain`, else `http://<host>:<http port>` | the address people open the UI at: the control plane builds the links in emails and notifications from it. The installer writes it to the `.env`; set the variable when you run the installer to override it, and edit it in the `.env` (then `docker compose ... up -d aethera`) whenever you change `AETHERA_DOMAIN` or put a different proxy in front. |
 | `--no-agent` | | | do not start an agent for this machine (the control plane alone) |
@@ -68,8 +68,8 @@ Also read from the environment and written to the `.env`: `AETHERA_IMAGE`, `AETH
 ## First steps
 
 1. Sign in at `http://<server>:8080`. This is plain HTTP, so the login page shows a "not using HTTPS" notice: your password and session cookie cross the network unencrypted until the UI has a domain and a certificate (step 2). Do the first sign-in from a network you trust and set up step 2 early. Locked out, or forgot the owner's password? Run `sudo aethera reset-password you@example.com` on the server (see "Operating it").
-2. **HTTPS and a domain for the UI** (optional): install with `--acme-email you@example.com` (the Let's Encrypt account; without it the proxy serves HTTP only) and `--domain aethera.example.com` after pointing a DNS record at the server. The proxy appears on the `local` server with the first deployment that has a domain (or `POST /servers/{id}/proxy/ensure`); the UI is then served on `https://aethera.example.com` as well. To change these later edit `AETHERA_ACME_EMAIL`, `AETHERA_DOMAIN` and `AETHERA_PUBLIC_URL` (set it to `https://aethera.example.com`, so the links in emails point at the domain) in `/opt/aethera/.env` and run `docker compose -f /opt/aethera/docker-compose.yml --env-file /opt/aethera/.env up -d aethera`. Port 8080 keeps working throughout.
-3. **Create a project and an application** (Applications > New): pick a repository or an image, the build method, environment variables, the server and a domain. See the [Coolify migration guide](migration-from-coolify.md) for a worked example.
+2. **HTTPS and a domain for the UI** (optional): in **Settings > System > Domain & HTTPS** enter the domain (point a DNS A record at the server first, or click *sslip.io* for `aethera.<server ip>.sslip.io`, which needs no DNS) and the Let's Encrypt email, then *Save and apply*. The proxy of this machine routes the domain at once and the page shows its DNS check; links in emails and the agent install command use it from then on. Port 8080 keeps working throughout, so a typo cannot lock you out. `--domain` and `--acme-email` at install time only fill these settings in until they are first saved.
+3. **Create a project and an application** (Applications > New): pick a repository or an image, the build method, environment variables and the server. Leave the port empty to use the one the image exposes, and the domain empty to get an automatic one: `<name>-<id>.<server ip>.sslip.io`, like Coolify (HTTPS when the Let's Encrypt email is set). Set a server's *Wildcard domain* (Servers > the server > Settings, with a `*.apps.example.com` DNS record) to get `<name>-<id>.apps.example.com` instead. See the [Coolify migration guide](migration-from-coolify.md) for a worked example.
 4. **Add more servers**: Servers > Add server, then run the printed command on the new machine:
 
    ```bash

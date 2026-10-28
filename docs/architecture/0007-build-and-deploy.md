@@ -28,7 +28,7 @@ When the job starts, the application's configuration is frozen into `DeploymentS
 
 ## Strategies
 
-- **Recreate**: remove old container, create new, probe. Brief downtime; a failure after the old container was removed leaves the application `Failed`.
+- **Recreate**: stop the old container, start the new one as `<name>-<number>`, probe, then remove the old one. Brief downtime; a failure removes the new container and starts the old one again (ADR 0011).
 - **Low-downtime**: start `<name>-<number>` next to the old container with the same proxy labels, probe it, then remove the old one. A failed probe removes only the candidate; the old container keeps serving. Verified against a real Traefik: a second container with identical labels joins the service and the route keeps answering after the first is removed.
 - **Compose**: project-scoped, user file stored verbatim, Aethera override file adds proxy labels and the external proxy network.
 
@@ -56,7 +56,7 @@ Credentials reach the agent in the build request. The agent passes an HTTPS toke
 
 ## Known limits
 
-- Compose applications need the compose file pasted in (`inlineContent`); reading it from the repository is not implemented. Compose services that use `build:` need a build context and are therefore not supported either.
+- Compose from the repository and `build:` services are supported since R1.4 (ADR 0010); automatic domains, ports read from EXPOSE and the other first-try fixes are in ADR 0011.
 - Inline Dockerfiles (`dockerfileInline`) are rejected with `source.unsupported`.
 - The Nixpacks engine is covered by argument-vector tests only; it was not run against the real CLI.
 - `POST /registries/{id}/test` still answers 501.

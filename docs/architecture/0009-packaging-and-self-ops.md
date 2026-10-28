@@ -15,7 +15,7 @@
 | `agent` | the static Go agent | For this machine only; other servers run the binary under systemd (`/install-agent.sh`). |
 | `updater` | `aethera-ctl.sh` on `docker:cli` | Opt-in profile, holds the Docker socket (see Updates). |
 
-**`docker-compose.prod.yml`** has `postgres`, `redis`, `aethera`, `agent` (this machine's agent, always part of the stack) and the opt-in profile `updater`. There is no second Traefik: Aethera deploys its own proxy (`aethera-traefik`, ports 80 and 443) through the agent, and the compose file only puts the control plane on that proxy's network (`aethera-proxy`) with labels for `AETHERA_DOMAIN`. Two proxies would fight over the same ports.
+**`docker-compose.prod.yml`** has `postgres`, `redis`, `aethera`, `agent` (this machine's agent, always part of the stack) and the opt-in profile `updater`. There is no second Traefik: Aethera deploys its own proxy (`aethera-traefik`, ports 80 and 443) through the agent, and the compose file only puts the control plane on that proxy's network (`aethera-proxy`, alias `aethera-control-plane`); the UI's domain is a file-provider route the control plane gives its proxy (ADR 0011). Two proxies would fight over the same ports.
 
 **`install.sh`** (release asset, `curl ... | sudo bash`): installs Docker when missing, writes `<dir>/.env` (mode 0600) with a generated database password and master key, starts the stack, waits for `/ready`, and optionally creates the first owner and waits for this machine's agent, which the control plane enrolls itself (see below). Running it again upgrades in place and never regenerates a secret that is already in the `.env`: a new master key would make every stored secret unreadable.
 
@@ -87,7 +87,7 @@ The UI: Settings > System (version, release notes, update button or the host com
 - One API instance: the update, maintenance and updater protocol assume it (the maintenance lock already allows more).
 - Backups stay on the same machine (`/data/backups`) until Phase 8 (remote destinations); copy them off the host.
 - Downgrades are refused by design (see Migrations); the way back is restoring a pre-update backup with `aethera restore`.
-- The compose file's label-based route for `AETHERA_DOMAIN` works once a server has the proxy and a certificate resolver (`--acme-email` / `Aethera:Proxy:AcmeEmail`); until then the UI is on `http://<host>:8080`.
+- The UI's domain (Settings > System, seeded from `AETHERA_DOMAIN`) is routed once the local server's agent is connected, which starts the proxy (ADR 0011); until then the UI is on `http://<host>:8080`.
 
 ## Amendments for release 0.1 (beta)
 
