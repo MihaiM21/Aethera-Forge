@@ -4,8 +4,9 @@
 #   docker compose -f docker-compose.prod.yml --env-file .env up -d
 #
 # Traefik: Aethera deploys and configures its own Traefik (container "aethera-traefik", ports 80/443) through the agent as soon as
-# a server has a domain. This file only puts the control plane on that proxy's network and labels it, so setting AETHERA_DOMAIN makes
-# the UI available on https://<domain> without a second proxy that would fight over ports 80 and 443.
+# the agent of a server connects. This file only puts the control plane on that proxy's network under the alias aethera-control-plane:
+# the domain of the UI is a route the control plane gives its own proxy (Settings > System, seeded from AETHERA_DOMAIN), so it changes
+# without editing this file, and there is no second proxy fighting over ports 80 and 443 (ADR 0011).
 name: aethera
 
 services:
@@ -59,6 +60,8 @@ services:
       Aethera__PublicUrl: ${AETHERA_PUBLIC_URL:-}
       # Let's Encrypt: without an email the proxy serves HTTP only. AETHERA_ACME_STAGING=true uses the staging CA while testing.
       Aethera__Proxy__AcmeEmail: ${AETHERA_ACME_EMAIL:-}
+      # The UI's domain until one is saved in Settings > System (which then wins).
+      Aethera__Proxy__ControlPlaneDomain: ${AETHERA_DOMAIN:-}
       Aethera__Proxy__Staging: ${AETHERA_ACME_STAGING:-false}
       # Proxies whose X-Forwarded-For / X-Forwarded-Proto are believed (comma-separated IPs or CIDRs; empty = loopback only). Only needed
       # when something other than Aethera's own proxy sits in front. Without it the UI is still reachable behind Traefik, but the session
@@ -73,20 +76,10 @@ services:
     volumes:
       - aethera_data:/data
     networks:
-      - default
-      - aethera-proxy
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: aethera-proxy
-      traefik.http.routers.aethera-http.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
-      traefik.http.routers.aethera-http.entrypoints: web
-      traefik.http.routers.aethera-http.service: aethera
-      traefik.http.routers.aethera-https.rule: Host(`${AETHERA_DOMAIN:-aethera.invalid}`)
-      traefik.http.routers.aethera-https.entrypoints: websecure
-      traefik.http.routers.aethera-https.service: aethera
-      traefik.http.routers.aethera-https.tls: "true"
-      traefik.http.routers.aethera-https.tls.certresolver: letsencrypt
-      traefik.http.services.aethera.loadbalancer.server.port: "8080"
+      default:
+      aethera-proxy:
+        # The upstream of the UI's route in the proxy's dynamic configuration (ControlPlaneRoute.DefaultUpstream).
+        aliases: [aethera-control-plane]
     healthcheck:
       # The aspnet image has no curl: a raw HTTP request over bash's /dev/tcp (dash, the image's sh, has none).
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /ready HTTP/1.0\r\n\r\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
