@@ -94,9 +94,12 @@ public sealed record DockerContainer(
     IReadOnlyDictionary<string, string> Labels, IReadOnlyList<PortMappingSpec> Ports, IReadOnlyList<VolumeMountSpec> Mounts,
     IReadOnlyList<ContainerNetworkInfo> Networks, string? InspectJson);
 
+/// <param name="ExposedPorts">The image's EXPOSE entries, e.g. <c>8080/tcp</c>; empty when it exposes nothing (or the transport cannot tell).</param>
+/// <param name="HasHealthcheck">The image defines a HEALTHCHECK (other than NONE).</param>
 public sealed record DockerImage(
     string Id, IReadOnlyList<string> RepoTags, IReadOnlyList<string> RepoDigests, long SizeBytes, DateTimeOffset? CreatedAt,
-    IReadOnlyDictionary<string, string> Labels, string Architecture, string Os, int ContainersUsing);
+    IReadOnlyDictionary<string, string> Labels, string Architecture, string Os, int ContainersUsing,
+    IReadOnlyList<string>? ExposedPorts = null, bool HasHealthcheck = false);
 
 public sealed record DockerVolume(
     string Name, string Driver, string Mountpoint, IReadOnlyDictionary<string, string> Labels, DateTimeOffset? CreatedAt, long SizeBytes, int RefCount);
@@ -131,7 +134,8 @@ public sealed record ComposeServiceInfo(
 public sealed record ComposeOutcome(string ProjectName, IReadOnlyList<ComposeServiceInfo> Services, string? CommitSha = null);
 
 /// <summary>One service of a resolved compose file (<see cref="ComposeInspectCommand"/>).</summary>
-public sealed record ComposeServiceDefinition(string Name, string Image, bool HasBuild, IReadOnlyList<int> Ports);
+/// <param name="NetworkMode">The service's <c>network_mode</c> as written (<c>service:db</c>, <c>host</c>, ...); null = the project's networks.</param>
+public sealed record ComposeServiceDefinition(string Name, string Image, bool HasBuild, IReadOnlyList<int> Ports, string? NetworkMode = null);
 
 /// <param name="Violations">Agent policy findings that would make <c>compose.up</c> fail; empty = valid.</param>
 public sealed record ComposeInspection(IReadOnlyList<ComposeServiceDefinition> Services, string CommitSha, string ComposeSha256, IReadOnlyList<string> Violations);

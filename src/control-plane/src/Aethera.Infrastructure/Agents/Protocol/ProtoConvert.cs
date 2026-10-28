@@ -229,7 +229,8 @@ internal static class ProtoConvert
         c.InspectJson.Length == 0 ? null : c.InspectJson.ToStringUtf8());
 
     public static DockerImage ToDomain(this P.ImageInfo i) => new(
-        i.Id, i.RepoTags.ToList(), i.RepoDigests.ToList(), i.SizeBytes, i.CreatedAt.ToDomain(), ToDict(i.Labels), i.Architecture, i.Os, i.ContainersUsing);
+        i.Id, i.RepoTags.ToList(), i.RepoDigests.ToList(), i.SizeBytes, i.CreatedAt.ToDomain(), ToDict(i.Labels), i.Architecture, i.Os, i.ContainersUsing,
+        i.ExposedPorts.ToList(), i.HasHealthcheck);
 
     public static DockerVolume ToDomain(this P.VolumeInfo v) =>
         new(v.Name, v.Driver, v.Mountpoint, ToDict(v.Labels), v.CreatedAt.ToDomain(), v.SizeBytes, v.RefCount);
@@ -245,7 +246,8 @@ internal static class ProtoConvert
         s.Ports.Select(ToDomain).ToList())).ToList(), r.CommitSha is { Length: > 0 } sha ? sha : null);
 
     public static ComposeInspection ToDomain(this P.ComposeInspectResult r) => new(
-        r.Services.Select(s => new ComposeServiceDefinition(s.Name, s.Image, s.HasBuild, s.Ports.Select(p => (int)p).ToList())).ToList(),
+        r.Services.Select(s => new ComposeServiceDefinition(s.Name, s.Image, s.HasBuild, s.Ports.Select(p => (int)p).ToList(),
+            s.NetworkMode is { Length: > 0 } mode ? mode : null)).ToList(),
         r.CommitSha, r.ComposeSha256, r.Violations.ToList());
 
     public static ContainerExecOutcome ToDomain(this P.ContainerExecResult r) =>

@@ -127,7 +127,7 @@ public sealed record HealthProbeCommand(
 
 public sealed record ProxyEnsureCommand(
     string Provider, byte[] Config, string? Image = null, string? Version = null, IReadOnlyList<EnvVarSpec>? Env = null, string? Network = null,
-    bool RestartOnChange = true)
+    bool RestartOnChange = true, byte[]? DynamicConfig = null)
     : ServerCommand<ProxyEnsured>("proxy.ensure", TransportCapabilities.ContainerOps, TimeSpan.FromMinutes(5));
 
 public sealed record DiscoveryRefreshCommand()

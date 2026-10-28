@@ -189,6 +189,10 @@ message ImageInfo {
   string os = 8;
   // Number of containers using the image (-1 = unknown).
   int32 containers_using = 9;
+  // Ports from the image's EXPOSE, e.g. "8080/tcp", sorted.
+  repeated string exposed_ports = 10;
+  // The image defines a HEALTHCHECK (other than NONE).
+  bool has_healthcheck = 11;
 }
 
 message ImagePull {
@@ -486,6 +490,9 @@ message ComposeServiceSpec {
   bool has_build = 3;
   // Container ports from `ports:` and `expose:`.
   repeated uint32 ports = 4;
+  // The service's `network_mode` as written ("service:db", "host", ...);
+  // empty = the project's networks.
+  string network_mode = 5;
 }
 
 message ComposeInspectResult {

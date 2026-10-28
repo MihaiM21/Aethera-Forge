@@ -203,6 +203,11 @@ message ProxyEnsure {
   string network = 6;
   // Restart the proxy if its config hash changed.
   bool restart_on_change = 7;
+  // Provider dynamic configuration (Traefik: a file-provider YAML with the
+  // routes that are not container labels, such as the control plane's own
+  // domain). Written next to the static config and reloaded live: a change
+  // never recreates the proxy container. Empty = no dynamic routes.
+  bytes dynamic_config = 8;
 }
 
 message ProxyEnsureResult {

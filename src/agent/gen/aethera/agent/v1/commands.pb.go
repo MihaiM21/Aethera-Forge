@@ -1475,8 +1475,13 @@ type ProxyEnsure struct {
 	Network string `protobuf:"bytes,6,opt,name=network,proto3" json:"network,omitempty"`
 	// Restart the proxy if its config hash changed.
 	RestartOnChange bool `protobuf:"varint,7,opt,name=restart_on_change,json=restartOnChange,proto3" json:"restart_on_change,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Provider dynamic configuration (Traefik: a file-provider YAML with the
+	// routes that are not container labels, such as the control plane's own
+	// domain). Written next to the static config and reloaded live: a change
+	// never recreates the proxy container. Empty = no dynamic routes.
+	DynamicConfig []byte `protobuf:"bytes,8,opt,name=dynamic_config,json=dynamicConfig,proto3" json:"dynamic_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProxyEnsure) Reset() {
@@ -1556,6 +1561,13 @@ func (x *ProxyEnsure) GetRestartOnChange() bool {
 		return x.RestartOnChange
 	}
 	return false
+}
+
+func (x *ProxyEnsure) GetDynamicConfig() []byte {
+	if x != nil {
+		return x.DynamicConfig
+	}
+	return nil
 }
 
 type ProxyEnsureResult struct {
@@ -2593,7 +2605,7 @@ const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\alatency\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\alatency\x12\x16\n" +
 	"\x06detail\x18\x05 \x01(\tR\x06detail\x129\n" +
 	"\n" +
-	"checked_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\"\xe3\x01\n" +
+	"checked_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\"\x8a\x02\n" +
 	"\vProxyEnsure\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12\x18\n" +
@@ -2601,7 +2613,8 @@ const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\x06config\x18\x04 \x01(\fR\x06config\x12*\n" +
 	"\x03env\x18\x05 \x03(\v2\x18.aethera.agent.v1.EnvVarR\x03env\x12\x18\n" +
 	"\anetwork\x18\x06 \x01(\tR\anetwork\x12*\n" +
-	"\x11restart_on_change\x18\a \x01(\bR\x0frestartOnChange\"\xc5\x01\n" +
+	"\x11restart_on_change\x18\a \x01(\bR\x0frestartOnChange\x12%\n" +
+	"\x0edynamic_config\x18\b \x01(\fR\rdynamicConfig\"\xc5\x01\n" +
 	"\x11ProxyEnsureResult\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x12\x18\n" +

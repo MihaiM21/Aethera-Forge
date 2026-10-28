@@ -155,7 +155,7 @@ public sealed class CommandMapper
                 c.ProxyEnsure = new P.ProxyEnsure
                 {
                     Provider = m.Provider, Image = m.Image ?? "", Version = m.Version ?? "", Config = ByteString.CopyFrom(m.Config), Network = m.Network ?? "",
-                    RestartOnChange = m.RestartOnChange,
+                    RestartOnChange = m.RestartOnChange, DynamicConfig = ByteString.CopyFrom(m.DynamicConfig ?? []),
                 };
                 c.ProxyEnsure.Env.Add(m.Env.ToProto());
             },

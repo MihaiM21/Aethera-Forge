@@ -21512,6 +21512,19 @@
               "string"
             ],
             "format": "int32"
+          },
+          "exposedPorts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "hasHealthcheck": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
