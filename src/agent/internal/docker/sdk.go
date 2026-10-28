@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -719,6 +720,13 @@ func (s *SDK) ImageInspect(ctx context.Context, ref string) (*agentv1.ImageInfo,
 	}
 	if i.Config != nil {
 		info.Labels = i.Config.Labels
+		for port := range i.Config.ExposedPorts {
+			info.ExposedPorts = append(info.ExposedPorts, string(port))
+		}
+		sort.Strings(info.ExposedPorts)
+		if hc := i.Config.Healthcheck; hc != nil && len(hc.Test) > 0 && hc.Test[0] != "NONE" {
+			info.HasHealthcheck = true
+		}
 	}
 	return info, nil
 }

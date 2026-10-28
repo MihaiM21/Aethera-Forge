@@ -30,6 +30,11 @@ const (
 	configLabel  = "aethera.proxy.config-sha256"
 	managedLabel = "aethera.managed"
 	acmeVolume   = "aethera-traefik-acme"
+
+	// DynamicDir is where the proxy container sees the dynamic configuration directory (Traefik's file provider,
+	// watched: a change is picked up live without a restart).
+	DynamicDir  = "/etc/traefik/dynamic"
+	dynamicFile = "aethera.yml"
 )
 
 var (
@@ -77,6 +82,12 @@ func (m *Manager) Ensure(ctx context.Context, req *agentv1.ProxyEnsure) (*agentv
 		}
 		res.Changed = true
 	}
+	// The dynamic file is not part of the config hash: Traefik reloads it by itself, the container stays.
+	dynChanged, err := writeDynamic(filepath.Join(m.Dir, "dynamic"), req.GetDynamicConfig())
+	if err != nil {
+		return nil, err
+	}
+	res.Changed = res.Changed || dynChanged
 
 	existing, err := m.Docker.ContainerInspect(ctx, ContainerName, false)
 	switch {
@@ -110,7 +121,7 @@ func (m *Manager) Ensure(ctx context.Context, req *agentv1.ProxyEnsure) (*agentv
 	if err := m.Docker.ImagePull(ctx, ref, nil, "", nil); err != nil {
 		return nil, err
 	}
-	id, _, err := m.Docker.ContainerCreate(ctx, Spec(ref, cfgPath, network, sumHex, req.GetEnv()))
+	id, _, err := m.Docker.ContainerCreate(ctx, Spec(ref, cfgPath, filepath.Join(m.Dir, "dynamic"), network, sumHex, req.GetEnv()))
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +134,7 @@ func (m *Manager) Ensure(ctx context.Context, req *agentv1.ProxyEnsure) (*agentv
 
 // Spec is the container definition of the proxy. It mounts the docker socket read-only because Traefik's docker provider
 // needs it; this is the one place the agent hands the socket to a container, and it is not reachable through any command.
-func Spec(image, cfgPath, network, cfgSum string, env []*agentv1.EnvVar) *agentv1.ContainerSpec {
+func Spec(image, cfgPath, dynDir, network, cfgSum string, env []*agentv1.EnvVar) *agentv1.ContainerSpec {
 	return &agentv1.ContainerSpec{
 		Image: image, Name: ContainerName,
 		Labels: map[string]string{managedLabel: "true", "aethera.role": "proxy", configLabel: cfgSum, "traefik.enable": "false"},
@@ -135,12 +146,52 @@ func Spec(image, cfgPath, network, cfgSum string, env []*agentv1.EnvVar) *agentv
 		Mounts: []*agentv1.VolumeMount{
 			{Type: agentv1.MountType_MOUNT_TYPE_BIND, Source: "/var/run/docker.sock", Target: "/var/run/docker.sock", ReadOnly: true},
 			{Type: agentv1.MountType_MOUNT_TYPE_BIND, Source: filepath.ToSlash(cfgPath), Target: "/etc/traefik/traefik.yml", ReadOnly: true},
+			// A directory, not the file: a bind-mounted file keeps pointing at the old inode after an atomic replace.
+			{Type: agentv1.MountType_MOUNT_TYPE_BIND, Source: filepath.ToSlash(dynDir), Target: DynamicDir, ReadOnly: true},
 			{Type: agentv1.MountType_MOUNT_TYPE_VOLUME, Source: acmeVolume, Target: "/acme"},
 		},
 		Networks:      []*agentv1.NetworkAttachment{{Network: network}},
 		RestartPolicy: &agentv1.RestartPolicy{Name: agentv1.RestartPolicyName_RESTART_POLICY_NAME_UNLESS_STOPPED},
 		CapDrop:       []string{"ALL"},
 	}
+}
+
+// writeDynamic makes dir/aethera.yml hold content (atomically, through a rename the file provider's watcher sees) and
+// removes it when content is empty. It reports whether anything changed.
+func writeDynamic(dir string, content []byte) (bool, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, err
+	}
+	path := filepath.Join(dir, dynamicFile)
+	cur, err := os.ReadFile(path)
+	exists := err == nil
+	if len(content) == 0 {
+		if !exists {
+			return false, nil
+		}
+		return true, os.Remove(path)
+	}
+	if exists && string(cur) == string(content) {
+		return false, nil
+	}
+	tmp, err := os.CreateTemp(dir, ".aethera-*.tmp")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return false, err
+	}
+	// Traefik runs as the image's user and must read it; the file holds routes only, never a secret.
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return false, err
+	}
+	if err := tmp.Close(); err != nil {
+		return false, err
+	}
+	return true, os.Rename(tmp.Name(), path)
 }
 
 func (m *Manager) ensureNetwork(ctx context.Context, name string) error {

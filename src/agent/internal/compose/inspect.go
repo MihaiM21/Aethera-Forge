@@ -24,7 +24,7 @@ func (s *Service) Inspect(ctx context.Context, p *agentv1.ComposeProject, errw i
 		return nil, err
 	}
 	defer unlock()
-	pr, err := s.prepare(ctx, p, modeRun, true, io.Discard, errw)
+	pr, err := s.prepare(ctx, p, modeInspect, true, io.Discard, errw)
 	if err != nil {
 		return nil, err
 	}
@@ -49,8 +49,9 @@ func (s *Service) Inspect(ctx context.Context, p *agentv1.ComposeProject, errw i
 	for _, name := range sortedKeys(cfg.Services) {
 		svc := cfg.Services[name]
 		image, _ := svc["image"].(string)
+		networkMode, _ := svc["network_mode"].(string)
 		res.Services = append(res.Services, &agentv1.ComposeServiceSpec{
-			Name: name, Image: image, HasBuild: svc["build"] != nil, Ports: containerPorts(svc),
+			Name: name, Image: image, HasBuild: svc["build"] != nil, Ports: containerPorts(svc), NetworkMode: networkMode,
 		})
 	}
 	return res, nil
