@@ -92,6 +92,10 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
 - `scheduled_tasks` (command run as `sh -c` inside the workload's container, optional `compose_service`, cron + time zone, timeout) and `scheduled_task_runs` (exit code, output tail; full output in the job's log stream).
 - `dns_providers` (Cloudflare API token as a `dnsCredential` secret, visible zones). `domains` gained `compose_service`, `redirect_to`, `strip_path_prefix`, `basic_auth_secret_id` (`basicAuth` secret with htpasswd lines) and `dns_provider_id` (DNS-01); `workloads.custom_labels jsonb` holds administrator-set container labels.
 
+**Automatic domains** (`AutomaticDomains`, ADR 0011)
+- `servers.wildcard_domain` (null = `<public ip>.sslip.io`) is the base of the domains generated for new workloads; `domains.is_automatic` marks such a row; `workloads.auto_domain_assigned` records that one was created (or skipped) once, so deleting it sticks. The migration sets the flag on every existing workload: an upgrade adds no routes.
+- `settings` keys `proxy` (`acmeEmail`, `staging`) and `dashboard` (`domain`, `https`, `serverId`) hold the proxy and control-plane domain settings edited in Settings > System; on first start they are seeded from `AETHERA_ACME_EMAIL` / `AETHERA_DOMAIN`.
+
 ## Why a single `workloads` table (TPH) instead of TPT
 
 Application and Service share almost everything the engine cares about: server, environment, runtime config, ports, env vars, volumes,

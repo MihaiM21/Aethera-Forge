@@ -120,6 +120,12 @@ public class Server : SoftDeletableEntity
     /// <summary>Address the world sees; compared with domain DNS records for mismatch warnings.</summary>
     public string? PublicIp { get; set; }
 
+    /// <summary>
+    /// Base of the automatic domains of new workloads on this server (<c>apps.example.com</c> gives <c>&lt;slug&gt;-&lt;id&gt;.apps.example.com</c>,
+    /// with a <c>*.apps.example.com</c> DNS record pointing here). Null = <c>&lt;public-ip&gt;.sslip.io</c> (ADR 0011).
+    /// </summary>
+    public string? WildcardDomain { get; set; }
+
     public string? AgentVersion { get; set; }
     public string? CertFingerprint { get; set; }
     public string? CertSerial { get; set; }

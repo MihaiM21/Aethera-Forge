@@ -118,6 +118,9 @@ public abstract class Workload : SoftDeletableEntity
     public List<WorkloadDomain> Domains { get; set; } = [];
     public List<WorkloadNetwork> Networks { get; set; } = [];
 
+    /// <summary>An automatic domain was created (or deliberately skipped) once: deleting it never brings it back (ADR 0011).</summary>
+    public bool AutoDomainAssigned { get; set; }
+
     /// <summary>
     /// Returns the next sequential deployment number. Concurrent allocations are rejected by the
     /// <c>xmin</c> concurrency token and by the unique (workload, number) index on deployments.

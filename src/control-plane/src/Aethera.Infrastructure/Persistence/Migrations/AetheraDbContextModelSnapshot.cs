@@ -3189,6 +3189,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<string>("WildcardDomain")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("wildcard_domain");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Facts", "Aethera.Domain.Server.Facts#ServerFacts", b1 =>
                         {
                             b1.IsRequired();
@@ -3694,6 +3699,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AutoDomainAssigned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_domain_assigned");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -3946,6 +3955,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Property<bool>("HttpsEnabled")
                         .HasColumnType("boolean")
                         .HasColumnName("https_enabled");
+
+                    b.Property<bool>("IsAutomatic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_automatic");
 
                     b.Property<bool>("IsPrimary")
                         .HasColumnType("boolean")
