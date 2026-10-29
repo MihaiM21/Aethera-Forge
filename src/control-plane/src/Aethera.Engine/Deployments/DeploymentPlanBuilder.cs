@@ -33,6 +33,12 @@ public sealed class PlanContext
     public string ProxyNetwork { get; init; } = "aethera-proxy";
     public Action<LogEntry>? OnLog { get; init; }
 
+    /// <inheritdoc cref="DeploymentPlan.WriteLog"/>
+    public Func<LogStream, string, CancellationToken, ValueTask>? WriteLog { get; init; }
+
+    /// <inheritdoc cref="DeploymentPlan.Narrate"/>
+    public Func<string, CancellationToken, ValueTask>? Narrate { get; init; }
+
     /// <summary>
     /// False when the server's proxy has no ACME email: HTTPS routes then name no certificate resolver (one that does not exist would make every
     /// HTTPS domain fail silently) and Traefik serves its default certificate.
@@ -57,10 +63,27 @@ public static class DeploymentPlanBuilder
     /// <summary>The network every workload of an environment joins, so workloads reach each other by name.</summary>
     public static string EnvironmentNetwork(Guid environmentId) => $"aethera-env-{environmentId.ToString("N")[..8]}";
 
-    public static DeploymentPlan Build(DeploymentSnapshot s, PlanContext c)
+    /// <summary>
+    /// The plan before the image is known. For a container workload it carries <see cref="DeploymentPlan.WithImage"/>: the runner rebuilds it with the
+    /// image's facts after the Image step, which settles the port of a workload that declares none and the liveness check.
+    /// </summary>
+    public static DeploymentPlan Build(DeploymentSnapshot s, PlanContext c) => Build(s, c, null);
+
+    /// <param name="facts">The image about to run; null = not known yet (domains without a port are then left for the rebuild).</param>
+    public static DeploymentPlan Build(DeploymentSnapshot s, PlanContext c, ImageFacts? facts)
     {
         var name = ContainerName(s);
-        var routes = Routes(s, c);
+        var originalSnapshot = s;
+
+        // A workload that declares no port gets the one its image exposes (or its build engine's), like Coolify reads EXPOSE.
+        int? detected = null;
+        if (s.Compose is null && facts is not null && s.Ports.Count == 0 && (facts.PreferredPort ?? EngineDefaultPort(s)) is { } port)
+        {
+            detected = port;
+            s = s with { Ports = [new PortEntry(port, PortProtocol.Tcp, null, true)] };
+        }
+
+        var routes = Routes(s, c, portKnown: s.Compose is not null || facts is not null);
         var labels = new Dictionary<string, string>
         {
             ["aethera.managed"] = "true",
@@ -106,16 +129,24 @@ public static class DeploymentPlanBuilder
         };
 
         var allNetworks = s.Networks.Select(n => n.DockerName).Concat(routes.Count > 0 ? [c.ProxyNetwork] : []).Distinct().ToList();
-        var health = HealthTargets(s, name);
+        var health = HealthTargets(s, facts);
+        // Without a configured check the container must still be up a few seconds after it started (a crash at start fails the deployment
+        // instead of reporting it running), and an image with its own HEALTHCHECK must report healthy.
+        var liveness = s.Runtime.HealthType == HealthCheckType.None && facts is not null;
         var common = new DeploymentPlan
         {
             ServerId = c.ServerId, Container = container, PreviousContainer = c.PreviousContainer, Networks = allNetworks,
             InternalNetworks = s.Networks.Where(n => n.Internal).Select(n => n.DockerName).ToHashSet(),
             JobId = c.JobId, OrganizationId = c.OrganizationId, OnLog = c.OnLog,
-            HealthFor = health, HealthTimeout = TimeSpan.FromSeconds(s.Runtime.HealthTimeoutSeconds),
-            HealthInterval = TimeSpan.FromSeconds(s.Runtime.HealthIntervalSeconds), HealthRetries = Math.Max(1, s.Runtime.HealthRetries),
-            HealthStartPeriod = TimeSpan.FromSeconds(s.Runtime.HealthStartPeriodSeconds),
+            HealthFor = health,
+            HealthTimeout = TimeSpan.FromSeconds(liveness ? 5 : s.Runtime.HealthTimeoutSeconds),
+            HealthInterval = TimeSpan.FromSeconds(liveness ? 2 : s.Runtime.HealthIntervalSeconds),
+            HealthRetries = liveness ? (facts!.HasHealthcheck ? LivenessRetriesWithHealthcheck : LivenessRetries) : Math.Max(1, s.Runtime.HealthRetries),
+            HealthStartPeriod = TimeSpan.FromSeconds(liveness ? 2 : s.Runtime.HealthStartPeriodSeconds),
+            HealthSuccessThreshold = liveness ? LivenessSuccesses : 1,
             StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
+            DetectedPort = detected, WriteLog = c.WriteLog, Narrate = c.Narrate,
+            WithImage = facts is null ? f => Build(originalSnapshot, c, f) : null,
         };
 
         if (c.ExistingImage is { Length: > 0 } existing)
@@ -137,7 +168,8 @@ public static class DeploymentPlanBuilder
         {
             ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, InternalNetworks = p.InternalNetworks, JobId = p.JobId,
             OrganizationId = p.OrganizationId, OnLog = p.OnLog, HealthFor = p.HealthFor, HealthTimeout = p.HealthTimeout, HealthInterval = p.HealthInterval,
-            HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod, StopTimeout = p.StopTimeout,
+            HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod, HealthSuccessThreshold = p.HealthSuccessThreshold, StopTimeout = p.StopTimeout,
+            DetectedPort = p.DetectedPort, WriteLog = p.WriteLog, Narrate = p.Narrate, WithImage = p.WithImage,
             ImageReference = imageReference, LocalImage = local, PullAuth = pullAuth, Build = build, PullPolicy = pullPolicy,
         };
 
@@ -153,12 +185,18 @@ public static class DeploymentPlanBuilder
             _ => BuildEngineKind.Dockerfile,
         };
         var buildVars = s.Env.Where(e => e.Build).Select(e => ToSpec(e, c)).ToList();
+        // The build configuration's own arguments first; a build variable of the same name (it may be a secret) replaces one.
+        var configured = (b.BuildArgs ?? new Dictionary<string, string>())
+            .Where(kv => buildVars.All(v => v.Name != kv.Key))
+            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => EnvVarSpec.OfPlain(kv.Key, kv.Value));
+        var buildArgs = configured.Concat(buildVars).ToList();
         return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [ImagePolicy.Tag(s.Slug, c.DeploymentId)])
         {
             Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: git.CommitPin is null ? 1 : 0, Credentials: c.GitCredential),
             ContextPath = b.Context,
             DockerfilePath = b.DockerfilePath,
-            BuildArgs = engine == BuildEngineKind.Dockerfile ? buildVars : null,
+            BuildArgs = engine == BuildEngineKind.Dockerfile ? buildArgs : null,
             Env = engine == BuildEngineKind.Dockerfile ? null : buildVars,
             InstallCommand = b.InstallCommand,
             BuildCommand = b.BuildCommand,
@@ -179,19 +217,39 @@ public static class DeploymentPlanBuilder
             ? EnvVarSpec.OfSecret(e.Key, c.ResolveSecret(id, e.SecretVersion ?? 0))
             : EnvVarSpec.OfPlain(e.Key, e.Value ?? "");
 
-    private static Func<string, ProbeTarget?>? HealthTargets(DeploymentSnapshot s, string baseName)
+    /// <summary>Probes 2 s apart of the liveness check: about 20 s for a plain image, about 3 minutes for one whose HEALTHCHECK must pass.</summary>
+    internal const int LivenessRetries = 10, LivenessRetriesWithHealthcheck = 90, LivenessSuccesses = 3;
+
+    /// <summary>The port of the build engine's image when the image exposes none: the static engine serves nginx on 80, Nixpacks apps conventionally 3000.</summary>
+    private static int? EngineDefaultPort(DeploymentSnapshot s) => s.Image is not null ? null : s.Build?.Engine switch
+    {
+        BuildEngines.Static => 80,
+        BuildEngines.Nixpacks => 3000,
+        _ => null,
+    };
+
+    private static Func<string, ProbeTarget?>? HealthTargets(DeploymentSnapshot s, ImageFacts? facts)
     {
         var r = s.Runtime;
-        if (r.HealthType == HealthCheckType.None) return null;
+        if (r.HealthType == HealthCheckType.None)
+            return facts is null ? null : container => new ContainerHealthProbeTarget(container);
         var port = r.HealthPort ?? s.Ports.FirstOrDefault(p => p.IsHttp)?.ContainerPort ?? s.Ports.FirstOrDefault()?.ContainerPort;
+        // The primary domain as Host header: frameworks with a host allowlist (Django ALLOWED_HOSTS, Rails hosts) answer 400 to an IP.
+        var host = s.Domains.FirstOrDefault(d => d.RedirectTo is null && !d.Hostname.StartsWith("*.", StringComparison.Ordinal))?.Hostname;
         return container => r.HealthType switch
         {
             HealthCheckType.Container => new ContainerHealthProbeTarget(container),
             HealthCheckType.Tcp when port is { } p => new TcpProbeTarget(container, p),
-            HealthCheckType.Http when port is { } p =>
-                new HttpProbeTarget($"http://{container}:{p}{(r.HealthPath is { Length: > 0 } path ? (path.StartsWith('/') ? path : "/" + path) : "/")}"),
-            _ => null,
+            HealthCheckType.Http when port is { } p => HttpTarget(container, p, r.HealthPath, host),
+            // A check that needs a port the workload does not have still makes sure the container runs.
+            _ => facts is null ? null : new ContainerHealthProbeTarget(container),
         };
+    }
+
+    private static HttpProbeTarget HttpTarget(string container, int port, string? path, string? host)
+    {
+        var target = new HttpProbeTarget($"http://{container}:{port}{(path is { Length: > 0 } ? (path.StartsWith('/') ? path : "/" + path) : "/")}");
+        return host is null ? target : target with { Headers = new Dictionary<string, string> { ["Host"] = host } };
     }
 
     /// <summary>Merges the workload's custom labels last. The protected keys (<see cref="CustomLabelRules.IsProtected"/>) are dropped even if one got stored.</summary>
@@ -212,7 +270,8 @@ public static class DeploymentPlanBuilder
     /// Groups domains by (service, port, path prefix, options); hosts of one group share a router. Every router and service is named
     /// <c>&lt;slug&gt;-&lt;workload&gt;</c> (<see cref="RouteNames"/>) because the proxy's names are shared by every container of the server.
     /// </summary>
-    private static List<PlannedRoute> Routes(DeploymentSnapshot s, PlanContext c)
+    /// <param name="portKnown">False before the image is inspected: a domain of a workload without a port is then left for the rebuild.</param>
+    private static List<PlannedRoute> Routes(DeploymentSnapshot s, PlanContext c, bool portKnown)
     {
         var compose = s.Compose;
         var known = compose is not null ? c.ComposeServices : null;
@@ -238,6 +297,9 @@ public static class DeploymentPlanBuilder
             {
                 if (compose is not null)
                     throw new ProxyRoutingException($"The domain {d.Hostname} needs a target port: the service {service} declares none.");
+                if (portKnown)
+                    throw new ProxyRoutingException(
+                        $"The domain {d.Hostname} needs a port: the image exposes none. Set the port your application listens on (Configuration > Ports).");
                 continue;
             }
 
@@ -317,6 +379,18 @@ public static class DeploymentPlanBuilder
                 if (runtimeEnv.Count > 0)
                     block["environment"] = runtimeEnv.OrderBy(e => e.Name, StringComparer.Ordinal)
                         .ToDictionary(e => e.Name, e => Escape(e.Secret?.Value ?? e.Plain ?? ""));
+
+                // A service in another one's network namespace (network_mode: service:db) cannot list networks: compose refuses both. It is
+                // reached through the service that owns the namespace, so it cannot carry a route of its own either.
+                var networkMode = c.ComposeServices?.FirstOrDefault(x => x.Name == service)?.NetworkMode;
+                if (networkMode is { Length: > 0 } && networkMode is not ("bridge" or "default"))
+                {
+                    if (routed.ContainsKey(service))
+                        throw new ProxyRoutingException(
+                            $"The service {service} uses network_mode {networkMode}: route its domain to the service that owns that network instead.");
+                    serviceBlocks[service] = block;
+                    continue;
+                }
 
                 // Networks: the project's own (a service that lists any network no longer joins `default` implicitly), the proxy for routed
                 // services, and the managed ones. The environment network carries the service name (and a name unique to this workload) as alias.

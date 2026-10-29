@@ -56,6 +56,21 @@ public class PlanBuilderTests
     }
 
     [Fact]
+    public void Configured_build_args_reach_the_build_and_a_build_variable_of_the_same_name_wins()
+    {
+        var snapshot = Snapshot(s => s with
+        {
+            Build = s.Build! with { BuildArgs = new Dictionary<string, string> { ["NODE_ENV"] = "production", ["NPM_TOKEN"] = "plain-loses" } },
+        });
+
+        var args = DeploymentPlanBuilder.Build(snapshot, Context()).Build!.BuildArgs!;
+
+        Assert.Equal(["NODE_ENV", "NPM_TOKEN"], args.Select(a => a.Name));
+        Assert.Equal("production", args[0].Plain);
+        Assert.Equal("s3cr3t", args[1].Secret!.Value);
+    }
+
+    [Fact]
     public void Container_spec_has_ports_mounts_networks_limits_and_labels()
     {
         var plan = DeploymentPlanBuilder.Build(Snapshot(), Context());

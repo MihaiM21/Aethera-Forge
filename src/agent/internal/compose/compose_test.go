@@ -33,11 +33,14 @@ type recorder struct {
 	failBuild   bool
 	// envSeen is the --env-file content of the latest command that had one.
 	envSeen string
+	// failUp makes `up` fail (as --wait does when a container stopped); psOut replaces the default `ps` answer.
+	failUp bool
+	psOut  string
 }
 
 func (r *recorder) Run(_ context.Context, c build.Cmd) error {
 	r.calls = append(r.calls, c)
-	if f := argAfter(c.Args, "--env-file"); f != "" {
+	if f := lastArgAfter(c.Args, "--env-file"); f != "" {
 		b, _ := os.ReadFile(f)
 		r.envSeen = string(b)
 	}
@@ -73,9 +76,14 @@ func (r *recorder) Run(_ context.Context, c build.Cmd) error {
 	if r.failBuild && has(c.Args, "build") {
 		return errors.New("boom")
 	}
+	if r.failUp && has(c.Args, "up") {
+		return errors.New("container shop-migrate-1 exited (0)")
+	}
 	if len(c.Args) > 0 && c.Stdout != nil {
 		for _, a := range c.Args {
-			if a == "ps" {
+			if a == "ps" && r.psOut != "" {
+				c.Stdout.Write([]byte(r.psOut))
+			} else if a == "ps" {
 				c.Stdout.Write([]byte(`{"ID":"c1","Name":"p-web-1","Image":"nginx","Service":"web","State":"running","Health":"healthy","ExitCode":0,"Publishers":[{"TargetPort":80,"PublishedPort":8080,"Protocol":"tcp"}]}` + "\n" +
 					`{"ID":"c2","Name":"p-db-1","Image":"pg","Service":"db","State":"exited","Health":"","ExitCode":1,"Publishers":[]}` + "\n"))
 			}
@@ -174,6 +182,17 @@ func TestUpWritesFilesAndRunsCompose(t *testing.T) {
 	if got, _ := os.ReadFile(filepath.Join(dir, "shop", "compose.yaml")); string(got) != p.ComposeFile {
 		t.Error("user compose file must be stored verbatim")
 	}
+}
+
+// lastArgAfter is argAfter for a flag that may repeat: the value of its last occurrence.
+func lastArgAfter(args []string, flag string) string {
+	v := ""
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			v = args[i+1]
+		}
+	}
+	return v
 }
 
 func argAfter(args []string, flag string) string {

@@ -12,6 +12,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         b.Property(x => x.Host).HasMaxLength(253);
         b.Property(x => x.SshUser).HasMaxLength(64);
         b.Property(x => x.PublicIp).HasMaxLength(45);
+        b.Property(x => x.WildcardDomain).HasMaxLength(253);
         b.Property(x => x.AgentVersion).HasMaxLength(64);
         b.Property(x => x.CertFingerprint).HasMaxLength(128);
         b.Property(x => x.CertSerial).HasMaxLength(128);

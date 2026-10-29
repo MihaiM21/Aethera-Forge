@@ -65,6 +65,12 @@ public sealed record CreateApplicationRequest
     public ComposeSourceRequest? Compose { get; init; }
     public BuildConfigRequest? Build { get; init; }
     public RuntimeRequest? Runtime { get; init; }
+
+    /// <summary>
+    /// Give the application an automatic domain (<c>&lt;slug&gt;-&lt;id&gt;.&lt;server wildcard domain or ip.sslip.io&gt;</c>, ADR 0011). Default true; send
+    /// false when a domain of your own follows. Compose applications get theirs at the first deployment, once their services are known.
+    /// </summary>
+    public bool? AutoDomain { get; init; }
 }
 
 /// <summary>JSON merge patch of an application: nested objects are merged property by property, arrays (ports) are replaced.</summary>

@@ -502,16 +502,17 @@ public sealed class TrustModelApiTests(ResourcesFixture fixture)
     [InlineData("context", "..")]
     [InlineData("context", "../outside")]
     [InlineData("context", "a/../../b")]
-    [InlineData("context", "/etc")]
+    [InlineData("context", "//etc")]
+    [InlineData("context", "/../etc")]
     [InlineData("context", "~/x")]
     [InlineData("context", "C:\\x")]
     [InlineData("context", "a\\b")]
     [InlineData("context", "-evil")]
     [InlineData("dockerfilePath", "../Dockerfile")]
-    [InlineData("dockerfilePath", "/Dockerfile")]
+    [InlineData("dockerfilePath", "/../Dockerfile")]
     [InlineData("dockerfilePath", "a\\Dockerfile")]
     [InlineData("outputDirectory", "../dist")]
-    [InlineData("outputDirectory", "/var/www")]
+    [InlineData("outputDirectory", "//var/www")]
     [InlineData("outputDirectory", "dist\\out")]
     public async Task BuildPaths_MustStayInsideTheRepository(string property, string value)
     {
@@ -534,12 +535,18 @@ public sealed class TrustModelApiTests(ResourcesFixture fixture)
         var app = await tenant.Developer.CreateAsync("/api/v1/applications", GitApp(envId, serverId, build: build));
         Assert.Equal("./apps/web", app["build"]!["context"]!.GetValue<string>());
 
+        // Coolify style: a leading slash is the repository root, stored without it.
+        var rooted = await tenant.Developer.CreateAsync("/api/v1/applications",
+            GitApp(envId, serverId, build: new JsonObject { ["context"] = "/apps/web", ["dockerfilePath"] = "/Dockerfile" }));
+        Assert.Equal("apps/web", rooted["build"]!["context"]!.GetValue<string>());
+        Assert.Equal("Dockerfile", rooted["build"]!["dockerfilePath"]!.GetValue<string>());
+
         object Compose(string path) => new
         {
             name = Tenant.Unique("c"), environmentId = envId, serverId, sourceKind = "compose",
             gitSource = new { repositoryUrl = "https://github.com/org/repo.git" }, compose = new { filePath = path },
         };
-        foreach (var bad in new[] { "../compose.yml", "/etc/compose.yml", "ops\\compose.yml", "-f" })
+        foreach (var bad in new[] { "../compose.yml", "//etc/compose.yml", "ops\\compose.yml", "-f" })
             Assert.Contains(("/compose/filePath", "pattern"), await (await tenant.Developer.PostAsync("/api/v1/applications", Compose(bad))).ValidationErrorsAsync());
         Assert.Equal(HttpStatusCode.Created, (await tenant.Developer.PostAsync("/api/v1/applications", Compose("deploy/compose.yml"))).StatusCode);
     }

@@ -42,7 +42,8 @@ public static class ComposeServiceDiscovery
                 if (service.Children.TryGetValue(new YamlScalarNode("expose"), out var exposeNode) && exposeNode is YamlSequenceNode exposeList)
                     foreach (var item in exposeList) AddPort(ports, ContainerPortOf(item));
                 var image = service.Children.TryGetValue(new YamlScalarNode("image"), out var imageNode) && imageNode is YamlScalarNode { Value: { } i } ? i : "";
-                result.Add(new ComposeServiceDefinition(name, image, service.Children.ContainsKey(new YamlScalarNode("build")), ports));
+                var networkMode = service.Children.TryGetValue(new YamlScalarNode("network_mode"), out var modeNode) && modeNode is YamlScalarNode { Value: { Length: > 0 } m } ? m : null;
+                result.Add(new ComposeServiceDefinition(name, image, service.Children.ContainsKey(new YamlScalarNode("build")), ports, networkMode));
             }
 
             return result;

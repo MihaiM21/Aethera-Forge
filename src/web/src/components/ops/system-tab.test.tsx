@@ -160,3 +160,29 @@ describe("SystemTab maintenance", () => {
     expect(await screen.findByText("No backups yet.")).toBeInTheDocument();
   });
 });
+
+describe("SystemTab domain and HTTPS", () => {
+  const proxy = (over: Over = {}) =>
+    ({
+      acmeEmail: null, acmeStaging: false, dashboardDomain: null, dashboardHttps: true, dashboardServerId: "srv-1", dashboardUrl: null,
+      suggestedDomain: "aethera.203-0-113-7.sslip.io", source: "environment", ...over,
+    }) as never;
+
+  it("saves the dashboard domain and the ACME email, offers the sslip.io name and reports DNS", async () => {
+    const updateProxySettings = vi.fn().mockResolvedValue({
+      settings: proxy({ dashboardDomain: "aethera.203-0-113-7.sslip.io", dashboardUrl: "https://aethera.203-0-113-7.sslip.io", source: "settings" }),
+      proxyApplied: true, proxyError: null, dns: { status: "ok", message: "The name points to the server.", expected: [], resolved: [] },
+    });
+    render(<SystemTab api={api({ version: vi.fn().mockResolvedValue(version()), proxySettings: vi.fn().mockResolvedValue(proxy()), updateProxySettings })} pollMs={60_000} />);
+
+    expect(await screen.findByText("its own port only")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /sslip\.io/ }));
+    await userEvent.type(screen.getByLabelText("Let's Encrypt email"), "ops@example.com");
+    await userEvent.click(screen.getByRole("button", { name: /Save and apply/ }));
+
+    await waitFor(() =>
+      expect(updateProxySettings).toHaveBeenCalledWith({ dashboardDomain: "aethera.203-0-113-7.sslip.io", dashboardHttps: true, acmeEmail: "ops@example.com" }),
+    );
+    expect(await screen.findByText("DNS ok")).toBeInTheDocument();
+  });
+});

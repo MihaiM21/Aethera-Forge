@@ -1918,6 +1918,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/proxy-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Let's Encrypt account and the domain of the Aethera UI */
+        get: operations["getProxySettings"];
+        /**
+         * Set the Let's Encrypt account and the domain of the Aethera UI
+         * @description Saved settings win over the installer's environment from then on. The proxy of the dashboard server (the `local` one) is updated at once; the UI keeps answering on its own port, so a wrong domain cannot lock anyone out. Point a DNS A record at the server first: `dns` reports what the name resolves to.
+         */
+        put: operations["updateProxySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/email": {
         parameters: {
             query?: never;
@@ -2901,6 +2922,7 @@ export interface components {
             compose?: null | components["schemas"]["ComposeSourceRequest"];
             build?: null | components["schemas"]["BuildConfigRequest"];
             runtime?: null | components["schemas"]["RuntimeRequest"];
+            autoDomain?: null | boolean;
         };
         CreateBackupDestinationRequest: {
             name?: null | string;
@@ -3024,6 +3046,7 @@ export interface components {
             transport?: null | string;
             roles?: null | string[];
             publicIp?: null | string;
+            wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
             /** Format: uuid */
@@ -3043,6 +3066,7 @@ export interface components {
             image?: null | string;
             config?: null | components["schemas"]["JsonObject"];
             runtime?: null | components["schemas"]["RuntimeRequest"];
+            autoDomain?: null | boolean;
         };
         CreateUserRequest: {
             email: string;
@@ -3196,6 +3220,12 @@ export interface components {
             /** Format: int64 */
             inodesUsed: number | string;
         };
+        DnsCheckDto: {
+            status: components["schemas"]["DnsStatus"];
+            message: string;
+            expected: string[];
+            resolved: string[];
+        };
         DnsCheckResponse: {
             /** Format: uuid */
             domainId: string;
@@ -3295,6 +3325,9 @@ export interface components {
             os: string;
             /** Format: int32 */
             containersUsing: number | string;
+            exposedPorts?: null | string[];
+            /** @default false */
+            hasHealthcheck: boolean;
         };
         DockerNetwork: {
             id: string;
@@ -3371,6 +3404,8 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** @default false */
+            isAutomatic: boolean;
         };
         EmailSettingsResponse: {
             configured: boolean;
@@ -4010,6 +4045,23 @@ export interface components {
             port: null | number | string;
             isHttp: boolean;
         };
+        ProxySettingsDto: {
+            acmeEmail: null | string;
+            acmeStaging: boolean;
+            dashboardDomain: null | string;
+            dashboardHttps: boolean;
+            /** Format: uuid */
+            dashboardServerId: null | string;
+            dashboardUrl: null | string;
+            suggestedDomain: null | string;
+            source: string;
+        };
+        ProxySettingsUpdatedDto: {
+            settings: components["schemas"]["ProxySettingsDto"];
+            proxyApplied: boolean;
+            proxyError: null | string;
+            dns: null | components["schemas"]["DnsCheckDto"];
+        };
         ProxyStatusDto: {
             provider: string;
             version: string;
@@ -4375,6 +4427,8 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            wildcardDomain?: null | string;
+            automaticDomainBase?: null | string;
         };
         /** @enum {unknown} */
         ServerRole: "master" | "build" | "storage" | "ci" | "worker";
@@ -4658,6 +4712,12 @@ export interface components {
             slug?: null | string;
             description?: null | string;
         };
+        UpdateProxySettingsRequest: {
+            acmeEmail?: null | string;
+            acmeStaging?: null | boolean;
+            dashboardDomain?: null | string;
+            dashboardHttps?: null | boolean;
+        };
         UpdateRegistryRequest: {
             name?: null | string;
             url?: null | string;
@@ -4687,6 +4747,7 @@ export interface components {
             transport?: null | string;
             roles?: null | string[];
             publicIp?: null | string;
+            wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
             /** Format: uuid */
@@ -14093,6 +14154,122 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxySettingsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProxySettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxySettingsUpdatedDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description Unexpected error (internal.error). */

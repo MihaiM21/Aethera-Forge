@@ -55,17 +55,20 @@ public class HealthCheckConfig
     public HealthCheckType Type { get; set; } = HealthCheckType.None;
     public string? Path { get; set; }
     public int? Port { get; set; }
-    public int IntervalSeconds { get; set; } = 10;
+
+    // A slow start (a JVM, migrations at boot, a framework that compiles on first run) still passes: 30 s of grace, then 10 probes 5 s apart.
+    public int IntervalSeconds { get; set; } = 5;
     public int TimeoutSeconds { get; set; } = 5;
-    public int Retries { get; set; } = 3;
-    public int StartPeriodSeconds { get; set; }
+    public int Retries { get; set; } = 10;
+    public int StartPeriodSeconds { get; set; } = 30;
 }
 
 /// <summary>Runtime settings shared by applications and services (stored as columns of the workload row).</summary>
 public class RuntimeConfig
 {
     public RestartPolicy RestartPolicy { get; set; } = RestartPolicy.UnlessStopped;
-    public string DeploymentStrategy { get; set; } = DeploymentStrategies.Recreate;
+    /// <summary>Low-downtime (the old container serves until the new one is healthy) unless the workload cannot run twice (ADR 0011).</summary>
+    public string DeploymentStrategy { get; set; } = DeploymentStrategies.LowDowntime;
 
     /// <summary>CPU cores (fractional allowed, e.g. 0.5).</summary>
     public double? CpuLimit { get; set; }
@@ -117,6 +120,9 @@ public abstract class Workload : SoftDeletableEntity
     public List<Volume> Volumes { get; set; } = [];
     public List<WorkloadDomain> Domains { get; set; } = [];
     public List<WorkloadNetwork> Networks { get; set; } = [];
+
+    /// <summary>An automatic domain was created (or deliberately skipped) once: deleting it never brings it back (ADR 0011).</summary>
+    public bool AutoDomainAssigned { get; set; }
 
     /// <summary>
     /// Returns the next sequential deployment number. Concurrent allocations are rejected by the

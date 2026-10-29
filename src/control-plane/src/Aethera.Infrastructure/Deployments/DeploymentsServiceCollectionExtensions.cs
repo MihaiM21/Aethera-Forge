@@ -21,6 +21,8 @@ public static class DeploymentsServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, LifecycleJobHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IJobHandler, TeardownJobHandler>());
         services.TryAddScoped<DeploymentService>();
+        services.TryAddSingleton<ProxyAutoEnsurer>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Agents.Sessions.IAgentConnectedHook, ProxyAutoEnsurer>(sp => sp.GetRequiredService<ProxyAutoEnsurer>()));
         return services;
     }
 }

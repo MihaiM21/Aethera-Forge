@@ -42,7 +42,10 @@ import type {
   ServiceTemplate,
   SystemVersion,
   LocalServer,
+  ProxySettings,
+  ProxySettingsUpdated,
   UpdateApplicationRequest,
+  UpdateProxySettingsRequest,
   UpdateServiceRequest,
   UpdaterState,
   User,
@@ -256,6 +259,10 @@ export function createResourcesApi(client: ApiClient) {
       enableLocalServer: () => client.post<LocalServer>("/system/local-server", {}),
       maintenance: (o: Signal = {}) => client.get<Maintenance>("/system/maintenance", o),
       runMaintenance: () => client.post<MaintenanceReport>("/system/maintenance/run"),
+      /** The Let's Encrypt account and the domain of the Aethera UI (administrators). */
+      proxySettings: (o: Signal = {}) => client.get<ProxySettings>("/system/proxy-settings", o),
+      /** Saves them and applies them to the dashboard server's proxy at once. */
+      updateProxySettings: (body: UpdateProxySettingsRequest) => client.put<ProxySettingsUpdated>("/system/proxy-settings", body),
     },
 
     jobs: {

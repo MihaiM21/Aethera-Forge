@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -409,6 +410,13 @@ func CheckResolved(c *resolvedConfig, pol ResolvedPolicy) []string {
 		for _, f := range envFiles(svc["env_file"]) {
 			local(fmt.Sprintf("service %q: env_file", name), f)
 		}
+		if ports, ok := svc["ports"].([]any); ok {
+			for _, e := range ports {
+				if hp := publishedPort(e); hp == 80 || hp == 443 {
+					fail("host port %d belongs to the reverse proxy: remove the port mapping and give the service a domain instead", hp)
+				}
+			}
+		}
 		vols, _ := svc["volumes"].([]any)
 		for _, v := range vols {
 			m, ok := v.(map[string]any)
@@ -471,6 +479,26 @@ func CheckResolved(c *resolvedConfig, pol ResolvedPolicy) []string {
 		}
 	}
 	return out
+}
+
+// publishedPort is the host port of one resolved `ports:` entry (long form, published as a string or a number); 0 when
+// the entry publishes none or a range.
+func publishedPort(e any) int {
+	m, ok := e.(map[string]any)
+	if !ok {
+		return 0
+	}
+	switch t := m["published"].(type) {
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0
+		}
+		return n
+	case float64:
+		return int(t)
+	}
+	return 0
 }
 
 // checkBuild vets one service's build section as docker compose resolved it (context absolute).

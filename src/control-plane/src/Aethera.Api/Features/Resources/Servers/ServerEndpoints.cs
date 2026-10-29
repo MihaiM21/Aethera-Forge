@@ -6,6 +6,7 @@ using Aethera.Api.Http.Errors;
 using Aethera.Api.Http.Pagination;
 using Aethera.Api.Security;
 using Aethera.Domain;
+using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -42,6 +43,12 @@ public sealed record CreateServerRequest
     /// <summary>The address the world reaches the server at; domain DNS checks compare against it.</summary>
     public string? PublicIp { get; init; }
 
+    /// <summary>
+    /// Base of the automatic domains of new workloads (<c>apps.example.com</c>, with a <c>*.apps.example.com</c> DNS record pointing here; a leading
+    /// <c>*.</c> is accepted). Absent = <c>&lt;public ip&gt;.sslip.io</c> (ADR 0011).
+    /// </summary>
+    public string? WildcardDomain { get; init; }
+
     public int? MaxConcurrentBuilds { get; init; }
 
     /// <summary>A secret holding the SSH private key or password.</summary>
@@ -59,6 +66,10 @@ public sealed record UpdateServerRequest
     [NotClearable] public string? Transport { get; init; }
     [NotClearable] public List<string>? Roles { get; init; }
     public string? PublicIp { get; init; }
+
+    /// <summary>See <see cref="CreateServerRequest.WildcardDomain"/>; null = back to sslip.io. Existing domains are never rewritten.</summary>
+    public string? WildcardDomain { get; init; }
+
     [NotClearable] public int? MaxConcurrentBuilds { get; init; }
     public Guid? SshCredentialSecretId { get; init; }
 
@@ -82,7 +93,8 @@ public sealed record ServerResourcesResponse(int? CpuCores, long? MemoryBytes, l
 public sealed record ServerResponse(
     Guid Id, string Name, string Host, int SshPort, string? SshUser, ServerTransport Transport, IReadOnlyList<ServerRole> Roles,
     ServerLifecycle Lifecycle, string? PublicIp, int MaxConcurrentBuilds, Guid? SshCredentialSecretId, ServerResourcesResponse Resources,
-    ServerStatusResponse Status, string? AgentVersion, int WorkloadCount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    ServerStatusResponse Status, string? AgentVersion, int WorkloadCount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    string? WildcardDomain = null, string? AutomaticDomainBase = null);
 
 public static partial class ServerRules
 {
@@ -96,6 +108,16 @@ public static partial class ServerRules
         host is not null && host.Length <= 253 && (IPAddress.TryParse(host, out _) || HostnameRules.TryNormalize(host, allowWildcard: false, out _, out _));
 
     public static bool IsValidIp(string? ip) => ip is not null && IPAddress.TryParse(ip, out _);
+
+    /// <summary>A wildcard domain as stored: lower case, without a leading <c>*.</c>; null when it is not a hostname of at least two labels.</summary>
+    public static string? NormalizeWildcard(string? input)
+    {
+        var text = input?.Trim() ?? "";
+        if (text.StartsWith("*.", StringComparison.Ordinal)) text = text[2..];
+        return HostnameRules.TryNormalize(text, allowWildcard: false, out var normalized, out _) && normalized.Contains('.') ? normalized : null;
+    }
+
+    public static bool IsValidWildcard(string? input) => NormalizeWildcard(input) is not null;
 }
 
 public sealed class CreateServerValidator : AbstractValidator<CreateServerRequest>
@@ -117,6 +139,8 @@ public sealed class CreateServerValidator : AbstractValidator<CreateServerReques
         RuleFor(x => x.PublicIp).Must(ServerRules.IsValidIp).WithErrorCode("pattern").WithMessage("Must be an IPv4 or IPv6 address.")
             .When(x => x.PublicIp is not null);
         RuleFor(x => x.MaxConcurrentBuilds).InclusiveBetween(1, 64).When(x => x.MaxConcurrentBuilds is not null);
+        RuleFor(x => x.WildcardDomain).Must(ServerRules.IsValidWildcard).WithErrorCode("pattern")
+            .WithMessage("Must be a domain such as apps.example.com.").When(x => x.WildcardDomain is not null);
         RuleFor(x => x.Resources).SetValidator(new ServerResourcesValidator()!);
     }
 }
@@ -140,6 +164,8 @@ public sealed class UpdateServerValidator : AbstractValidator<UpdateServerReques
         RuleFor(x => x.PublicIp).Must(ServerRules.IsValidIp).WithErrorCode("pattern").WithMessage("Must be an IPv4 or IPv6 address.")
             .When(x => x.PublicIp is not null);
         RuleFor(x => x.MaxConcurrentBuilds).InclusiveBetween(1, 64).When(x => x.MaxConcurrentBuilds is not null);
+        RuleFor(x => x.WildcardDomain).Must(ServerRules.IsValidWildcard).WithErrorCode("pattern")
+            .WithMessage("Must be a domain such as apps.example.com.").When(x => x.WildcardDomain is not null);
         RuleFor(x => x.Resources).SetValidator(new ServerResourcesValidator()!);
     }
 }
@@ -209,6 +235,7 @@ internal static class ServerEndpoints
             Transport = EnumText.Parse<ServerTransport>(request.Transport) ?? ServerTransport.Agent,
             Roles = (request.Roles ?? []).Select(r => EnumText.Parse<ServerRole>(r)!.Value).Distinct().ToList(),
             PublicIp = NormalizeIp(request.PublicIp), MaxConcurrentBuilds = request.MaxConcurrentBuilds ?? 1,
+            WildcardDomain = ServerRules.NormalizeWildcard(request.WildcardDomain),
             SshCredentialSecretId = request.SshCredentialSecretId,
         };
         if (server.Transport == ServerTransport.Ssh) server.SetAgentStatus(AgentStatus.NotInstalled, clock.UtcNow);
@@ -262,6 +289,7 @@ internal static class ServerEndpoints
         }
 
         if (patch.Has("publicIp")) { server.PublicIp = NormalizeIp(body.PublicIp); changed.Add("publicIp"); }
+        if (patch.Has("wildcardDomain")) { server.WildcardDomain = ServerRules.NormalizeWildcard(body.WildcardDomain); changed.Add("wildcardDomain"); }
         if (patch.Has("maxConcurrentBuilds") && body.MaxConcurrentBuilds is { } builds) { server.MaxConcurrentBuilds = builds; changed.Add("maxConcurrentBuilds"); }
         if (patch.Has("lifecycle") && EnumText.Parse<ServerLifecycle>(body.Lifecycle) is { } lifecycle) { server.Lifecycle = lifecycle; changed.Add("lifecycle"); }
         if (patch.Has("sshCredentialSecretId"))
@@ -332,5 +360,5 @@ internal static class ServerEndpoints
             new ReachabilityStatusResponse(s.ReachabilityStatus, s.ReachabilityCheckedAt, s.ReachabilityChangedAt, s.ReachabilityProbePort),
             new AgentStatusResponse(s.AgentStatus, s.LastHeartbeatAt, s.AgentStatusChangedAt),
             new DockerStatusResponse(s.DockerStatus, s.DockerStatusChangedAt)),
-        s.AgentVersion, workloadCount, s.CreatedAt, s.UpdatedAt);
+        s.AgentVersion, workloadCount, s.CreatedAt, s.UpdatedAt, s.WildcardDomain, DefaultDomainService.KnownBaseDomain(s));
 }

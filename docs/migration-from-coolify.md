@@ -39,14 +39,15 @@ Back up `/opt/aethera/.env`. See [install.md](install.md) for the details and fo
 
 ## 2. Recreate the stack in Aethera
 
-Use temporary hostnames under a domain you control (for example `*.new.example.com`) so nothing collides with production names.
+Use temporary hostnames under a domain you control (for example `*.new.example.com`, set as the server's wildcard domain) so nothing collides with production names, or just the automatic sslip.io domains, which need no DNS at all.
 
 1. **Project** per Coolify project (Projects > New, pick a template or start empty) with an environment `production` (and `development` for T1API dev).
 2. **Services first**, so applications can reach them. Services > New from template: PostgreSQL (same major version as production), Redis, InfluxDB, Grafana, Prometheus. Applications in the same environment reach a service by its name on a shared network: `postgres:5432`, `redis:6379`. Nothing is published on the server's ports unless you add a published port to the service. Open each service to see the generated credentials (Environment tab, reveal needs an administrator) and its connection string.
 3. **Applications** (Applications > New): repository or image, build method (detected for you; a Dockerfile in the repository wins), environment, server, domain, then deploy.
    - Paste the environment from your inventory with *Import .env* in the Environment tab. Mark secrets as secret. Replace the old database and Redis hosts with the service names above.
-   - **Port**: set the container port the application listens on; Aethera routes the domain to it.
-   - **Health check**: set the path the application answers on (or TCP); Aethera only switches traffic once it passes (low-downtime strategy keeps the old version serving until then).
+   - **Domain**: like Coolify, an application without one gets an automatic domain, `<name>-<id>.<server ip>.sslip.io` (or `<name>-<id>.<wildcard>` once you set the server's *Wildcard domain*, Coolify's setting of the same name, in Servers > Settings). Use it to test before DNS moves; add your own domain next to it and remove it when you are done.
+   - **Port**: leave it empty and Aethera uses the port the image `EXPOSE`s (Coolify's "Ports Exposes"); set it when the application listens elsewhere.
+   - **Health check**: set the path the application answers on (or TCP); without one the container must stay up (and pass its image's `HEALTHCHECK`). Aethera only switches traffic once it passes: the old version keeps serving until then, and a failed deployment starts the old one again even when the application has to be recreated.
    - **Auto deploy**: Build tab, Webhook section: copy the URL and secret into the repository's webhook settings (GitHub: content type `application/json`, push events).
 4. **Verify under the temporary hostnames** before touching DNS: open each application, check the Deployments page for a green pipeline, and watch Logs for startup errors.
 

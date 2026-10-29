@@ -52,6 +52,8 @@ public sealed class LocalServerEnabler(
         {
             var host = endpoint.LastIndexOf(':') is var colon and > 0 ? endpoint[..colon] : endpoint;
             server = new Server { OrganizationId = organizationId, Name = ServerName, Host = host.ToLowerInvariant(), Roles = [ServerRole.Master, ServerRole.Build] };
+            // The installer's public host is usually the machine's public IP: it is what automatic sslip.io domains are made of (ADR 0011).
+            if (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip)) server.PublicIp = ip.ToString();
             db.Servers.Add(server);
         }
 

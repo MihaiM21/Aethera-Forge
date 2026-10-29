@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,4 +74,48 @@ func TestEnsureRejectsBadInput(t *testing.T) {
 			t.Errorf("%v accepted", req)
 		}
 	}
+}
+
+func TestEnsureWritesDynamicConfigWithoutRecreating(t *testing.T) {
+	m, f := newManager(t)
+	static := []byte("providers: {}\n")
+	if _, err := m.Ensure(context.Background(), &agentv1.ProxyEnsure{Config: static, RestartOnChange: true}); err != nil {
+		t.Fatal(err)
+	}
+	mounts := f.Created[0].Mounts
+	if !hasMount(mounts, DynamicDir) {
+		t.Fatalf("dynamic directory not mounted: %v", mounts)
+	}
+
+	dyn := []byte("http:\n  routers: {}\n")
+	res, err := m.Ensure(context.Background(), &agentv1.ProxyEnsure{Config: static, DynamicConfig: dyn, RestartOnChange: true})
+	if err != nil || !res.Changed || len(f.Created) != 1 {
+		t.Fatalf("res = %v, %v, created=%d", res, err, len(f.Created))
+	}
+	got, err := os.ReadFile(filepath.Join(m.Dir, "dynamic", dynamicFile))
+	if err != nil || string(got) != string(dyn) {
+		t.Fatalf("dynamic file = %q, %v", got, err)
+	}
+
+	again, err := m.Ensure(context.Background(), &agentv1.ProxyEnsure{Config: static, DynamicConfig: dyn, RestartOnChange: true})
+	if err != nil || again.Changed {
+		t.Fatalf("again = %v, %v", again, err)
+	}
+
+	cleared, err := m.Ensure(context.Background(), &agentv1.ProxyEnsure{Config: static, RestartOnChange: true})
+	if err != nil || !cleared.Changed || len(f.Created) != 1 {
+		t.Fatalf("cleared = %v, %v", cleared, err)
+	}
+	if _, err := os.Stat(filepath.Join(m.Dir, "dynamic", dynamicFile)); !os.IsNotExist(err) {
+		t.Fatalf("dynamic file still present: %v", err)
+	}
+}
+
+func hasMount(mounts []*agentv1.VolumeMount, target string) bool {
+	for _, mt := range mounts {
+		if mt.GetTarget() == target {
+			return true
+		}
+	}
+	return false
 }

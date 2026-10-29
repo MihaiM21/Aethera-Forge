@@ -108,7 +108,7 @@ public sealed class NotificationDispatcher(
     /// <summary>Delivers <paramref name="payload"/> to <paramref name="channel"/>.</summary>
     public async Task<DeliveryResult> DeliverAsync(NotificationChannel channel, NotificationPayload payload, Guid deliveryId, CancellationToken cancellationToken)
     {
-        var rendered = NotificationMessageBuilder.Render(payload, options.Value.PublicUrl);
+        var rendered = NotificationMessageBuilder.Render(payload, await Deployments.ProxySettingsStore.PublicUrlAsync(db, options.Value.PublicUrl, cancellationToken));
         if (channel.Kind == NotificationChannelKind.Email)
         {
             var recipients = await RecipientsAsync(channel, cancellationToken);

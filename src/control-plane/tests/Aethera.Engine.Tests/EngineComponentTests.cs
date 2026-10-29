@@ -195,6 +195,7 @@ public class StrategyTests
             {
                 ContainerCreateCommand c => c.Spec.Name,
                 ContainerRemoveCommand rm => rm.Container,
+                ContainerStartCommand st => st.Container,
                 _ => null,
             }));
             var now = DateTimeOffset.UnixEpoch;
@@ -213,6 +214,8 @@ public class StrategyTests
         NetworkCreateCommand n => new DockerNetwork("n", n.NetworkName, "bridge", "local", false, true, false, [], new Dictionary<string, string>(), null, []),
         ContainerCreateCommand => new ContainerCreated("c-new", "x", ContainerRunState.Running, []),
         ContainerRemoveCommand => Unit.Value,
+        ContainerStartCommand s => new DockerContainer(s.Container, s.Container, "nginx", "sha256:i", ContainerRunState.Running, "Up", ContainerHealthState.None,
+            null, null, null, 0, false, 0, new Dictionary<string, string>(), [], [], [], null),
         HealthProbeCommand => new HealthProbeOutcome(true, 1, 200, TimeSpan.Zero, "ok", null),
         _ => null,
     };
@@ -262,10 +265,34 @@ public class StrategyTests
     }
 
     [Fact]
-    public async Task Recreate_removes_old_before_creating_new()
+    public async Task Recreate_stops_old_before_creating_new_and_removes_it_after_the_health_check()
     {
         var (_, t, _) = await RunAsync(Happy, DeploymentStrategies.Recreate);
         var names = t.Commands.Select(c => c.Name).ToList();
-        Assert.True(names.IndexOf("container.remove") < names.IndexOf("container.create"));
+        Assert.True(names.IndexOf("container.stop") < names.IndexOf("container.create"));
+        Assert.True(names.IndexOf("health.probe") < names.IndexOf("container.remove"));
+    }
+
+    [Fact]
+    public async Task Recreate_starts_the_old_container_again_when_the_new_one_is_unhealthy()
+    {
+        var (d, t, result) = await RunAsync(
+            c => c is HealthProbeCommand ? new HealthProbeOutcome(false, 3, 0, TimeSpan.Zero, "refused", null) : Happy(c), DeploymentStrategies.Recreate);
+
+        Assert.Equal(DeploymentRunResult.Failed, result);
+        Assert.Equal(DeploymentStep.HealthCheck, d.FailedStep);
+        Assert.Equal(["c-new"], t.Commands.Where(c => c.Name == "container.remove").Select(c => c.Container).ToList());
+        Assert.Equal("web-6", t.Commands.Single(c => c.Name == "container.start").Container);
+        Assert.Contains("previous version was started again", d.FailureReason);
+    }
+
+    [Fact]
+    public async Task Recreate_starts_the_old_container_again_when_the_new_one_cannot_be_created()
+    {
+        var (d, t, result) = await RunAsync(c => c is ContainerCreateCommand ? null : Happy(c), DeploymentStrategies.Recreate);
+
+        Assert.Equal(DeploymentRunResult.Failed, result);
+        Assert.Equal(DeploymentStep.Container, d.FailedStep);
+        Assert.Equal("web-6", t.Commands.Single(c => c.Name == "container.start").Container);
     }
 }

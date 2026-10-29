@@ -194,6 +194,16 @@ public class Deployment : MutableEntity
         StartedAt ??= now;
     }
 
+    /// <summary>
+    /// Replaces the frozen configuration of a deployment that is running, before its first step: the automatic domain of a compose application is
+    /// only known once its services are (ADR 0011). A rollback re-applies the amended snapshot.
+    /// </summary>
+    public void AmendSnapshot(string configSnapshotJson)
+    {
+        RequireInProgress();
+        ConfigSnapshotJson = configSnapshotJson;
+    }
+
     /// <summary>Enters a step (writes/updates its <c>deployment_steps</c> row, which makes resume after a crash possible).</summary>
     public DeploymentStepRun BeginStep(DeploymentStep step, DateTimeOffset now)
     {

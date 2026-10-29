@@ -63,10 +63,23 @@ internal static class AuthDb
 {
     public static async Task ResetAsync(AetheraApiFactory factory)
     {
-        await using var connection = new NpgsqlConnection(factory.ConnectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("TRUNCATE organizations, users, audit_events CASCADE", connection);
-        await command.ExecuteNonQueryAsync();
+        // TRUNCATE ... CASCADE locks every referencing table at once; a background service of the test host reading some of them in
+        // another order can make Postgres pick it as a deadlock victim. That is a test-only race: try again.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(factory.ConnectionString);
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand("TRUNCATE organizations, users, audit_events CASCADE", connection);
+                await command.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.DeadlockDetected && attempt < 5)
+            {
+                await Task.Delay(100 * attempt);
+            }
+        }
     }
 
     public static async Task<T> ScalarAsync<T>(AetheraApiFactory factory, string sql, params (string Name, object Value)[] parameters)

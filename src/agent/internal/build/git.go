@@ -175,6 +175,12 @@ func clone(ctx context.Context, r Runner, src *agentv1.GitSource, dir string, lo
 		if err := run("submodule", "update", "--init", "--recursive", "--depth=1"); err != nil {
 			return nil, fmt.Errorf("git submodule: %w", err)
 		}
+	} else if fi, err := os.Stat(filepath.Join(dir, ".gitmodules")); err == nil && fi.Mode().IsRegular() {
+		// Not asked for, but the repository has submodules: fetch them like Coolify does. A submodule this server cannot
+		// reach (another host, other credentials) is a warning only, since the build may well not need it.
+		if err := run("submodule", "update", "--init", "--recursive", "--depth=1"); err != nil {
+			fmt.Fprintf(log, "warning: git submodules were not fetched: %v\n", err)
+		}
 	}
 	var out bytes.Buffer
 	if err := r.Run(ctx, Cmd{Name: "git", Args: []string{"rev-parse", "HEAD"}, Dir: dir, Env: env, Stdout: &out, Stderr: log}); err != nil {

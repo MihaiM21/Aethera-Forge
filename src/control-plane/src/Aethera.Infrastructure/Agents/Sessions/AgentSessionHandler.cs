@@ -320,6 +320,9 @@ public sealed class AgentSessionHandler(
 
             await dispatcher.ReconcileAsync(state, session, cancellationToken);
             MaybeSendCertificateHint(session);
+
+            using var scope = scopes.CreateScope();
+            foreach (var hook in scope.ServiceProvider.GetServices<IAgentConnectedHook>()) hook.OnConnected(session.ServerId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

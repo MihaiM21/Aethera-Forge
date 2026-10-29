@@ -158,7 +158,9 @@ public static class DockerJson
 
     public static DockerImage Image(JsonElement e, int containersUsing = 0) => new(
         Str(e, "Id"), StrList(e, "RepoTags"), StrList(e, "RepoDigests"), (long)Num(e, "Size"), Time(Str(e, "Created")),
-        Labels(Obj(e, "Config")), Str(e, "Architecture"), Str(e, "Os"), containersUsing);
+        Labels(Obj(e, "Config")), Str(e, "Architecture"), Str(e, "Os"), containersUsing,
+        Obj(Obj(e, "Config"), "ExposedPorts").EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToList(),
+        StrList(Obj(Obj(e, "Config"), "Healthcheck"), "Test") is [var first, ..] && first != "NONE");
 
     public static DockerVolume Volume(JsonElement e)
     {

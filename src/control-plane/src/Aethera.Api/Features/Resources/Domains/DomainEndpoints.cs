@@ -81,7 +81,8 @@ public sealed record DomainDnsResponse(DnsStatus Status, DateTimeOffset? Checked
 public sealed record DomainResponse(
     Guid Id, Guid WorkloadId, Guid ServerId, string Hostname, string PathPrefix, bool HttpsEnabled, int? TargetPort, bool IsPrimary,
     string? ComposeService, string? RedirectTo, bool StripPathPrefix, IReadOnlyList<string> BasicAuthUsers, Guid? DnsProviderId,
-    DomainCertificateResponse Certificate, DomainDnsResponse Dns, IReadOnlyList<string> Warnings, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DomainCertificateResponse Certificate, DomainDnsResponse Dns, IReadOnlyList<string> Warnings, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    bool IsAutomatic = false);
 
 /// <summary>
 /// Result of <c>POST /domains/{id}/verify-dns</c>: what the name resolves to versus what the server's address is. <c>method</c> says how it
@@ -368,8 +369,9 @@ internal static class DomainEndpoints
             await EnsureFreeAsync(db, hostname, path, id, ct);
             if (hostname != domain.Hostname)
             {
-                // A new name has never been checked and has no certificate yet.
+                // A new name has never been checked and has no certificate yet; once renamed it is the user's own, not an automatic one.
                 domain.SetHostname(hostname);
+                domain.IsAutomatic = false;
                 domain.DnsStatus = DnsStatus.Unknown;
                 domain.DnsCheckedAt = null;
                 domain.DnsResolvedIps = [];
@@ -533,7 +535,7 @@ internal static class DomainEndpoints
         WorkloadDomain d, AetheraDbContext db, SecretVault vault, ProxyOptions proxy, CancellationToken ct, IReadOnlyList<string>? basicAuthUsers = null)
     {
         var warnings = new List<string>();
-        if (d.HttpsEnabled && !ProxyConfigurator.AcmeAvailable(proxy)) warnings.Add(ProxyConfigurator.NoAcmeEmailWarning);
+        if (d.HttpsEnabled && !await ProxyConfigurator.AcmeAvailableAsync(db, proxy, ct)) warnings.Add(ProxyConfigurator.NoAcmeEmailWarning);
         return ToResponse(d, basicAuthUsers ?? await BasicAuthUsersAsync(d, db, vault, ct), warnings);
     }
 
@@ -541,5 +543,5 @@ internal static class DomainEndpoints
         d.Id, d.WorkloadId, d.ServerId, d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort, d.IsPrimary,
         d.ComposeService, d.RedirectTo, d.StripPathPrefix, basicAuthUsers, d.DnsProviderId,
         new DomainCertificateResponse(d.CertificateStatus, d.CertificateExpiresAt, d.CertificateError),
-        new DomainDnsResponse(d.DnsStatus, d.DnsCheckedAt, d.DnsResolvedIps), warnings, d.CreatedAt, d.UpdatedAt);
+        new DomainDnsResponse(d.DnsStatus, d.DnsCheckedAt, d.DnsResolvedIps), warnings, d.CreatedAt, d.UpdatedAt, d.IsAutomatic);
 }

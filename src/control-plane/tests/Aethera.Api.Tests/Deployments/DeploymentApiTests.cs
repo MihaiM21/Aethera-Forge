@@ -71,6 +71,7 @@ public sealed partial class DeploymentApiTests(DeploymentsFixture fixture)
             .On<ContainerStartCommand, DockerContainer>(c => Container(c.Container))
             .On<ContainerRestartCommand, DockerContainer>(c => Container(c.Container))
             .On<ImageRemoveCommand, Unit>(_ => Unit.Value)
+            .On<HealthProbeCommand, HealthProbeOutcome>(_ => new HealthProbeOutcome(true, 3, 0, TimeSpan.Zero, "running", null))
             .On<ProxyEnsureCommand, ProxyEnsured>(_ => new ProxyEnsured("traefik", "proxy-1", "v3.1", true, true, "abc"));
     }
 

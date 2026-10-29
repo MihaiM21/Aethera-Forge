@@ -13849,6 +13849,155 @@
         "x-required-scope": "servers:write"
       }
     },
+    "/api/v1/system/proxy-settings": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "The Let's Encrypt account and the domain of the Aethera UI",
+        "operationId": "getProxySettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProxySettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Set the Let's Encrypt account and the domain of the Aethera UI",
+        "description": "Saved settings win over the installer's environment from then on. The proxy of the dashboard server (the `local` one) is updated at once; the UI keeps answering on its own port, so a wrong domain cannot lock anyone out. Point a DNS A record at the server first: `dns` reports what the name resolves to.",
+        "operationId": "updateProxySettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProxySettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProxySettingsUpdatedDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
     "/api/v1/notifications/email": {
       "get": {
         "tags": [
@@ -19788,6 +19937,12 @@
                 "$ref": "#/components/schemas/RuntimeRequest"
               }
             ]
+          },
+          "autoDomain": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -20395,6 +20550,12 @@
               "string"
             ]
           },
+          "wildcardDomain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxConcurrentBuilds": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
@@ -20494,6 +20655,12 @@
               {
                 "$ref": "#/components/schemas/RuntimeRequest"
               }
+            ]
+          },
+          "autoDomain": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         }
@@ -21127,6 +21294,35 @@
           }
         }
       },
+      "DnsCheckDto": {
+        "required": [
+          "status",
+          "message",
+          "expected",
+          "resolved"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DnsStatus"
+          },
+          "message": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resolved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "DnsCheckResponse": {
         "required": [
           "domainId",
@@ -21512,6 +21708,19 @@
               "string"
             ],
             "format": "int32"
+          },
+          "exposedPorts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "hasHealthcheck": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -21793,6 +22002,10 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "isAutomatic": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -24444,6 +24657,94 @@
           }
         }
       },
+      "ProxySettingsDto": {
+        "required": [
+          "acmeEmail",
+          "acmeStaging",
+          "dashboardDomain",
+          "dashboardHttps",
+          "dashboardServerId",
+          "dashboardUrl",
+          "suggestedDomain",
+          "source"
+        ],
+        "type": "object",
+        "properties": {
+          "acmeEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "acmeStaging": {
+            "type": "boolean"
+          },
+          "dashboardDomain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dashboardHttps": {
+            "type": "boolean"
+          },
+          "dashboardServerId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "dashboardUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "suggestedDomain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "ProxySettingsUpdatedDto": {
+        "required": [
+          "settings",
+          "proxyApplied",
+          "proxyError",
+          "dns"
+        ],
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ProxySettingsDto"
+          },
+          "proxyApplied": {
+            "type": "boolean"
+          },
+          "proxyError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dns": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DnsCheckDto"
+              }
+            ]
+          }
+        }
+      },
       "ProxyStatusDto": {
         "required": [
           "provider",
@@ -25929,6 +26230,18 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "wildcardDomain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "automaticDomainBase": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -27171,6 +27484,35 @@
           }
         }
       },
+      "UpdateProxySettingsRequest": {
+        "type": "object",
+        "properties": {
+          "acmeEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "acmeStaging": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "dashboardDomain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dashboardHttps": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "UpdateRegistryRequest": {
         "type": "object",
         "properties": {
@@ -27313,6 +27655,12 @@
             }
           },
           "publicIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "wildcardDomain": {
             "type": [
               "null",
               "string"

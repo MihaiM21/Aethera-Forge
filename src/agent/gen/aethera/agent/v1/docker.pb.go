@@ -1315,8 +1315,12 @@ type ImageInfo struct {
 	Os           string                 `protobuf:"bytes,8,opt,name=os,proto3" json:"os,omitempty"`
 	// Number of containers using the image (-1 = unknown).
 	ContainersUsing int32 `protobuf:"varint,9,opt,name=containers_using,json=containersUsing,proto3" json:"containers_using,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Ports from the image's EXPOSE, e.g. "8080/tcp", sorted.
+	ExposedPorts []string `protobuf:"bytes,10,rep,name=exposed_ports,json=exposedPorts,proto3" json:"exposed_ports,omitempty"`
+	// The image defines a HEALTHCHECK (other than NONE).
+	HasHealthcheck bool `protobuf:"varint,11,opt,name=has_healthcheck,json=hasHealthcheck,proto3" json:"has_healthcheck,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ImageInfo) Reset() {
@@ -1410,6 +1414,20 @@ func (x *ImageInfo) GetContainersUsing() int32 {
 		return x.ContainersUsing
 	}
 	return 0
+}
+
+func (x *ImageInfo) GetExposedPorts() []string {
+	if x != nil {
+		return x.ExposedPorts
+	}
+	return nil
+}
+
+func (x *ImageInfo) GetHasHealthcheck() bool {
+	if x != nil {
+		return x.HasHealthcheck
+	}
+	return false
 }
 
 type ImagePull struct {
@@ -3655,7 +3673,10 @@ type ComposeServiceSpec struct {
 	Image    string `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
 	HasBuild bool   `protobuf:"varint,3,opt,name=has_build,json=hasBuild,proto3" json:"has_build,omitempty"`
 	// Container ports from `ports:` and `expose:`.
-	Ports         []uint32 `protobuf:"varint,4,rep,packed,name=ports,proto3" json:"ports,omitempty"`
+	Ports []uint32 `protobuf:"varint,4,rep,packed,name=ports,proto3" json:"ports,omitempty"`
+	// The service's `network_mode` as written ("service:db", "host", ...);
+	// empty = the project's networks.
+	NetworkMode   string `protobuf:"bytes,5,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3716,6 +3737,13 @@ func (x *ComposeServiceSpec) GetPorts() []uint32 {
 		return x.Ports
 	}
 	return nil
+}
+
+func (x *ComposeServiceSpec) GetNetworkMode() string {
+	if x != nil {
+		return x.NetworkMode
+	}
+	return ""
 }
 
 type ComposeInspectResult struct {
@@ -4080,7 +4108,7 @@ const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\x13ContainerListResult\x12?\n" +
 	"\n" +
 	"containers\x18\x01 \x03(\v2\x1f.aethera.agent.v1.ContainerInfoR\n" +
-	"containers\"\x90\x03\n" +
+	"containers\"\xde\x03\n" +
 	"\tImageInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\trepo_tags\x18\x02 \x03(\tR\brepoTags\x12!\n" +
@@ -4092,7 +4120,10 @@ const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\x06labels\x18\x06 \x03(\v2'.aethera.agent.v1.ImageInfo.LabelsEntryR\x06labels\x12\"\n" +
 	"\farchitecture\x18\a \x01(\tR\farchitecture\x12\x0e\n" +
 	"\x02os\x18\b \x01(\tR\x02os\x12)\n" +
-	"\x10containers_using\x18\t \x01(\x05R\x0fcontainersUsing\x1a9\n" +
+	"\x10containers_using\x18\t \x01(\x05R\x0fcontainersUsing\x12#\n" +
+	"\rexposed_ports\x18\n" +
+	" \x03(\tR\fexposedPorts\x12'\n" +
+	"\x0fhas_healthcheck\x18\v \x01(\bR\x0ehasHealthcheck\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"y\n" +
@@ -4285,12 +4316,13 @@ const file_aethera_agent_v1_docker_proto_rawDesc = "" +
 	"\n" +
 	"commit_sha\x18\x03 \x01(\tR\tcommitSha\"L\n" +
 	"\x0eComposeInspect\x12:\n" +
-	"\aproject\x18\x01 \x01(\v2 .aethera.agent.v1.ComposeProjectR\aproject\"q\n" +
+	"\aproject\x18\x01 \x01(\v2 .aethera.agent.v1.ComposeProjectR\aproject\"\x94\x01\n" +
 	"\x12ComposeServiceSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05image\x18\x02 \x01(\tR\x05image\x12\x1b\n" +
 	"\thas_build\x18\x03 \x01(\bR\bhasBuild\x12\x14\n" +
-	"\x05ports\x18\x04 \x03(\rR\x05ports\"\xbe\x01\n" +
+	"\x05ports\x18\x04 \x03(\rR\x05ports\x12!\n" +
+	"\fnetwork_mode\x18\x05 \x01(\tR\vnetworkMode\"\xbe\x01\n" +
 	"\x14ComposeInspectResult\x12@\n" +
 	"\bservices\x18\x01 \x03(\v2$.aethera.agent.v1.ComposeServiceSpecR\bservices\x12\x1d\n" +
 	"\n" +

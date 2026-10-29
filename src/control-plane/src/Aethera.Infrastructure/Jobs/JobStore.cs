@@ -129,8 +129,11 @@ public sealed class JobStore(IServiceScopeFactory scopes, IServiceProvider servi
     /// Reaper pass: running jobs whose lease expired, locked with <c>FOR UPDATE SKIP LOCKED</c> (one instance wins each), handed to
     /// <c>Job.ExpireLease</c>, which re-queues resumable jobs with attempts left, ends cancel-requested ones as Cancelled and fails the
     /// rest with <c>job.worker_lost</c>. Returns each reaped job and whether it was re-queued.
+    /// <paramref name="beforeCommit"/> runs for each reaped job while its row is still locked: a re-queued job cannot be claimed yet, so what it
+    /// writes to the job's log stream comes before anything the next attempt writes (two sinks opened at once would take the same sequence).
     /// </summary>
-    public async Task<IReadOnlyList<(Job Job, bool Requeued)>> ReapExpiredAsync(Func<string, bool> isResumable, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<(Job Job, bool Requeued)>> ReapExpiredAsync(
+        Func<string, bool> isResumable, int limit, CancellationToken cancellationToken, Func<Job, bool, Task>? beforeCommit = null)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
@@ -154,6 +157,8 @@ public sealed class JobStore(IServiceScopeFactory scopes, IServiceProvider servi
         if (expired.Count > 0)
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (beforeCommit is not null)
+                foreach (var (job, requeued) in reaped) await beforeCommit(job, requeued);
             await transaction.CommitAsync(cancellationToken);
         }
 

@@ -112,6 +112,9 @@ const (
 	modeRun prepMode = iota
 	// modeLight is for ps and down, which work from the project's name and labels: no checkout for Git projects.
 	modeLight
+	// modeInspect checks the repository out into the command's temporary directory: the running project's checkout (and
+	// whatever its containers have bind-mounted from it) is never touched by an inspection.
+	modeInspect
 )
 
 func checkName(p *agentv1.ComposeProject) error {
@@ -188,8 +191,12 @@ func (s *Service) prepare(ctx context.Context, p *agentv1.ComposeProject, mode p
 		}
 		pr.userFile = []byte(p.GetComposeFile())
 		files = append(files, main)
-	case mode == modeRun:
-		co, err := s.checkout(ctx, git, dir, out, errw)
+	case mode == modeRun || mode == modeInspect:
+		coDir := dir
+		if mode == modeInspect {
+			coDir = tmp
+		}
+		co, err := s.checkout(ctx, git, coDir, out, errw)
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +227,13 @@ func (s *Service) prepare(ctx context.Context, p *agentv1.ComposeProject, mode p
 		pr.base = append(pr.base, "-f", f)
 	}
 	if len(p.GetEnv()) > 0 {
-		// Replaces the repository's own .env as the source of interpolation values; the variables the user set win.
+		// An explicit --env-file replaces the repository's own .env, so that one is passed first and the variables the
+		// user set in Aethera, passed after it, win.
+		if repoEnv := filepath.Join(pr.root, ".env"); pr.root != dir {
+			if fi, err := os.Stat(repoEnv); err == nil && fi.Mode().IsRegular() && within(realPath(pr.root), realPath(repoEnv)) {
+				pr.base = append(pr.base, "--env-file", repoEnv)
+			}
+		}
 		envFile := filepath.Join(tmp, ".env")
 		if err := write(envFile, dotenv); err != nil {
 			return nil, err
@@ -402,6 +415,9 @@ func (s *Service) Up(ctx context.Context, p *agentv1.ComposeProject, o UpOptions
 	if err != nil {
 		return nil, err
 	}
+	if err := s.persistBinds(pr, cfg, out); err != nil {
+		return nil, err
+	}
 
 	if o.Build && len(buildServices(cfg, o.Services)) > 0 {
 		args := pr.argv("build")
@@ -437,15 +453,48 @@ func (s *Service) Up(ctx context.Context, p *agentv1.ComposeProject, o UpOptions
 		}
 	}
 	args = append(args, o.Services...)
-	if err := s.run(ctx, pr, args, out, errw); err != nil {
-		return nil, fmt.Errorf("compose up: %w", err)
+	upErr := s.run(ctx, pr, args, out, errw)
+	if upErr != nil && (!o.Wait || ctx.Err() != nil) {
+		return nil, fmt.Errorf("compose up: %w", upErr)
 	}
 	res, err := s.ps(ctx, pr, p.GetProjectName(), true, errw)
 	if err != nil {
+		if upErr != nil {
+			return nil, fmt.Errorf("compose up: %w", upErr)
+		}
 		return nil, err
+	}
+	if upErr != nil {
+		// --wait also fails for one-shot services (migrations, init jobs) that ran and exited 0; those are fine.
+		if !onlyCompletedServicesStopped(res) {
+			return nil, fmt.Errorf("compose up: %w", upErr)
+		}
+		fmt.Fprintln(out, "compose: every service is running or completed successfully")
 	}
 	res.CommitSha = pr.commit
 	return res, nil
+}
+
+// onlyCompletedServicesStopped reports whether every container of the project is running, or exited with code 0.
+func onlyCompletedServicesStopped(res *agentv1.ComposeResult) bool {
+	if len(res.GetServices()) == 0 {
+		return false
+	}
+	for _, svc := range res.GetServices() {
+		switch svc.GetState() {
+		case agentv1.ContainerState_CONTAINER_STATE_RUNNING:
+			if svc.GetHealth() == agentv1.ContainerHealth_CONTAINER_HEALTH_UNHEALTHY || svc.GetHealth() == agentv1.ContainerHealth_CONTAINER_HEALTH_STARTING {
+				return false
+			}
+		case agentv1.ContainerState_CONTAINER_STATE_EXITED:
+			if svc.GetExitCode() != 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Down stops and removes the project and deletes its checkout. A Git project is taken down by name (compose finds its

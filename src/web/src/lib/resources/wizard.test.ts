@@ -95,7 +95,7 @@ describe("toCreateRequest", () => {
   it("validates the compose source: a path inside the repository, or pasted content", () => {
     const repo = { ...base, method: "compose" as const, composeSource: "repo" as const, repoUrl: "https://github.com/a/b.git" };
     expect(validateStep("source", { ...repo, composePath: "docker-compose.yml" })).toEqual({});
-    for (const bad of ["", "/etc/compose.yml", "../x.yml", "a/../../x.yml", "a\\b.yml", "-f"]) expect(validateStep("source", { ...repo, composePath: bad }).composePath).toBeDefined();
+    for (const bad of ["", "//etc/compose.yml", "/../x.yml", "../x.yml", "a/../../x.yml", "a\\b.yml", "-f"]) expect(validateStep("source", { ...repo, composePath: bad }).composePath).toBeDefined();
     expect(validateStep("source", { ...repo, repoUrl: "", composePath: "x.yml" }).repoUrl).toBeDefined();
     const inline = { ...base, method: "compose" as const, composeSource: "inline" as const };
     expect(validateStep("source", inline).composeContent).toBeDefined();
@@ -103,8 +103,13 @@ describe("toCreateRequest", () => {
     expect(validateStep("domain", { ...inline, hostname: "not a host" })).toEqual({}); // compose domains are added per service later
   });
 
-  it("uses a tcp health check when no path is given", () => {
-    expect(toCreateRequest({ ...base, repoUrl: "https://x.io/a/b" }).runtime?.healthCheck).toMatchObject({ type: "tcp" });
+  it("uses a tcp health check on a given port, and without a port lets the deployment read EXPOSE and check the container stays up", () => {
+    expect(toCreateRequest({ ...base, repoUrl: "https://x.io/a/b", port: "8080" }).runtime?.healthCheck).toMatchObject({ type: "tcp", port: 8080 });
+    const auto = toCreateRequest({ ...base, repoUrl: "https://x.io/a/b", port: "" });
+    expect(auto.runtime).toEqual({ ports: [], healthCheck: { type: "none" } });
+    expect(auto.autoDomain).toBe(true);
+    expect(toCreateRequest({ ...base, repoUrl: "https://x.io/a/b", hostname: "shop.example.com" }).autoDomain).toBe(false);
+    expect(validateStep("source", { ...base, method: "compose", composeSource: "repo", repoUrl: "https://x.io/a/b", composePath: "/deploy/compose.yml" })).toEqual({});
   });
 });
 

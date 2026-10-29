@@ -48,6 +48,7 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] R1.4 Compose from the repository (`build:`, domains per service)
 - [x] R1.5 Domains & proxy (Cloudflare DNS-01, wildcards, www redirect, strip prefix, basic auth, custom labels)
 - [x] R1.6 Hardening (bug hunt fixes, `aethera reset-password`, registry test, docs, beta labelling)
+- [x] R1.7 Coolify-style deploys and domains (automatic sslip.io / wildcard domains, dashboard domain in Settings, ports from EXPOSE, liveness checks, safe recreate, compose data that survives deploys; ADR 0011)
 - [ ] R1 verification, PR, `v0.1.0-rc.1`, owner test on the VPS, `v0.1.0`
 
 ## R2 — v0.2.0 (two servers)

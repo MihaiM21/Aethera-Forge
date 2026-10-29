@@ -356,7 +356,20 @@ public sealed class BuildInputRulesTests
     [InlineData("a/.hidden/b")]
     [InlineData("a/..b/c")]
     [InlineData("dist")]
+    // One leading slash is the repository root, the way Coolify writes a base directory.
+    [InlineData("/")]
+    [InlineData("/apps/web")]
+    [InlineData("/Dockerfile")]
     public void RelativePaths_Accepted(string? path) => Assert.True(BuildInputRules.IsSafeRelativePath(path));
+
+    [Theory]
+    [InlineData("/apps/web", ".", "apps/web")]
+    [InlineData("/", ".", ".")]
+    [InlineData("  docker/Dockerfile ", null, "docker/Dockerfile")]
+    [InlineData("", ".", ".")]
+    [InlineData(null, null, null)]
+    public void RelativePaths_AreStoredWithoutTheLeadingSlash(string? path, string? root, string? expected) =>
+        Assert.Equal(expected, BuildInputRules.NormalizeRelativePath(path, root));
 
     [Theory]
     [InlineData("..")]
@@ -364,8 +377,9 @@ public sealed class BuildInputRulesTests
     [InlineData("../x")]
     [InlineData("a/../b")]
     [InlineData("a/b/..")]
-    [InlineData("/")]
-    [InlineData("/etc/passwd")]
+    [InlineData("//etc/passwd")]
+    [InlineData("/../etc")]
+    [InlineData("/~/x")]
     [InlineData("~")]
     [InlineData("~/x")]
     [InlineData("C:\\Windows")]

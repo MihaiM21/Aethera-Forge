@@ -201,6 +201,7 @@ public static class SystemModule
     public static IEndpointRouteBuilder MapSystem(this IEndpointRouteBuilder api)
     {
         SystemEndpoints.Map(api);
+        ProxySettingsEndpoints.Map(api);
         return api;
     }
 }

@@ -119,6 +119,9 @@ public class WorkloadDomain : SoftDeletableEntity
     public string PathPrefix { get; set; } = "/";
     public bool HttpsEnabled { get; set; } = true;
 
+    /// <summary>Generated from the server's wildcard domain (or sslip.io) rather than entered by a user (ADR 0011).</summary>
+    public bool IsAutomatic { get; set; }
+
     /// <summary>Container port to route to; null = the workload's first HTTP port.</summary>
     public int? TargetPort { get; set; }
     public bool IsPrimary { get; set; }

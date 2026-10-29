@@ -23,6 +23,7 @@ public static class CommandRedaction
         $"{ComposeProject.Descriptor.FullName}.compose_file",
         $"{ComposeProject.Descriptor.FullName}.override_file",
         $"{ProxyEnsure.Descriptor.FullName}.config",
+        $"{ProxyEnsure.Descriptor.FullName}.dynamic_config",
     ];
 
     /// <summary>A JSON rendering of <paramref name="message"/> that is safe to log or audit: no secret value, no compose body.</summary>
