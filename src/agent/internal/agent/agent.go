@@ -209,6 +209,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.deps.Proxy = &proxy.Manager{Docker: a.o.Docker, Dir: filepath.Join(work, "proxy")}
 	}
 	a.wireR1(a.deps)
+	a.wireR2(a.deps)
 	caps := a.deps.Capabilities()
 	a.disp = dispatch.New(dispatch.Config{
 		Sender: a.client, Policy: a.pol, Store: store, Capabilities: caps, Now: a.o.Now,

@@ -2445,6 +2445,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/mesh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The private network between servers */
+        get: operations["getMeshSettings"];
+        /**
+         * Turn the private network on or off and choose its range
+         * @description `wireGuard`: each agent creates the interface `aethera0` and every server gets an address from `cidr`. `tailscale`: the address of `tailscale0` is used; Aethera does not log in to Tailscale. `none` removes the interfaces Aethera created. Saving queues a reconcile of every server.
+         */
+        put: operations["updateMeshSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/mesh/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply the private network to every server again */
+        post: operations["reconcileMesh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/mesh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A server's address, key, endpoint and peers in the private network */
+        get: operations["getServerMesh"];
+        /** Set the endpoint and port peers use to reach this server */
+        put: operations["updateServerMesh"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/applications/{id}/previews": {
         parameters: {
             query?: never;
@@ -3834,6 +3890,46 @@ export interface components {
             organization: components["schemas"]["OrganizationSummary"];
             role: components["schemas"]["OrganizationRole"];
         };
+        MeshPeerResponse: {
+            /** Format: uuid */
+            serverId: null | string;
+            name: null | string;
+            publicKey: string;
+            address: null | string;
+            endpoint: null | string;
+            /** Format: date-time */
+            lastHandshake: unknown;
+            /** Format: int64 */
+            rxBytes: number | string;
+            /** Format: int64 */
+            txBytes: number | string;
+        };
+        /** @enum {unknown} */
+        MeshProvider: "none" | "wireGuard" | "tailscale";
+        MeshReconcileResponse: {
+            queued: boolean;
+        };
+        MeshServerSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            provider: components["schemas"]["MeshProvider"];
+            status: components["schemas"]["MeshStatus"];
+            address: null | string;
+            error: null | string;
+            /** Format: date-time */
+            handshakeAt: unknown;
+            agentConnected: boolean;
+        };
+        MeshSettingsResponse: {
+            provider: components["schemas"]["MeshProvider"];
+            cidr: string;
+            /** Format: int32 */
+            listenPort: number | string;
+            servers: components["schemas"]["MeshServerSummary"][];
+        };
+        /** @enum {unknown} */
+        MeshStatus: "disabled" | "pending" | "up" | "degraded" | "failed";
         MetricPointResponse: {
             /** Format: date-time */
             timestamp: unknown;
@@ -4024,6 +4120,11 @@ export interface components {
             /** Format: date-time */
             seenAt: unknown;
         };
+        /**
+         * @default public
+         * @enum {unknown}
+         */
+        PortBindScope: "public" | "private" | "loopback";
         PortMappingSpec: {
             /** Format: int32 */
             containerPort: number | string;
@@ -4048,6 +4149,7 @@ export interface components {
             protocol?: null | string;
             /** Format: int32 */
             publishedPort?: null | number | string;
+            bindScope?: null | string;
             isHttp?: null | boolean;
             allowReserved?: null | boolean;
         };
@@ -4060,6 +4162,7 @@ export interface components {
             /** Format: int32 */
             publishedPort: null | number | string;
             isHttp: boolean;
+            bindScope?: components["schemas"]["PortBindScope"];
         };
         PreviewDeploymentDto: {
             /** Format: uuid */
@@ -4523,6 +4626,29 @@ export interface components {
         };
         /** @enum {unknown} */
         ServerLifecycle: "pending" | "active" | "maintenance" | "disabled";
+        ServerMeshResponse: {
+            /** Format: uuid */
+            serverId: string;
+            instanceProvider: components["schemas"]["MeshProvider"];
+            provider: components["schemas"]["MeshProvider"];
+            status: components["schemas"]["MeshStatus"];
+            /** Format: date-time */
+            statusChangedAt: unknown;
+            error: null | string;
+            address: null | string;
+            publicKey: null | string;
+            endpoint: null | string;
+            effectiveEndpoint: null | string;
+            /** Format: int32 */
+            listenPort: null | number | string;
+            /** Format: int32 */
+            effectiveListenPort: number | string;
+            /** Format: date-time */
+            handshakeAt: unknown;
+            agentConnected: boolean;
+            peersLive: boolean;
+            peers: components["schemas"]["MeshPeerResponse"][];
+        };
         ServerResourcesRequest: {
             /** Format: int32 */
             cpuCores?: null | number | string;
@@ -4845,6 +4971,12 @@ export interface components {
             description?: null | string;
             isProduction?: null | boolean;
         };
+        UpdateMeshSettingsRequest: {
+            provider?: null | string;
+            cidr?: null | string;
+            /** Format: int32 */
+            listenPort?: null | number | string;
+        };
         UpdateOrganizationRequest: {
             name?: null | string;
             slug?: null | string;
@@ -4887,6 +5019,11 @@ export interface components {
         UpdateSecretRequest: {
             name?: null | string;
             description?: null | string;
+        };
+        UpdateServerMeshRequest: {
+            endpoint?: null | string;
+            /** Format: int32 */
+            listenPort?: null | number | string;
         };
         UpdateServerRequest: {
             name?: null | string;
@@ -17063,6 +17200,271 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getMeshSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateMeshSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeshSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reconcileMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshReconcileResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getServerMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerMeshResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateServerMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateServerMeshRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerMeshResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
             /** @description Unexpected error (internal.error). */

@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import { CopyIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { BindScopeSelect, PrivateNetworkNote } from "@/components/mesh/bind-scope";
 import { FormError, SaveButton, fieldError, numOrUndef, useAction } from "@/components/resources/form";
+import { parseScope } from "@/lib/mesh/format";
+import type { PortBindScope } from "@/lib/mesh/types";
 import { CopyButton, ErrorPanel, SectionTitle } from "@/components/servers/common";
 import { NativeSelect } from "@/components/servers/common";
 import { Badge } from "@/components/ui/badge";
@@ -39,12 +42,12 @@ function usePatch(api: ResourcesApi, app: Application, onSaved: () => void) {
 
 // ------------------------------------------------------------------------------------------------ Networking
 
-type PortRow = { id: number; port: string; protocol: "tcp" | "udp"; published: string; http: boolean };
+type PortRow = { id: number; port: string; protocol: "tcp" | "udp"; published: string; http: boolean; scope: PortBindScope };
 
 export function NetworkingTab({ app, api = resourcesApi, onSaved }: Props) {
   const next = React.useRef(1000);
   const [rows, setRows] = React.useState<PortRow[]>(() =>
-    app.runtime.ports.map((p, i) => ({ id: i, port: str(p.containerPort), protocol: p.protocol === "udp" ? "udp" : "tcp", published: str(p.publishedPort), http: p.isHttp })),
+    app.runtime.ports.map((p, i) => ({ id: i, port: str(p.containerPort), protocol: p.protocol === "udp" ? "udp" : "tcp", published: str(p.publishedPort), http: p.isHttp, scope: parseScope(p.bindScope) })),
   );
   const { act, save } = usePatch(api, app, onSaved);
   const update = (id: number, patch: Partial<PortRow>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -55,7 +58,7 @@ export function NetworkingTab({ app, api = resourcesApi, onSaved }: Props) {
         e.preventDefault();
         void save({
           runtime: {
-            ports: rows.filter((r) => r.port.trim()).map((r) => ({ containerPort: Number(r.port), protocol: r.protocol, publishedPort: numOrUndef(r.published), isHttp: r.http })),
+            ports: rows.filter((r) => r.port.trim()).map((r) => ({ containerPort: Number(r.port), protocol: r.protocol, publishedPort: numOrUndef(r.published), bindScope: numOrUndef(r.published) === undefined ? undefined : r.scope, isHttp: r.http })),
           },
         });
       }}
@@ -63,18 +66,20 @@ export function NetworkingTab({ app, api = resourcesApi, onSaved }: Props) {
       <SectionTitle index="01">Ports</SectionTitle>
       <p className="text-xs text-muted-foreground">
         HTTP ports are routed by the reverse proxy to your domains. A published port opens the port on the server itself; leave it empty to keep the application reachable only through the proxy
-        and other containers.
+        and other containers. Choose <em>Private network</em> to listen on the server&apos;s private address only (reachable from your other servers, not from the internet) or <em>This server
+        only</em> for 127.0.0.1.
       </p>
       <div className="grid gap-2">
         {rows.length === 0 && <p className="text-sm text-muted-foreground">No ports configured.</p>}
         {rows.map((r) => (
-          <div key={r.id} className="grid grid-cols-[6rem_6rem_7rem_auto_auto] items-center gap-2">
+          <div key={r.id} className="grid grid-cols-[6rem_6rem_7rem_11rem_auto_auto] items-center gap-2">
             <Input aria-label="Container port" inputMode="numeric" className="font-mono" placeholder="3000" value={r.port} onChange={(e) => update(r.id, { port: e.target.value })} />
             <NativeSelect aria-label="Protocol" value={r.protocol} onChange={(e) => update(r.id, { protocol: e.target.value as "tcp" | "udp" })}>
               <option value="tcp">tcp</option>
               <option value="udp">udp</option>
             </NativeSelect>
             <Input aria-label="Published port" inputMode="numeric" className="font-mono" placeholder="publish" value={r.published} onChange={(e) => update(r.id, { published: e.target.value })} />
+            <BindScopeSelect value={r.scope} disabled={!r.published.trim()} onChange={(scope) => update(r.id, { scope })} />
             <label className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
               <input type="checkbox" checked={r.http} onChange={(e) => update(r.id, { http: e.target.checked })} /> http
             </label>
@@ -85,10 +90,11 @@ export function NetworkingTab({ app, api = resourcesApi, onSaved }: Props) {
         ))}
       </div>
       <div>
-        <Button type="button" variant="outline" onClick={() => setRows((r) => [...r, { id: next.current++, port: "", protocol: "tcp", published: "", http: r.length === 0 }])}>
+        <Button type="button" variant="outline" onClick={() => setRows((r) => [...r, { id: next.current++, port: "", protocol: "tcp", published: "", http: r.length === 0, scope: "public" }])}>
           <PlusIcon aria-hidden="true" /> Add port
         </Button>
       </div>
+      <PrivateNetworkNote serverId={app.serverId} anyPrivate={rows.some((r) => r.scope === "private" && r.published.trim() !== "")} />
       <FormError message={act.error} />
       <div>
         <SaveButton pending={act.pending}>Save ports</SaveButton>
