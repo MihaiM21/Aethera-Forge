@@ -13,6 +13,12 @@ services:
       dockerfile: deploy/docker/Dockerfile.agent
     image: aethera/agent:local
     restart: unless-stopped
+    # The private mesh (docs/networking.md) needs the host's network namespace and CAP_NET_ADMIN: the agent creates one WireGuard
+    # interface (aethera0) there and binds database ports to its address. Without these two lines the agent works as before and does
+    # not offer the mesh.
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
     environment:
       AETHERA_ENDPOINT: ${AETHERA_ENDPOINT:-}        # master host:9443
       AETHERA_CA_SHA256: ${AETHERA_CA_SHA256:-}      # pins the master's CA on first contact

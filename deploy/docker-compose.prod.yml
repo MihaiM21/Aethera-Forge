@@ -104,6 +104,10 @@ services:
     depends_on:
       - aethera
     network_mode: host
+    # The private mesh (ADR 0012, docs/networking.md): the agent creates one WireGuard interface (aethera0) in the host namespace, which
+    # needs CAP_NET_ADMIN. It is the only capability added; without the WireGuard kernel module the agent simply does not offer the mesh.
+    cap_add:
+      - NET_ADMIN
     environment:
       AETHERA_ENDPOINT: 127.0.0.1:${AETHERA_GRPC_PORT:-9443}
       AETHERA_ENROLL_DIR: /data/updater

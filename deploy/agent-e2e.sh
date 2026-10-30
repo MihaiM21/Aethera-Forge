@@ -266,7 +266,8 @@ agent_setup() {
 
 agent_docker() { # agent_docker NAME ARGS...: docker run flags shared by enroll and run
   local name="$1"; shift
-  local args=(--label "$LABEL")
+  # CAP_NET_ADMIN: as on a real server (systemd AmbientCapabilities), so the agent can offer the private mesh (ADR 0012).
+  local args=(--label "$LABEL" --cap-add NET_ADMIN)
   # AGENT_NETWORK (phase ui): share the Docker daemon's network namespace, as an agent installed on the host does, so health probes
   # reach the containers' bridge addresses. Host mappings then belong to the daemon's container.
   if [[ -n "${AGENT_NETWORK:-}" ]]; then args+=(--network "$AGENT_NETWORK"); else args+=("${HOST_FLAGS[@]}"); fi
