@@ -173,6 +173,9 @@ message ResourceLimits {
   // Max processes; 0 = unset, -1 = unlimited.
   int64 pids_limit = 6;
   string cpuset_cpus = 7;
+  // OOM killer preference, -1000..1000; 0 = Docker's default (workload
+  // priority, ADR 0012: high = -500, low = 500).
+  int32 oom_score_adj = 8;
 }
 
 enum RestartPolicyName {

@@ -21134,7 +21134,8 @@
           "redeploy",
           "rollback",
           "schedule",
-          "api"
+          "api",
+          "pullRequest"
         ]
       },
       "DesiredState": {

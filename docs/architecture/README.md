@@ -69,6 +69,7 @@ Dependency direction in the control plane: `Api -> Infrastructure, Engine -> Dom
 | [0009](0009-packaging-and-self-ops.md) | Packaging, installation, updates, backups, retention |
 | [0010](0010-backups-notifications-tasks.md) | Backups of workloads, email notifications and alerts, scheduled tasks, compose from Git, DNS-01 and domain options |
 | [0011](0011-automatic-domains-and-first-try-deploys.md) | Automatic domains (wildcard / sslip.io), the dashboard domain in Settings, ports from EXPOSE, liveness checks, safe recreate, compose data that survives deploys |
+| [0012](0012-multi-server-mesh-previews.md) | Server roles and placement, build on one server and run on another through a registry, build quota, priorities, the WireGuard / Tailscale mesh and private ports, pull request previews |
 
 ## Guides
 

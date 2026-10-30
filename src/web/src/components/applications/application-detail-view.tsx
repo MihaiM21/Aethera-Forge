@@ -34,8 +34,9 @@ import { StorageTab } from "./storage-tab";
 import { navigateTo } from "@/lib/navigate";
 import { WorkloadBackupsTab } from "@/components/backups/workload-backups-tab";
 import { ScheduledTasksTab } from "@/components/tasks/scheduled-tasks-tab";
+import { PreviewsTab } from "@/components/previews/previews-tab";
 
-export const APP_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "networking", "resources", "build", "health", "backups", "tasks", "settings"] as const;
+export const APP_TABS = ["overview", "deployments", "logs", "environment", "domains", "storage", "networking", "resources", "build", "health", "backups", "tasks", "previews", "settings"] as const;
 export type AppTab = (typeof APP_TABS)[number];
 
 const TAB_LABEL: Record<AppTab, string> = {
@@ -51,6 +52,7 @@ const TAB_LABEL: Record<AppTab, string> = {
   health: "Health",
   backups: "Backups",
   tasks: "Scheduled tasks",
+  previews: "Previews",
   settings: "Settings",
 };
 
@@ -382,6 +384,7 @@ export function ApplicationDetailView({ api = resourcesApi, servers = serversApi
         <TabsContent value="build">{tab === "build" && <BuildTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="backups">{tab === "backups" && <WorkloadBackupsTab kind="applications" id={a.id} name={a.name} />}</TabsContent>
         <TabsContent value="tasks">{tab === "tasks" && <ScheduledTasksTab kind="applications" id={a.id} />}</TabsContent>
+        <TabsContent value="previews">{tab === "previews" && <PreviewsTab applicationId={a.id} />}</TabsContent>
         <TabsContent value="health">{tab === "health" && <HealthTab app={a} api={api} onSaved={() => void app.refresh()} />}</TabsContent>
         <TabsContent value="settings">{tab === "settings" && <SettingsTab app={a} api={api} servers={servers} onSaved={() => void app.refresh()} />}</TabsContent>
       </Tabs>

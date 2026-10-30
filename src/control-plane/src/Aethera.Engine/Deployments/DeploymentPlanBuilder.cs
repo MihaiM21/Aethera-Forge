@@ -50,11 +50,44 @@ public sealed class PlanContext
     /// network and the runtime variables on every service and a domain's service is checked; without it only the routed services are named.
     /// </summary>
     public IReadOnlyList<ComposeServiceDefinition>? ComposeServices { get; init; }
+
+    /// <summary>The run server's address in the private mesh (ADR 0012); ports with <see cref="PortBindScope.Private"/> bind to it.</summary>
+    public string? MeshAddress { get; init; }
 }
 
 /// <summary>Turns a <see cref="DeploymentSnapshot"/> into the <see cref="DeploymentPlan"/> the runner executes. Pure: no I/O.</summary>
 public static class DeploymentPlanBuilder
 {
+    /// <summary>
+    /// The host address a published port binds to (ADR 0012): every interface, the server's mesh address, or loopback. A private port on a server
+    /// without a mesh address fails the Network step instead of quietly listening on the internet.
+    /// </summary>
+    public static string? BindAddress(PortEntry port, PlanContext c) => port.BindScope switch
+    {
+        PortBindScope.Loopback => "127.0.0.1",
+        PortBindScope.Private => c.MeshAddress is { Length: > 0 } mesh
+            ? mesh
+            : throw new DeploymentFailure(DeploymentStep.Network, FailureCodes.NoMeshAddress,
+                $"Port {port.PublishedPort} is published on the private network, but this server has no mesh address. Turn on the private network in Settings > Network or publish the port publicly."),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The container's limits with its priority applied (ADR 0012): High doubles the CPU shares that come from the reservation (one core's worth
+    /// without one) and shields it from the OOM killer, Low halves them and offers it first.
+    /// </summary>
+    public static ResourceLimitsSpec Resources(RuntimeSnapshot r)
+    {
+        var reservation = r.CpuReservation ?? 0;
+        var (cpuReservation, oom) = r.Priority switch
+        {
+            WorkloadPriority.High => ((reservation > 0 ? reservation : 1) * 2, -500),
+            WorkloadPriority.Low => ((reservation > 0 ? reservation : 1) / 2, 500),
+            _ => (reservation, 0),
+        };
+        return new ResourceLimitsSpec(r.CpuLimit ?? 0, cpuReservation, r.MemoryLimitBytes ?? 0, r.MemoryReservationBytes ?? 0, 0, r.PidsLimit ?? 0, OomScoreAdj: oom);
+    }
+
     /// <summary>Stable container name of a workload on its server.</summary>
     public static string ContainerName(DeploymentSnapshot s) => $"{s.Slug}-{s.WorkloadId.ToString("N")[..8]}";
 
@@ -110,15 +143,15 @@ public static class DeploymentPlanBuilder
             Labels = labels,
             Env = env,
             Ports = s.Ports.Where(p => p.PublishedPort is > 0)
-                .Select(p => new PortMappingSpec(p.ContainerPort, p.PublishedPort!.Value, null, p.Protocol == PortProtocol.Udp ? PortProtocolKind.Udp : PortProtocolKind.Tcp)).ToList(),
+                .Select(p => new PortMappingSpec(p.ContainerPort, p.PublishedPort!.Value, BindAddress(p, c), p.Protocol == PortProtocol.Udp ? PortProtocolKind.Udp : PortProtocolKind.Tcp))
+                .ToList(),
             // Named volumes live in the workload's own namespace (VolumeNames): prod and dev never share a Docker volume.
             Mounts = s.Volumes.Select(v => v.HostPath is { Length: > 0 }
                 ? new VolumeMountSpec(MountKind.Bind, v.HostPath, v.MountPath, v.ReadOnly)
                 : new VolumeMountSpec(MountKind.Volume, VolumeNames.DockerName(s.Slug, s.WorkloadId, v.Name), v.MountPath, v.ReadOnly)).ToList(),
             StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
             Networks = networks,
-            Resources = new ResourceLimitsSpec(
-                s.Runtime.CpuLimit ?? 0, s.Runtime.CpuReservation ?? 0, s.Runtime.MemoryLimitBytes ?? 0, s.Runtime.MemoryReservationBytes ?? 0, 0, s.Runtime.PidsLimit ?? 0),
+            Resources = Resources(s.Runtime),
             RestartPolicy = new RestartPolicySpec(s.Runtime.RestartPolicy switch
             {
                 RestartPolicy.No => RestartPolicyKind.No,

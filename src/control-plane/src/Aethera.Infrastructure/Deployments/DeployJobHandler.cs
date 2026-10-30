@@ -238,6 +238,7 @@ public sealed class DeployJobHandler : IJobHandler
         }
 
         var runner = new DeploymentRunner(new ResolvingServerTransport(resolver), sp.GetServices<IDeploymentStrategy>(), clock);
+        var meshAddress = await db.Servers.AsNoTracking().Where(s => s.Id == deployment.ServerId).Select(s => s.MeshAddress).FirstOrDefaultAsync(cancellationToken);
         DeploymentPlan plan;
         try
         {
@@ -252,7 +253,16 @@ public sealed class DeployJobHandler : IJobHandler
                 WriteLog = (stream, line, ct) => context.Log.WriteAsync(stream, line, ct),
                 Narrate = (line, ct) => context.Log.WriteSystemAsync(line, ct),
                 AcmeAvailable = await ProxyConfigurator.AcmeAvailableAsync(db, proxyOptions, cancellationToken), ComposeServices = composeServices,
+                MeshAddress = meshAddress,
             });
+        }
+        catch (DeploymentFailure ex)
+        {
+            // A configuration the server cannot run (a private port without a mesh address): nothing was started.
+            deployment.MarkFailed(ex.Step, ex.Code, ex.Message, clock.UtcNow);
+            await db.SaveChangesAsync(CancellationToken.None);
+            await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+            throw JobFailedException.Permanent(ex.Code, "The deployment cannot run on this server", ex.Message, ex.Step.ToString());
         }
         catch (ProxyRoutingException ex)
         {

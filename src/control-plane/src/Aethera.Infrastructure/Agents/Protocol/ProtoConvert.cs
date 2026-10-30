@@ -93,6 +93,7 @@ internal static class ProtoConvert
             {
                 CpuLimitCores = r.CpuLimitCores, CpuReservationCores = r.CpuReservationCores, MemoryLimitBytes = r.MemoryLimitBytes,
                 MemoryReservationBytes = r.MemoryReservationBytes, MemorySwapLimitBytes = r.MemorySwapLimitBytes, PidsLimit = r.PidsLimit, CpusetCpus = r.CpusetCpus ?? "",
+                OomScoreAdj = r.OomScoreAdj,
             };
         if (spec.RestartPolicy is { } rp) message.RestartPolicy = new P.RestartPolicy { Name = (P.RestartPolicyName)(int)rp.Name, MaximumRetryCount = rp.MaximumRetryCount };
         if (spec.Healthcheck is { } h)
@@ -168,6 +169,12 @@ internal static class ProtoConvert
         message.ImageTags.Add(spec.ImageTags);
         AddAll(message.ImageLabels, spec.ImageLabels);
         if (spec.PushAuth is not null) message.PushOptions = new P.PushOptions { Auth = spec.PushAuth.ToProto() };
+        if (spec.BuilderLimits is { } b)
+            message.BuilderLimits = new P.ResourceLimits
+            {
+                CpuLimitCores = b.CpuLimitCores, CpuReservationCores = b.CpuReservationCores, MemoryLimitBytes = b.MemoryLimitBytes,
+                MemoryReservationBytes = b.MemoryReservationBytes, MemorySwapLimitBytes = b.MemorySwapLimitBytes, PidsLimit = b.PidsLimit, CpusetCpus = b.CpusetCpus ?? "",
+            };
         return message;
     }
 
@@ -257,6 +264,21 @@ internal static class ProtoConvert
         new(r.BackupId, r.RawSizeBytes, r.StoredSizeBytes, r.StoredSha256, r.Duration.AsTimeSpan());
 
     public static BackupRestoreOutcome ToDomain(this P.BackupRestoreResult r) => new(r.RestoredBytes, r.Duration.AsTimeSpan());
+
+    // ---- mesh (ADR 0012) --------------------------------------------------------------------------------------------------------------
+
+    public static P.MeshProvider ToProto(this MeshProviderKind provider) => provider switch
+    {
+        MeshProviderKind.WireGuard => P.MeshProvider.Wireguard,
+        MeshProviderKind.Tailscale => P.MeshProvider.Tailscale,
+        _ => P.MeshProvider.Unspecified,
+    };
+
+    public static MeshStateInfo ToDomain(this P.MeshState s) => new(
+        s.Provider == P.MeshProvider.Tailscale ? MeshProviderKind.Tailscale : MeshProviderKind.WireGuard, s.InterfaceName, s.Up, s.PublicKey,
+        [.. s.Addresses], (int)s.ListenPort,
+        [.. s.Peers.Select(p => new MeshPeerStateInfo(p.PublicKey, p.Endpoint.Length == 0 ? null : p.Endpoint, p.LastHandshake?.ToDateTimeOffset(), p.RxBytes, p.TxBytes))],
+        s.Error.Length == 0 ? null : s.Error);
 
     public static P.BackupSource ToProto(this BackupSourceSpec source) => source switch
     {

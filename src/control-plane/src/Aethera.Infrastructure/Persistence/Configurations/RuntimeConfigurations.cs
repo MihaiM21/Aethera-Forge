@@ -36,6 +36,8 @@ internal sealed class DeploymentConfiguration : IEntityTypeConfiguration<Deploym
         b.HasOne<ApiToken>().WithMany().HasForeignKey(x => x.TriggeredByApiTokenId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne<Job>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne<Build>().WithMany().HasForeignKey(x => x.BuildId).OnDelete(DeleteBehavior.SetNull);
+        b.HasOne(x => x.Preview).WithMany().HasForeignKey(x => x.PreviewId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<Server>().WithMany().HasForeignKey(x => x.BuildServerId).OnDelete(DeleteBehavior.SetNull);
         b.HasMany(x => x.Builds).WithOne(x => x.Deployment).HasForeignKey(x => x.DeploymentId).OnDelete(DeleteBehavior.Cascade);
         b.HasMany(x => x.Steps).WithOne(x => x.Deployment).HasForeignKey(x => x.DeploymentId).OnDelete(DeleteBehavior.Cascade);
 
@@ -44,6 +46,8 @@ internal sealed class DeploymentConfiguration : IEntityTypeConfiguration<Deploym
         b.HasIndex(x => x.EnvironmentId);
         b.HasIndex(x => new { x.ServerId, x.Status });
         b.HasIndex(x => x.RollbackOfDeploymentId);
+        b.HasIndex(x => x.PreviewId);
+        b.HasIndex(x => x.BuildServerId);
         b.HasIndex(x => x.TriggeredByUserId);
         b.HasIndex(x => x.TriggeredByApiTokenId);
         b.HasIndex(x => x.JobId);

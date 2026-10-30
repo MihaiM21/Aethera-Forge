@@ -21,8 +21,9 @@ import { MetricsTab } from "./metrics-tab";
 import { OverviewTab } from "./overview-tab";
 import { SettingsTab } from "./settings-tab";
 import { ServerStatusBadges } from "./status-badges";
+import { ServerNetworkTab } from "@/components/mesh/server-network-tab";
 
-export const DETAIL_TABS = ["overview", "metrics", "containers", "inventory", "events", "settings"] as const;
+export const DETAIL_TABS = ["overview", "metrics", "containers", "inventory", "events", "network", "settings"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
 const TAB_LABEL: Record<DetailTab, string> = {
@@ -31,6 +32,7 @@ const TAB_LABEL: Record<DetailTab, string> = {
   containers: "Containers",
   inventory: "Images · Volumes · Networks",
   events: "Events",
+  network: "Network",
   settings: "Settings",
 };
 
@@ -174,6 +176,7 @@ export function ServerDetailView({ api = serversApi, id: idProp }: { api?: Serve
         <TabsContent value="events">
           <EventsTab serverId={s.id} api={api} />
         </TabsContent>
+        <TabsContent value="network">{tab === "network" && <ServerNetworkTab serverId={s.id} />}</TabsContent>
         <TabsContent value="settings">
           <SettingsTab
             server={s}

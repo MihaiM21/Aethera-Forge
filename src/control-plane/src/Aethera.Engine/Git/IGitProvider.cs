@@ -5,10 +5,32 @@ using Aethera.Domain;
 
 namespace Aethera.Engine.Git;
 
-/// <summary>What a verified webhook delivery says (provider-neutral).</summary>
+/// <summary>What a verified webhook delivery says (provider-neutral). <see cref="PullRequest"/> is set for pull/merge request events (ADR 0012).</summary>
 public sealed record WebhookEvent(
     string EventType, string DeliveryId, bool IsPush, string? Ref, string? Branch, string? CommitSha, string? CommitMessage,
-    string? CommitAuthor, bool BranchDeleted);
+    string? CommitAuthor, bool BranchDeleted, PullRequestEvent? PullRequest = null);
+
+/// <summary>What happened to a pull request (GitHub) or merge request (GitLab).</summary>
+public enum PullRequestAction
+{
+    /// <summary>An action that changes nothing for a preview (labels, review requests, a description edit).</summary>
+    Other = 0,
+    Opened = 1,
+    Reopened = 2,
+
+    /// <summary>New commits on the source branch.</summary>
+    Updated = 3,
+    Closed = 4,
+    Merged = 5,
+}
+
+/// <param name="Number">Pull request number (GitHub) or merge request iid (GitLab).</param>
+/// <param name="TargetBranch">The branch it would merge into; only pull requests into the application's branch get previews.</param>
+/// <param name="SourceRepositoryUrl">Clone URL of the head repository.</param>
+/// <param name="FromFork">The head repository is not the base repository.</param>
+public sealed record PullRequestEvent(
+    PullRequestAction Action, int Number, string? Title, string? AuthorLogin, string SourceBranch, string TargetBranch, string HeadSha,
+    string SourceRepositoryUrl, bool FromFork);
 
 /// <summary>Provider-specific webhook handling (spec section 7). Credentials for cloning are resolved elsewhere.</summary>
 public interface IGitProvider

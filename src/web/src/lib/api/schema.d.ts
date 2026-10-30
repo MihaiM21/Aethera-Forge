@@ -3183,7 +3183,7 @@ export interface components {
             errorMessage: null | string;
         };
         /** @enum {unknown} */
-        DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api";
+        DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api" | "pullRequest";
         /** @enum {unknown} */
         DesiredState: "running" | "stopped";
         DiscoveryInfo: {

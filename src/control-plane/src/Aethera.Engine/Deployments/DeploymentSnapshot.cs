@@ -84,6 +84,10 @@ public sealed record RuntimeSnapshot
     public long? MemoryLimitBytes { get; init; }
     public long? MemoryReservationBytes { get; init; }
     public int? PidsLimit { get; init; }
+
+    /// <summary>ADR 0012; snapshots from before R2 read as Normal.</summary>
+    public WorkloadPriority Priority { get; init; } = WorkloadPriority.Normal;
+
     public HealthCheckType HealthType { get; init; } = HealthCheckType.None;
     public string? HealthPath { get; init; }
     public int? HealthPort { get; init; }
@@ -102,7 +106,8 @@ public sealed record RuntimeSnapshot
 /// <summary>An environment variable. Exactly one of <see cref="Value"/> and <see cref="SecretId"/> is set.</summary>
 public sealed record EnvEntry(string Key, string? Value, Guid? SecretId, int? SecretVersion, bool Build, bool Runtime);
 
-public sealed record PortEntry(int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp);
+/// <param name="BindScope">Where a published port listens (ADR 0012); snapshots from before R2 read as Public.</param>
+public sealed record PortEntry(int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp, PortBindScope BindScope = PortBindScope.Public);
 
 public sealed record VolumeEntry(string Name, string MountPath, string? HostPath, bool ReadOnly);
 

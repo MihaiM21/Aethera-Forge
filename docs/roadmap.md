@@ -51,10 +51,12 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 - [x] R1.7 Coolify-style deploys and domains (automatic sslip.io / wildcard domains, dashboard domain in Settings, ports from EXPOSE, liveness checks, safe recreate, compose data that survives deploys; ADR 0011)
 - [ ] R1 verification, PR, `v0.1.0-rc.1`, owner test on the VPS, `v0.1.0`
 
-## R2 — v0.2.0 (two servers)
-- [ ] 6. Multi-server roles & resources (placement, limits, build quota, capacity view, build → registry → run elsewhere)
-- [ ] 7. Secure networking (WireGuard mesh, Tailscale option, private-network deploys)
-- [ ] PR preview deployments (wildcard domains, PR webhooks, cleanup on close)
+## R2 — v0.2.0 (two servers; plan: [`release-0.2.md`](release-0.2.md))
+- [x] R2.0 Contracts (mesh proto, build quota, priority, migration, seams, ADR 0012)
+- [ ] R2.1 Multi-server roles & resources (placement, limits and priorities, build quota, capacity view, build → registry → run elsewhere, move) — Phase 6
+- [ ] R2.2 Secure networking (WireGuard mesh, Tailscale option, private-network deploys) — Phase 7
+- [ ] R2.3 PR preview deployments (GitHub + GitLab, wildcard domains, PR comments, cleanup on close)
+- [ ] R2 verification, PR, `v0.2.0-rc.1`, owner test with the second server, `v0.2.0`
 
 ## R3 — v0.3+
 - [ ] CLI, config-as-code (`aethera.yaml`), environment promotion, blue/green & canary, OIDC/GitHub login, integrated registry

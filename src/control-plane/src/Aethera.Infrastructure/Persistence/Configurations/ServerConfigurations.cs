@@ -16,12 +16,17 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         b.Property(x => x.AgentVersion).HasMaxLength(64);
         b.Property(x => x.CertFingerprint).HasMaxLength(128);
         b.Property(x => x.CertSerial).HasMaxLength(128);
+        b.Property(x => x.MeshAddress).HasMaxLength(45);
+        b.Property(x => x.MeshPublicKey).HasMaxLength(64);
+        b.Property(x => x.MeshEndpoint).HasMaxLength(300);
+        b.Property(x => x.MeshError).HasMaxLength(1000);
 
         // Roles: Postgres text[] of enum names (Master/Build/Storage/Ci/Worker).
         b.PrimitiveCollection(x => x.Roles).ElementType().HasConversion<string>();
 
         b.HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.SshCredentialSecret).WithMany().HasForeignKey(x => x.SshCredentialSecretId).OnDelete(DeleteBehavior.NoAction);
+        b.HasOne(x => x.BuildRegistry).WithMany().HasForeignKey(x => x.BuildRegistryId).OnDelete(DeleteBehavior.SetNull);
 
         b.ComplexProperty(x => x.Facts, f =>
         {
@@ -42,10 +47,16 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         {
             t.HasCheckConstraint("ck_servers_ssh_port", "ssh_port BETWEEN 1 AND 65535");
             t.HasCheckConstraint("ck_servers_max_concurrent_builds", "max_concurrent_builds >= 1");
+            t.HasCheckConstraint("ck_servers_build_quota",
+                "(build_cpu_limit IS NULL OR build_cpu_limit > 0) AND (build_memory_limit_bytes IS NULL OR build_memory_limit_bytes > 0)");
+            t.HasCheckConstraint("ck_servers_mesh_listen_port", "mesh_listen_port IS NULL OR mesh_listen_port BETWEEN 1 AND 65535");
         });
         b.HasIndex(x => new { x.OrganizationId, x.Name }).IsUnique().HasFilter("deleted_at IS NULL");
         b.HasIndex(x => x.SshCredentialSecretId);
         b.HasIndex(x => x.CertSerial);
+        b.HasIndex(x => x.BuildRegistryId);
+        // A mesh address belongs to one server (ADR 0012); a deleted server keeps its row and its address.
+        b.HasIndex(x => x.MeshAddress).IsUnique().HasFilter("mesh_address IS NOT NULL");
     }
 }
 

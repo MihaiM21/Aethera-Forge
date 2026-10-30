@@ -52,6 +52,7 @@ internal sealed class RegistryConfiguration : IEntityTypeConfiguration<Registry>
         b.Property(x => x.Name).HasMaxLength(200);
         b.Property(x => x.Url).HasMaxLength(500);
         b.Property(x => x.Username).HasMaxLength(200);
+        b.Property(x => x.Namespace).HasMaxLength(255);
         b.HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.PasswordSecret).WithMany().HasForeignKey(x => x.PasswordSecretId).OnDelete(DeleteBehavior.NoAction);
         b.HasIndex(x => new { x.OrganizationId, x.Name }).IsUnique().HasFilter("deleted_at IS NULL");

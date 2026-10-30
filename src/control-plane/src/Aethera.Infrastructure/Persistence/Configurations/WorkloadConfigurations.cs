@@ -38,6 +38,7 @@ internal sealed class WorkloadConfiguration : IEntityTypeConfiguration<Workload>
             r.Property(x => x.MemoryLimitBytes).HasColumnName("memory_limit_bytes");
             r.Property(x => x.MemoryReservationBytes).HasColumnName("memory_reservation_bytes");
             r.Property(x => x.PidsLimit).HasColumnName("pids_limit");
+            r.Property(x => x.Priority).HasColumnName("priority");
             r.ComplexProperty(x => x.HealthCheck, h =>
             {
                 h.Property(x => x.Type).HasColumnName("health_check_type");
@@ -67,6 +68,17 @@ internal sealed class ApplicationConfiguration : IEntityTypeConfiguration<Applic
         b.HasOne(x => x.BuildConfig).WithOne(x => x.Application).HasForeignKey<BuildConfig>(x => x.ApplicationId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.ImageSource).WithOne(x => x.Application).HasForeignKey<ImageSource>(x => x.ApplicationId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.ComposeSource).WithOne(x => x.Application).HasForeignKey<ComposeSource>(x => x.ApplicationId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.BuildServer).WithMany().HasForeignKey(x => x.BuildServerId).OnDelete(DeleteBehavior.SetNull);
+        b.HasIndex(x => x.BuildServerId);
+
+        // Columns of the workload row (ADR 0012), null on service rows.
+        b.ComplexProperty(x => x.Previews, p =>
+        {
+            p.Property(x => x.Enabled).HasColumnName("previews_enabled");
+            p.Property(x => x.AllowForks).HasColumnName("preview_allow_forks");
+            p.Property(x => x.ServerId).HasColumnName("preview_server_id");
+            p.Property(x => x.MaxActive).HasColumnName("preview_max_active");
+        });
     }
 }
 
@@ -159,7 +171,8 @@ internal sealed class EnvironmentVariableConfiguration : IEntityTypeConfiguratio
         b.Property(x => x.Key).HasMaxLength(255);
         b.HasOne(x => x.Workload).WithMany(x => x.EnvironmentVariables).HasForeignKey(x => x.WorkloadId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Secret).WithMany().HasForeignKey(x => x.SecretId).OnDelete(DeleteBehavior.NoAction);
-        b.HasIndex(x => new { x.WorkloadId, x.Key }).IsUnique();
+        // A preview variable (ADR 0012) may share its key with a regular one, which it overrides in previews.
+        b.HasIndex(x => new { x.WorkloadId, x.Key, x.IsPreview }).IsUnique();
         b.HasIndex(x => x.SecretId);
     }
 }
@@ -291,5 +304,31 @@ internal sealed class WebhookDeliveryConfiguration : IEntityTypeConfiguration<We
         // The provider's delivery id is the idempotency key of the delivery.
         b.HasIndex(x => new { x.EndpointId, x.DeliveryId }).IsUnique();
         b.HasIndex(x => new { x.EndpointId, x.ReceivedAt }).IsDescending(false, true);
+    }
+}
+
+internal sealed class PreviewEnvironmentConfiguration : IEntityTypeConfiguration<PreviewEnvironment>
+{
+    public void Configure(EntityTypeBuilder<PreviewEnvironment> b)
+    {
+        b.ToTable("previews", t => t.HasCheckConstraint("ck_previews_number", "number >= 1"));
+        b.Ignore(x => x.IsActive);
+        b.Property(x => x.Title).HasMaxLength(500);
+        b.Property(x => x.AuthorLogin).HasMaxLength(255);
+        b.Property(x => x.SourceBranch).HasMaxLength(255);
+        b.Property(x => x.SourceRepositoryUrl).HasMaxLength(1000);
+        b.Property(x => x.HeadSha).HasMaxLength(64);
+        b.Property(x => x.Hostname).HasMaxLength(253);
+        b.Property(x => x.StatusReason).HasMaxLength(Deployment.MaxFailureReasonLength);
+        b.Property(x => x.ProviderCommentId).HasMaxLength(64);
+        b.Property(x => x.CommentError).HasMaxLength(1000);
+        b.HasOne(x => x.Application).WithMany().HasForeignKey(x => x.ApplicationId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Server).WithMany().HasForeignKey(x => x.ServerId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Deployment>().WithMany().HasForeignKey(x => x.CurrentDeploymentId).OnDelete(DeleteBehavior.SetNull);
+        b.HasIndex(x => new { x.ApplicationId, x.Number }).IsUnique();
+        b.HasIndex(x => new { x.Status, x.LastEventAt });
+        b.HasIndex(x => x.ServerId);
+        b.HasIndex(x => x.CurrentDeploymentId);
+        b.HasIndex(x => x.Hostname).IsUnique().HasFilter("hostname IS NOT NULL AND removed_at IS NULL");
     }
 }

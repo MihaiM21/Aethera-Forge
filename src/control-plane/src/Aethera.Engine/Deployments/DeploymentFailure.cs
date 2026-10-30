@@ -17,6 +17,9 @@ public static class FailureCodes
     public const string ServerUnavailable = "server.unavailable";
     public const string ContainerFailed = "container.failed";
     public const string NetworkFailed = "network.failed";
+
+    /// <summary>A port is published on the private network of a server that has no mesh address (ADR 0012).</summary>
+    public const string NoMeshAddress = "network.no_mesh_address";
     public const string HealthTimeout = "health.timeout";
     public const string ImageMissing = "image.missing";
     public const string UnknownStrategy = "strategy.unknown";

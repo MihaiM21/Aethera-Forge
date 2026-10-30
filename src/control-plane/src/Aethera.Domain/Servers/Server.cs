@@ -61,6 +61,36 @@ public enum ReachabilityStatus
     Unreachable = 2,
 }
 
+/// <summary>How a server joins the private mesh (ADR 0012).</summary>
+public enum MeshProvider
+{
+    None = 0,
+
+    /// <summary>Kernel WireGuard managed by the agent (interface <c>aethera0</c>).</summary>
+    WireGuard = 1,
+
+    /// <summary>An existing tailnet: the address of <c>tailscale0</c> is used, nothing is configured.</summary>
+    Tailscale = 2,
+}
+
+/// <summary>The server's state in the mesh (ADR 0012).</summary>
+public enum MeshStatus
+{
+    Disabled = 0,
+
+    /// <summary>Waiting for the server's key or its first apply.</summary>
+    Pending = 1,
+
+    /// <summary>Every peer had a handshake in the last 3 minutes.</summary>
+    Up = 2,
+
+    /// <summary>The interface is up but some peers are silent.</summary>
+    Degraded = 3,
+
+    /// <summary>The last apply failed; <see cref="Server.MeshError"/> says why.</summary>
+    Failed = 4,
+}
+
 /// <summary>Facts discovered by the agent / SSH probe (spec §55). All optional until first discovery.</summary>
 public class ServerFacts
 {
@@ -114,6 +144,38 @@ public class Server : SoftDeletableEntity
     /// <summary>Cap on parallel builds on this server (ADR 0004); small VPSs keep the default of 1.</summary>
     public int MaxConcurrentBuilds { get; set; } = 1;
 
+    /// <summary>Build quota (ADR 0012): CPU cores of the BuildKit builder container. Null = unlimited (the daemon's own builder).</summary>
+    public double? BuildCpuLimit { get; set; }
+
+    /// <summary>Build quota (ADR 0012): memory of the BuildKit builder container. Null = unlimited.</summary>
+    public long? BuildMemoryLimitBytes { get; set; }
+
+    /// <summary>Where images built here for another server are pushed (ADR 0012). Null = building for another server is refused.</summary>
+    public Guid? BuildRegistryId { get; set; }
+    public Registry? BuildRegistry { get; set; }
+
+    // The private mesh (ADR 0012).
+    public MeshProvider MeshProvider { get; set; } = MeshProvider.None;
+
+    /// <summary>The server's address in the mesh (no prefix), allocated from the mesh CIDR or read from <c>tailscale0</c>.</summary>
+    public string? MeshAddress { get; set; }
+
+    /// <summary>Base64 WireGuard public key reported by the agent; the private key never leaves the server.</summary>
+    public string? MeshPublicKey { get; set; }
+
+    /// <summary>"host:port" peers dial; null = <c>&lt;public ip&gt;:&lt;listen port&gt;</c>.</summary>
+    public string? MeshEndpoint { get; set; }
+
+    /// <summary>WireGuard UDP port; null = the instance's mesh setting (51820).</summary>
+    public int? MeshListenPort { get; set; }
+
+    public MeshStatus MeshStatus { get; private set; } = MeshStatus.Disabled;
+    public DateTimeOffset? MeshStatusChangedAt { get; private set; }
+    public string? MeshError { get; set; }
+
+    /// <summary>Most recent handshake with any peer.</summary>
+    public DateTimeOffset? MeshHandshakeAt { get; set; }
+
     /// <summary>SSH host key fingerprint pinned on first connect (TOFU).</summary>
     public string? SshHostKeyFingerprint { get; set; }
 
@@ -158,6 +220,14 @@ public class Server : SoftDeletableEntity
         if (DockerStatus == status) return false;
         DockerStatus = status;
         DockerStatusChangedAt = now;
+        return true;
+    }
+
+    public bool SetMeshStatus(MeshStatus status, DateTimeOffset now)
+    {
+        if (MeshStatus == status) return false;
+        MeshStatus = status;
+        MeshStatusChangedAt = now;
         return true;
     }
 

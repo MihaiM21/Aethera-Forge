@@ -1028,6 +1028,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("build_id");
 
+                    b.Property<Guid?>("BuildServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("build_server_id");
+
                     b.Property<string>("CommitAuthor")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
@@ -1111,6 +1115,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("number");
 
+                    b.Property<Guid?>("PreviewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("preview_id");
+
                     b.Property<string>("Ref")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
@@ -1184,11 +1192,17 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.HasIndex("BuildId")
                         .HasDatabaseName("ix_deployments_build_id");
 
+                    b.HasIndex("BuildServerId")
+                        .HasDatabaseName("ix_deployments_build_server_id");
+
                     b.HasIndex("EnvironmentId")
                         .HasDatabaseName("ix_deployments_environment_id");
 
                     b.HasIndex("JobId")
                         .HasDatabaseName("ix_deployments_job_id");
+
+                    b.HasIndex("PreviewId")
+                        .HasDatabaseName("ix_deployments_preview_id");
 
                     b.HasIndex("RollbackOfDeploymentId")
                         .HasDatabaseName("ix_deployments_rollback_of_deployment_id");
@@ -1456,6 +1470,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_build_time");
 
+                    b.Property<bool>("IsPreview")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_preview");
+
                     b.Property<bool>("IsRuntime")
                         .HasColumnType("boolean")
                         .HasColumnName("is_runtime");
@@ -1494,9 +1512,9 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.HasIndex("SecretId")
                         .HasDatabaseName("ix_environment_variables_secret_id");
 
-                    b.HasIndex("WorkloadId", "Key")
+                    b.HasIndex("WorkloadId", "Key", "IsPreview")
                         .IsUnique()
-                        .HasDatabaseName("ix_environment_variables_workload_id_key");
+                        .HasDatabaseName("ix_environment_variables_workload_id_key_is_preview");
 
                     b.ToTable("environment_variables", null, t =>
                         {
@@ -2491,6 +2509,148 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.ToTable("organization_members", (string)null);
                 });
 
+            modelBuilder.Entity("Aethera.Domain.PreviewEnvironment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("application_id");
+
+                    b.Property<string>("AuthorLogin")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("author_login");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<string>("CommentError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("comment_error");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CurrentDeploymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_deployment_id");
+
+                    b.Property<bool>("FromFork")
+                        .HasColumnType("boolean")
+                        .HasColumnName("from_fork");
+
+                    b.Property<string>("HeadSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("head_sha");
+
+                    b.Property<string>("Hostname")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("hostname");
+
+                    b.Property<DateTimeOffset?>("LastEventAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_event_at");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderCommentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("provider_comment_id");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("SourceBranch")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("source_branch");
+
+                    b.Property<string>("SourceRepositoryUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("source_repository_url");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_changed_at");
+
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("status_reason");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_previews");
+
+                    b.HasIndex("CurrentDeploymentId")
+                        .HasDatabaseName("ix_previews_current_deployment_id");
+
+                    b.HasIndex("Hostname")
+                        .IsUnique()
+                        .HasDatabaseName("ix_previews_hostname")
+                        .HasFilter("hostname IS NOT NULL AND removed_at IS NULL");
+
+                    b.HasIndex("ServerId")
+                        .HasDatabaseName("ix_previews_server_id");
+
+                    b.HasIndex("ApplicationId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_previews_application_id_number");
+
+                    b.HasIndex("Status", "LastEventAt")
+                        .HasDatabaseName("ix_previews_status_last_event_at");
+
+                    b.ToTable("previews", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_previews_number", "number >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Aethera.Domain.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2629,6 +2789,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<string>("Namespace")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("namespace");
 
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
@@ -3065,6 +3230,18 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("agent_version");
 
+                    b.Property<double?>("BuildCpuLimit")
+                        .HasColumnType("double precision")
+                        .HasColumnName("build_cpu_limit");
+
+                    b.Property<long?>("BuildMemoryLimitBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("build_memory_limit_bytes");
+
+                    b.Property<Guid?>("BuildRegistryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("build_registry_id");
+
                     b.Property<DateTimeOffset?>("CertExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("cert_expires_at");
@@ -3116,6 +3293,50 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Property<int>("MaxConcurrentBuilds")
                         .HasColumnType("integer")
                         .HasColumnName("max_concurrent_builds");
+
+                    b.Property<string>("MeshAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("mesh_address");
+
+                    b.Property<string>("MeshEndpoint")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("mesh_endpoint");
+
+                    b.Property<string>("MeshError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("mesh_error");
+
+                    b.Property<DateTimeOffset?>("MeshHandshakeAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mesh_handshake_at");
+
+                    b.Property<int?>("MeshListenPort")
+                        .HasColumnType("integer")
+                        .HasColumnName("mesh_listen_port");
+
+                    b.Property<string>("MeshProvider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("mesh_provider");
+
+                    b.Property<string>("MeshPublicKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("mesh_public_key");
+
+                    b.Property<string>("MeshStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("mesh_status");
+
+                    b.Property<DateTimeOffset?>("MeshStatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mesh_status_changed_at");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -3248,8 +3469,16 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_servers");
 
+                    b.HasIndex("BuildRegistryId")
+                        .HasDatabaseName("ix_servers_build_registry_id");
+
                     b.HasIndex("CertSerial")
                         .HasDatabaseName("ix_servers_cert_serial");
+
+                    b.HasIndex("MeshAddress")
+                        .IsUnique()
+                        .HasDatabaseName("ix_servers_mesh_address")
+                        .HasFilter("mesh_address IS NOT NULL");
 
                     b.HasIndex("SshCredentialSecretId")
                         .HasDatabaseName("ix_servers_ssh_credential_secret_id");
@@ -3261,7 +3490,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
                     b.ToTable("servers", null, t =>
                         {
+                            t.HasCheckConstraint("ck_servers_build_quota", "(build_cpu_limit IS NULL OR build_cpu_limit > 0) AND (build_memory_limit_bytes IS NULL OR build_memory_limit_bytes > 0)");
+
                             t.HasCheckConstraint("ck_servers_max_concurrent_builds", "max_concurrent_builds >= 1");
+
+                            t.HasCheckConstraint("ck_servers_mesh_listen_port", "mesh_listen_port IS NULL OR mesh_listen_port BETWEEN 1 AND 65535");
 
                             t.HasCheckConstraint("ck_servers_ssh_port", "ssh_port BETWEEN 1 AND 65535");
                         });
@@ -3820,6 +4053,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                                 .HasColumnType("integer")
                                 .HasColumnName("pids_limit");
 
+                            b1.Property<string>("Priority")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("priority");
+
                             b1.Property<string>("RestartPolicy")
                                 .IsRequired()
                                 .HasMaxLength(32)
@@ -4062,6 +4301,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("BindScope")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("bind_scope");
+
                     b.Property<int>("ContainerPort")
                         .HasColumnType("integer")
                         .HasColumnName("container_port");
@@ -4117,11 +4362,39 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                 {
                     b.HasBaseType("Aethera.Domain.Workload");
 
+                    b.Property<Guid?>("BuildServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("build_server_id");
+
                     b.Property<string>("SourceKind")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("source_kind");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Previews", "Aethera.Domain.Application.Previews#PreviewConfig", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<bool>("AllowForks")
+                                .HasColumnType("boolean")
+                                .HasColumnName("preview_allow_forks");
+
+                            b1.Property<bool>("Enabled")
+                                .HasColumnType("boolean")
+                                .HasColumnName("previews_enabled");
+
+                            b1.Property<int?>("MaxActive")
+                                .HasColumnType("integer")
+                                .HasColumnName("preview_max_active");
+
+                            b1.Property<Guid?>("ServerId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("preview_server_id");
+                        });
+
+                    b.HasIndex("BuildServerId")
+                        .HasDatabaseName("ix_workloads_build_server_id");
 
                     b.ToTable(t =>
                         {
@@ -4361,6 +4634,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_deployments_builds_build_id");
 
+                    b.HasOne("Aethera.Domain.Server", null)
+                        .WithMany()
+                        .HasForeignKey("BuildServerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_deployments_servers_build_server_id");
+
                     b.HasOne("Aethera.Domain.ProjectEnvironment", null)
                         .WithMany()
                         .HasForeignKey("EnvironmentId")
@@ -4373,6 +4652,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_deployments_jobs_job_id");
+
+                    b.HasOne("Aethera.Domain.PreviewEnvironment", "Preview")
+                        .WithMany()
+                        .HasForeignKey("PreviewId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_deployments_previews_preview_id");
 
                     b.HasOne("Aethera.Domain.Deployment", "RollbackOfDeployment")
                         .WithMany()
@@ -4405,6 +4690,8 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_deployments_workloads_workload_id");
+
+                    b.Navigation("Preview");
 
                     b.Navigation("RollbackOfDeployment");
 
@@ -4729,6 +5016,33 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Aethera.Domain.PreviewEnvironment", b =>
+                {
+                    b.HasOne("Aethera.Domain.Application", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_previews_applications_application_id");
+
+                    b.HasOne("Aethera.Domain.Deployment", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentDeploymentId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_previews_deployments_current_deployment_id");
+
+                    b.HasOne("Aethera.Domain.Server", "Server")
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_previews_servers_server_id");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("Server");
+                });
+
             modelBuilder.Entity("Aethera.Domain.Project", b =>
                 {
                     b.HasOne("Aethera.Domain.Organization", "Organization")
@@ -4847,6 +5161,12 @@ namespace Aethera.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Aethera.Domain.Server", b =>
                 {
+                    b.HasOne("Aethera.Domain.Registry", "BuildRegistry")
+                        .WithMany()
+                        .HasForeignKey("BuildRegistryId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_servers_registries_build_registry_id");
+
                     b.HasOne("Aethera.Domain.Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
@@ -4859,6 +5179,8 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasForeignKey("SshCredentialSecretId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_servers_secrets_ssh_credential_secret_id");
+
+                    b.Navigation("BuildRegistry");
 
                     b.Navigation("Organization");
 
@@ -5048,6 +5370,17 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_workload_ports_workloads_workload_id");
 
                     b.Navigation("Workload");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.Application", b =>
+                {
+                    b.HasOne("Aethera.Domain.Server", "BuildServer")
+                        .WithMany()
+                        .HasForeignKey("BuildServerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_workloads_servers_build_server_id");
+
+                    b.Navigation("BuildServer");
                 });
 
             modelBuilder.Entity("Aethera.Domain.Deployment", b =>

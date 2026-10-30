@@ -11,6 +11,7 @@ import "aethera/agent/v1/build.proto";
 import "aethera/agent/v1/common.proto";
 import "aethera/agent/v1/discovery.proto";
 import "aethera/agent/v1/docker.proto";
+import "aethera/agent/v1/mesh.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -86,6 +87,10 @@ message Command {
     BackupRun backup_run = 120;
     BackupRestore backup_restore = 121;
     BackupDelete backup_delete = 122;
+    // Private mesh between servers (ADR 0012).
+    MeshApply mesh_apply = 130;
+    MeshStatus mesh_status = 131;
+    MeshRemove mesh_remove = 132;
   }
 }
 
@@ -327,5 +332,6 @@ message CommandResult {
     ContainerExecResult container_exec = 110;
     BackupRunResult backup_run = 120;
     BackupRestoreResult backup_restore = 121;
+    MeshState mesh = 130;
   }
 }

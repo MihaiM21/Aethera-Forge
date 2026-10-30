@@ -148,6 +148,10 @@ public sealed class CommandMapperTests
             [new BackupRestoreCommand("b1", new LocalBackupLocationSpec("x/b.aeb"), new BackupEncryptionSpec(new DomainSecretValue("a2V5"), "mk1-abcdef01"),
                 new VolumeRestoreSink("data", ClearFirst: true), new string('b', 64)), Command.RequestOneofCase.BackupRestore],
             [new BackupDeleteCommand([new LocalBackupLocationSpec("x/b.aeb")]), Command.RequestOneofCase.BackupDelete],
+            [new MeshApplyCommand(MeshProviderKind.WireGuard, "10.210.0.2/16", "10.210.0.0/16", 51820,
+                [new MeshPeerSpec("cGVlcg==", "203.0.113.7:51820", ["10.210.0.3/32"], Name: "srv-2")]), Command.RequestOneofCase.MeshApply],
+            [new MeshStatusCommand(MeshProviderKind.Tailscale, "tailscale0"), Command.RequestOneofCase.MeshStatus],
+            [new MeshRemoveCommand(), Command.RequestOneofCase.MeshRemove],
         };
 
     [Fact]
@@ -221,6 +225,58 @@ public sealed class CommandMapperTests
         // Commands with nothing to return accept an empty result or none at all.
         Assert.Same(D.Unit.Value, Mapper.For(typeof(ContainerRemoveCommand)).Read(new CommandResult { Empty = new EmptyResult() }));
         Assert.Same(D.Unit.Value, Mapper.For(typeof(ContainerRemoveCommand)).Read(new CommandResult()));
+    }
+
+    [Fact]
+    public void Mesh_commands_carry_the_peers_and_read_the_state_back()
+    {
+        var apply = new MeshApplyCommand(MeshProviderKind.WireGuard, "10.210.0.2/16", "10.210.0.0/16", 51820,
+            [new MeshPeerSpec("cGVlcg==", null, ["10.210.0.3/32"], Name: "srv-2")]);
+        var proto = Mapper.ToProto(apply, "cmd-1", new CommandOptions { IdempotencyKey = "k" }, DateTimeOffset.UtcNow.AddMinutes(1)).MeshApply;
+        Assert.Equal(MeshProvider.Wireguard, proto.Provider);
+        Assert.Equal("aethera0", proto.InterfaceName);
+        Assert.Equal("10.210.0.0/16", proto.Cidr);
+        var peer = Assert.Single(proto.Peers);
+        Assert.Equal("", peer.Endpoint); // the peer dials in
+        Assert.Equal(25u, peer.PersistentKeepaliveSeconds);
+        Assert.Equal(["10.210.0.3/32"], peer.AllowedIps);
+        Assert.Equal("mesh.wireguard", Mapper.CapabilityOf(apply));
+        Assert.Equal("mesh.tailscale", Mapper.CapabilityOf(new MeshStatusCommand(MeshProviderKind.Tailscale)));
+
+        var handshake = DateTimeOffset.Parse("2026-10-30T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var state = (MeshStateInfo)Mapper.For(typeof(MeshApplyCommand)).Read(new CommandResult
+        {
+            Mesh = new MeshState
+            {
+                Provider = MeshProvider.Wireguard, InterfaceName = "aethera0", Up = true, PublicKey = "c2VsZg==", Addresses = { "10.210.0.2/16" }, ListenPort = 51820,
+                Peers =
+                {
+                    new MeshPeerState { PublicKey = "cGVlcg==", LastHandshake = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(handshake), RxBytes = 7 },
+                    new MeshPeerState { PublicKey = "b3RoZXI=" },
+                },
+            },
+        });
+        Assert.True(state.Up);
+        Assert.Equal("c2VsZg==", state.PublicKey);
+        Assert.Null(state.Error);
+        Assert.Equal(handshake, state.Peers[0].LastHandshake);
+        Assert.Null(state.Peers[1].LastHandshake); // never shook hands
+        Assert.Null(state.Peers[1].Endpoint);
+    }
+
+    [Fact]
+    public void The_build_quota_and_the_priority_reach_the_agent()
+    {
+        var build = Mapper.ToProto(new BuildImageCommand(new BuildSpec("b", BuildEngineKind.Dockerfile, ["t"]) { BuilderLimits = new ResourceLimitsSpec(CpuLimitCores: 2, MemoryLimitBytes: 4L << 30) }),
+            "cmd-1", new CommandOptions { IdempotencyKey = "k" }, DateTimeOffset.UtcNow.AddMinutes(1)).Build;
+        Assert.Equal(2, build.BuilderLimits.CpuLimitCores);
+        Assert.Equal(4L << 30, build.BuilderLimits.MemoryLimitBytes);
+        Assert.Null(Mapper.ToProto(new BuildImageCommand(new BuildSpec("b", BuildEngineKind.Dockerfile, ["t"])), "cmd-2",
+            new CommandOptions { IdempotencyKey = "k2" }, DateTimeOffset.UtcNow.AddMinutes(1)).Build.BuilderLimits);
+
+        var create = Mapper.ToProto(new ContainerCreateCommand(new DomainContainerSpec("nginx", "web") { Resources = new ResourceLimitsSpec(OomScoreAdj: -500) }),
+            "cmd-3", new CommandOptions { IdempotencyKey = "k3" }, DateTimeOffset.UtcNow.AddMinutes(1)).ContainerCreate;
+        Assert.Equal(-500, create.Spec.Resources.OomScoreAdj);
     }
 
     [Fact]

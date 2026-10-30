@@ -969,8 +969,11 @@ type ResourceLimits struct {
 	// Memory+swap ceiling; -1 = unlimited swap, 0 = unset.
 	MemorySwapLimitBytes int64 `protobuf:"varint,5,opt,name=memory_swap_limit_bytes,json=memorySwapLimitBytes,proto3" json:"memory_swap_limit_bytes,omitempty"`
 	// Max processes; 0 = unset, -1 = unlimited.
-	PidsLimit     int64  `protobuf:"varint,6,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`
-	CpusetCpus    string `protobuf:"bytes,7,opt,name=cpuset_cpus,json=cpusetCpus,proto3" json:"cpuset_cpus,omitempty"`
+	PidsLimit  int64  `protobuf:"varint,6,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`
+	CpusetCpus string `protobuf:"bytes,7,opt,name=cpuset_cpus,json=cpusetCpus,proto3" json:"cpuset_cpus,omitempty"`
+	// OOM killer preference, -1000..1000; 0 = Docker's default (workload
+	// priority, ADR 0012: high = -500, low = 500).
+	OomScoreAdj   int32 `protobuf:"varint,8,opt,name=oom_score_adj,json=oomScoreAdj,proto3" json:"oom_score_adj,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1052,6 +1055,13 @@ func (x *ResourceLimits) GetCpusetCpus() string {
 		return x.CpusetCpus
 	}
 	return ""
+}
+
+func (x *ResourceLimits) GetOomScoreAdj() int32 {
+	if x != nil {
+		return x.OomScoreAdj
+	}
+	return 0
 }
 
 type RestartPolicy struct {
@@ -1138,7 +1148,7 @@ const file_aethera_agent_v1_common_proto_rawDesc = "" +
 	"\x11NetworkAttachment\x12\x18\n" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x18\n" +
 	"\aaliases\x18\x02 \x03(\tR\aaliases\x12!\n" +
-	"\fipv4_address\x18\x03 \x01(\tR\vipv4Address\"\xcb\x02\n" +
+	"\fipv4_address\x18\x03 \x01(\tR\vipv4Address\"\xef\x02\n" +
 	"\x0eResourceLimits\x12&\n" +
 	"\x0fcpu_limit_cores\x18\x01 \x01(\x01R\rcpuLimitCores\x122\n" +
 	"\x15cpu_reservation_cores\x18\x02 \x01(\x01R\x13cpuReservationCores\x12,\n" +
@@ -1148,7 +1158,8 @@ const file_aethera_agent_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"pids_limit\x18\x06 \x01(\x03R\tpidsLimit\x12\x1f\n" +
 	"\vcpuset_cpus\x18\a \x01(\tR\n" +
-	"cpusetCpus\"x\n" +
+	"cpusetCpus\x12\"\n" +
+	"\room_score_adj\x18\b \x01(\x05R\voomScoreAdj\"x\n" +
 	"\rRestartPolicy\x127\n" +
 	"\x04name\x18\x01 \x01(\x0e2#.aethera.agent.v1.RestartPolicyNameR\x04name\x12.\n" +
 	"\x13maximum_retry_count\x18\x02 \x01(\x05R\x11maximumRetryCount*\x84\x01\n" +

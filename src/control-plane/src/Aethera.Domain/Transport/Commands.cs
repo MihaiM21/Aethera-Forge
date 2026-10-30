@@ -167,3 +167,21 @@ public sealed record BackupRestoreCommand(
 /// <summary>Deletes stored backup objects (retention); missing objects are not an error.</summary>
 public sealed record BackupDeleteCommand(IReadOnlyList<BackupLocationSpec> Locations)
     : ServerCommand<Unit>("backup.delete", TransportCapabilities.ContainerOps, TimeSpan.FromMinutes(5));
+
+// ---- mesh (ADR 0012) ------------------------------------------------------------------------------------------------------------------
+
+/// <summary>
+/// Brings the mesh interface to exactly this configuration (peers not listed are removed). The agent keeps its WireGuard private key; the
+/// result carries the public key. For Tailscale it only reads the <c>tailscale0</c> address.
+/// </summary>
+/// <param name="Address">This server's address with the mesh prefix, e.g. 10.210.0.3/16; must be inside <paramref name="Cidr"/>.</param>
+public sealed record MeshApplyCommand(
+    MeshProviderKind Provider, string Address, string Cidr, int ListenPort, IReadOnlyList<MeshPeerSpec> Peers, string InterfaceName = "aethera0", int Mtu = 0)
+    : ServerCommand<MeshStateInfo>("mesh.apply", TransportCapabilities.Mesh, TimeSpan.FromMinutes(2));
+
+public sealed record MeshStatusCommand(MeshProviderKind Provider, string InterfaceName = "aethera0")
+    : ServerCommand<MeshStateInfo>("mesh.status", TransportCapabilities.Mesh, TimeSpan.FromSeconds(30), ReadOnly: true);
+
+/// <summary>Deletes the WireGuard interface; the key pair stays so a server that rejoins keeps its identity.</summary>
+public sealed record MeshRemoveCommand(string InterfaceName = "aethera0")
+    : ServerCommand<Unit>("mesh.remove", TransportCapabilities.Mesh, TimeSpan.FromMinutes(1));
