@@ -7,6 +7,7 @@ using Aethera.Domain;
 using Aethera.Engine.Git;
 using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Previews;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
@@ -114,7 +115,7 @@ internal static class WebhookEndpoints
     // ---- receiver -------------------------------------------------------------------------------------------------------------------
 
     private static async Task<IResult> Receive(
-        Guid endpointId, HttpRequest request, AetheraDbContext db, SecretVault vault, DeploymentService deployments, IClock clock,
+        Guid endpointId, HttpRequest request, AetheraDbContext db, SecretVault vault, DeploymentService deployments, PreviewService previews, IClock clock,
         ILoggerFactory loggers, CancellationToken ct)
     {
         var log = loggers.CreateLogger("Aethera.Webhooks");
@@ -150,16 +151,23 @@ internal static class WebhookEndpoints
         var delivery = new WebhookDelivery
         {
             EndpointId = endpoint.Id, DeliveryId = evt.DeliveryId.Length > 255 ? evt.DeliveryId[..255] : evt.DeliveryId, EventType = Trim(evt.EventType, 64),
-            Ref = Trim(evt.Ref, 255), CommitSha = Trim(evt.CommitSha, 64), SignatureValid = true, ReceivedAt = clock.UtcNow, Outcome = WebhookOutcome.Accepted,
+            Ref = Trim(evt.Ref ?? (evt.PullRequest is { } pull ? $"pull/{pull.Number}" : null), 255), CommitSha = Trim(evt.CommitSha, 64), SignatureValid = true,
+            ReceivedAt = clock.UtcNow, Outcome = WebhookOutcome.Accepted,
         };
         if (await db.WebhookDeliveries.AnyAsync(d => d.EndpointId == endpoint.Id && d.DeliveryId == delivery.DeliveryId, ct))
             return Results.Ok(new WebhookResultDto(WebhookOutcome.Duplicate, "This delivery was already processed.", null));
 
         var app = await db.Applications.Include(a => a.GitSource).FirstOrDefaultAsync(a => a.Id == endpoint.WorkloadId, ct);
-        var (outcome, detail) = Decide(evt, endpoint, app);
+        var (outcome, detail) = evt.PullRequest is null ? Decide(evt, endpoint, app) : (WebhookOutcome.Ignored, (string?)null);
         Deployment? deployment = null;
         Guid? jobId = null;
-        if (outcome == WebhookOutcome.Accepted)
+        if (evt.PullRequest is { } pullRequest)
+        {
+            // Pull and merge requests make previews (ADR 0012): the preview service decides, queues the deployment or the teardown, and says why not.
+            var handled = app is null ? PreviewEventResult.Ignored("The application no longer exists.") : await previews.HandleEventAsync(app, endpoint, pullRequest, ct);
+            (outcome, detail, deployment, jobId) = (handled.Outcome, handled.Detail, handled.Deployment, handled.JobId);
+        }
+        else if (outcome == WebhookOutcome.Accepted)
         {
             // The deployment row and job are created first; the delivery row then records which one the delivery caused.
             var queued = await deployments.DeployAsync(app!.Id, DeploymentTrigger.Webhook,

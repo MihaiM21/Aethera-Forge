@@ -276,7 +276,8 @@ public sealed class ScheduledTaskRunJobHandler : IJobHandler
     /// </summary>
     internal static DockerContainer? Pick(IReadOnlyList<DockerContainer>? containers, Workload workload)
     {
-        var running = (containers ?? []).Where(c => c.State == ContainerRunState.Running).ToList();
+        // A pull request preview carries the workload label too (ADR 0012) but is never the container a task runs in.
+        var running = (containers ?? []).Where(c => c.State == ContainerRunState.Running && !c.Labels.ContainsKey("aethera.preview")).ToList();
         if (running.Count <= 1) return running.FirstOrDefault();
         var current = workload.CurrentDeploymentId?.ToString();
         return running.OrderByDescending(c => current is not null && c.Labels.TryGetValue("aethera.deployment", out var d) && d == current)
@@ -288,7 +289,7 @@ public sealed class ScheduledTaskRunJobHandler : IJobHandler
     {
         var protector = sp.GetRequiredService<ISecretProtector>();
         var list = new List<EnvVarSpec>();
-        foreach (var variable in workload.EnvironmentVariables.Where(e => e.IsRuntime).OrderBy(e => e.Key, StringComparer.Ordinal))
+        foreach (var variable in workload.EnvironmentVariables.Where(e => e.IsRuntime && !e.IsPreview).OrderBy(e => e.Key, StringComparer.Ordinal))
         {
             if (variable.SecretId is not { } secretId)
             {

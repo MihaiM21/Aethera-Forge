@@ -68,6 +68,24 @@ internal static class GitProviderSupport
         return e.ValueKind == JsonValueKind.String ? e.GetString() : null;
     }
 
+    public static int? Int(JsonElement e, params string[] path)
+    {
+        foreach (var p in path)
+        {
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(p, out e)) return null;
+        }
+        return e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var value) ? value : null;
+    }
+
+    public static long? Long(JsonElement e, params string[] path)
+    {
+        foreach (var p in path)
+        {
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(p, out e)) return null;
+        }
+        return e.ValueKind == JsonValueKind.Number && e.TryGetInt64(out var value) ? value : null;
+    }
+
     public static bool IsZeroSha(string? sha) => sha is not null && sha.Length > 0 && sha.All(c => c == '0');
 
     public static JsonDocument? TryParse(ReadOnlySpan<byte> body)
@@ -101,6 +119,7 @@ public sealed class GitHubProvider : IGitProvider
         var type = GitProviderSupport.Header(headers, "X-GitHub-Event");
         var delivery = GitProviderSupport.Header(headers, "X-GitHub-Delivery");
         if (type is null || delivery is null) return null;
+        if (type == "pull_request") return ParsePullRequest(type, delivery, body);
         if (type != "push") return new(type, delivery, false, null, null, null, null, null, false);
 
         using var doc = GitProviderSupport.TryParse(body);
@@ -112,6 +131,41 @@ public sealed class GitHubProvider : IGitProvider
         return new(type, delivery, true, gitRef, GitProviderSupport.BranchOf(gitRef), sha,
             GitProviderSupport.Str(root, "head_commit", "message"), GitProviderSupport.Str(root, "head_commit", "author", "name"),
             deleted || GitProviderSupport.IsZeroSha(sha));
+    }
+
+    /// <summary>
+    /// <c>pull_request</c> (ADR 0012): opened, reopened and synchronize (new commits) deploy, closed removes (merged or not); every other action
+    /// (labeled, edited, review_requested...) is parsed as <see cref="PullRequestAction.Other"/>. A fork is a pull request whose head repository
+    /// is not its base repository; a head repository that is gone (a deleted fork) counts as a fork with no clone URL.
+    /// </summary>
+    private static WebhookEvent? ParsePullRequest(string type, string delivery, ReadOnlySpan<byte> body)
+    {
+        using var doc = GitProviderSupport.TryParse(body);
+        if (doc is null || doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("pull_request", out var pr) || pr.ValueKind != JsonValueKind.Object) return null;
+        var number = GitProviderSupport.Int(pr, "number") ?? GitProviderSupport.Int(root, "number");
+        var sha = GitProviderSupport.Str(pr, "head", "sha");
+        var source = GitProviderSupport.Str(pr, "head", "ref");
+        var target = GitProviderSupport.Str(pr, "base", "ref");
+        if (number is not > 0 || sha is null || source is null || target is null) return null;
+
+        var merged = pr.TryGetProperty("merged", out var m) && m.ValueKind == JsonValueKind.True;
+        var action = GitProviderSupport.Str(root, "action") switch
+        {
+            "opened" => PullRequestAction.Opened,
+            "reopened" => PullRequestAction.Reopened,
+            "synchronize" => PullRequestAction.Updated,
+            "closed" => merged ? PullRequestAction.Merged : PullRequestAction.Closed,
+            _ => PullRequestAction.Other,
+        };
+        var headRepo = GitProviderSupport.Str(pr, "head", "repo", "full_name");
+        var baseRepo = GitProviderSupport.Str(pr, "base", "repo", "full_name");
+        var fromFork = headRepo is null || baseRepo is null || !string.Equals(headRepo, baseRepo, StringComparison.OrdinalIgnoreCase);
+
+        var pullRequest = new PullRequestEvent(action, number.Value, GitProviderSupport.Str(pr, "title"), GitProviderSupport.Str(pr, "user", "login"),
+            source, target, sha, GitProviderSupport.Str(pr, "head", "repo", "clone_url") ?? "", fromFork);
+        return new(type, delivery, false, null, source, sha, GitProviderSupport.Str(pr, "title"), pullRequest.AuthorLogin, false, pullRequest);
     }
 }
 
@@ -130,6 +184,7 @@ public sealed class GitLabProvider : IGitProvider
         // Older GitLab versions send no delivery id; the body hash makes redeliveries of the same payload idempotent.
         var delivery = GitProviderSupport.Header(headers, "X-Gitlab-Event-UUID")
                        ?? Convert.ToHexString(SHA256.HashData(body)).ToLowerInvariant();
+        if (type == "Merge Request Hook") return ParseMergeRequest(type, delivery, body);
         if (type != "Push Hook") return new(type, delivery, false, null, null, null, null, null, false);
 
         using var doc = GitProviderSupport.TryParse(body);
@@ -147,6 +202,41 @@ public sealed class GitLabProvider : IGitProvider
         var after = GitProviderSupport.Str(root, "after");
         return new(type, delivery, true, gitRef, GitProviderSupport.BranchOf(gitRef), sha, message, author,
             GitProviderSupport.IsZeroSha(after) || GitProviderSupport.IsZeroSha(sha) && sha is not null);
+    }
+
+    /// <summary>
+    /// <c>Merge Request Hook</c> (ADR 0012): open, reopen, update with new commits (<c>oldrev</c> present: an update of the title or labels
+    /// carries none), close and merge. A fork is a merge request whose source project is not its target project.
+    /// </summary>
+    private static WebhookEvent? ParseMergeRequest(string type, string delivery, ReadOnlySpan<byte> body)
+    {
+        using var doc = GitProviderSupport.TryParse(body);
+        if (doc is null || doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("object_attributes", out var mr) || mr.ValueKind != JsonValueKind.Object) return null;
+        var number = GitProviderSupport.Int(mr, "iid");
+        var sha = GitProviderSupport.Str(mr, "last_commit", "id");
+        var source = GitProviderSupport.Str(mr, "source_branch");
+        var target = GitProviderSupport.Str(mr, "target_branch");
+        if (number is not > 0 || sha is null || source is null || target is null) return null;
+
+        var action = GitProviderSupport.Str(mr, "action") switch
+        {
+            "open" => PullRequestAction.Opened,
+            "reopen" => PullRequestAction.Reopened,
+            "update" when GitProviderSupport.Str(mr, "oldrev") is { Length: > 0 } => PullRequestAction.Updated,
+            "close" => PullRequestAction.Closed,
+            "merge" => PullRequestAction.Merged,
+            _ => PullRequestAction.Other,
+        };
+        var sourceProject = GitProviderSupport.Long(mr, "source_project_id");
+        var targetProject = GitProviderSupport.Long(mr, "target_project_id");
+        var fromFork = sourceProject is null || targetProject is null || sourceProject != targetProject;
+
+        var author = GitProviderSupport.Str(root, "user", "username");
+        var pullRequest = new PullRequestEvent(action, number.Value, GitProviderSupport.Str(mr, "title"), author, source, target, sha,
+            GitProviderSupport.Str(mr, "source", "git_http_url") ?? "", fromFork);
+        return new(type, delivery, false, null, source, sha, GitProviderSupport.Str(mr, "title"), author, false, pullRequest);
     }
 }
 

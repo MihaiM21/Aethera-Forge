@@ -38,7 +38,7 @@ internal static class ComposeEndpoints
 
         // Variables the file interpolates: plain values as they are; a secret's value never leaves the control plane here (a placeholder keeps
         // `${VAR:?}` checks from failing).
-        var env = app.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal)
+        var env = app.EnvironmentVariables.Where(e => !e.IsPreview).OrderBy(e => e.Key, StringComparer.Ordinal)
             .Select(e => EnvVarSpec.OfPlain(e.Key, e.SecretId is null ? e.Value ?? "" : "aethera-inspect-placeholder")).ToList();
         var name = $"{app.Slug}-{app.Id.ToString("N")[..8]}";
 

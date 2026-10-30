@@ -192,8 +192,8 @@ public class Deployment : MutableEntity
     /// <summary>Queued or somewhere in the pipeline.</summary>
     public bool IsInProgress => Status is DeploymentStatus.Queued or DeploymentStatus.InProgress;
 
-    /// <summary>Can be selected as a rollback target (the image may still have been pruned; check separately).</summary>
-    public bool CanRollbackTo => IsRollbackPoint && Status is DeploymentStatus.Running or DeploymentStatus.Stopped or DeploymentStatus.Superseded;
+    /// <summary>Can be selected as a rollback target (the image may still have been pruned; check separately). Never a pull request preview (ADR 0012).</summary>
+    public bool CanRollbackTo => PreviewId is null && IsRollbackPoint && Status is DeploymentStatus.Running or DeploymentStatus.Stopped or DeploymentStatus.Superseded;
 
     public TimeSpan? Duration => StartedAt is { } s && FinishedAt is { } f ? f - s : null;
 

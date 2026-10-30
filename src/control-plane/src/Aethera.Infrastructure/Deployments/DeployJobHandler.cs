@@ -6,6 +6,7 @@ using Aethera.Engine.Deployments;
 using Aethera.Engine.Proxy;
 using Aethera.Infrastructure.Jobs;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Previews;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -34,6 +35,8 @@ public sealed class DeployJobHandler : IJobHandler
         {
             // Notifications (ADR 0010): reads the stored outcome, publishes deployment.succeeded / deployment.failed, never throws.
             await Notifications.DeploymentNotifications.PublishOutcomeAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
+            // A pull request preview also says how it went on the pull request (ADR 0012); a no-op for every other deployment. Never throws.
+            await PreviewComments.PostForDeploymentAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
         }
     }
 
@@ -45,7 +48,16 @@ public sealed class DeployJobHandler : IJobHandler
     {
         public Workload? App { get; set; }
         public Deployment? Previous { get; set; }
+
+        /// <summary>Set for a pull request preview (ADR 0012): its status is written in place of the workload's.</summary>
+        public PreviewEnvironment? Preview { get; set; }
     }
+
+    /// <summary>Gives the workload, or the preview of a preview deployment, its status back after a deployment that did not become the live one.</summary>
+    private static Task RestoreAsync(AetheraDbContext db, IClock clock, RunState state, Deployment? previous, string reason, bool failed) =>
+        state.Preview is { } preview
+            ? PreviewDeployments.RestoreAsync(db, clock, preview, previous, reason, failed)
+            : RestoreStatusAsync(db, clock, state.App!, previous, reason, failed);
 
     private async Task ExecuteDeploymentAsync(JobContext context, CancellationToken cancellationToken)
     {
@@ -85,7 +97,7 @@ public sealed class DeployJobHandler : IJobHandler
             // The server could not be reached outside a pipeline step (reading the compose file): the same as a transient step failure.
             if (!finalAttempt)
             {
-                await NoteRetryAsync(db, clock, state.App, context.Secrets.Redact(ex.Message));
+                await NoteRetryAsync(db, clock, state, context.Secrets.Redact(ex.Message));
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
             }
 
@@ -129,11 +141,11 @@ public sealed class DeployJobHandler : IJobHandler
                 }
             }
 
-            if (ended && state.App is { } app)
+            if (ended && state.App is not null)
             {
                 // A Recreate deployment that got as far as the container step has removed the old container: nothing is serving any more.
                 var oldGone = deployment.Strategy == DeploymentStrategies.Recreate && deployment.CurrentStep is { } step && step >= DeploymentStep.Container;
-                await RestoreStatusAsync(db, clock, app, oldGone ? null : state.Previous,
+                await RestoreAsync(db, clock, state, oldGone ? null : state.Previous,
                     cancelled ? "Deployment cancelled." : deployment.FailureReason ?? message, failed: !cancelled);
             }
         }
@@ -144,13 +156,21 @@ public sealed class DeployJobHandler : IJobHandler
     }
 
     /// <summary>The workload stays "Deploying" while the job waits for its next attempt, and says why.</summary>
-    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, Workload? app, string reason)
+    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, RunState state, string reason)
     {
-        if (app is null) return;
+        if (state.App is not { } app) return;
         try
         {
             await ConcurrencySupport.SaveWithRetryAsync(db, () =>
             {
+                if (state.Preview is { } preview)
+                {
+                    preview.Status = PreviewStatus.Deploying;
+                    preview.StatusChangedAt = clock.UtcNow;
+                    preview.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
+                    return;
+                }
+
                 app.Status = WorkloadStatus.Deploying;
                 app.StatusChangedAt = clock.UtcNow;
                 app.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
@@ -169,7 +189,14 @@ public sealed class DeployJobHandler : IJobHandler
 
         var app = state.App = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
-        var previous = state.Previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
+        // A pull request preview (ADR 0012) is the live deployment of its own row, not of the workload.
+        var preview = state.Preview = deployment.PreviewId is { } previewId
+            ? await db.Previews.FirstOrDefaultAsync(p => p.Id == previewId, cancellationToken)
+              ?? throw JobFailedException.Permanent("preview.not_found", "The preview no longer exists", failedStep: "start")
+            : null;
+        if (preview is not null && await PreviewDeployments.CancelIfClosedAsync(db, clock, deployment, preview, context)) return;
+        var currentId = preview is not null ? preview.CurrentDeploymentId : app.CurrentDeploymentId;
+        var previous = state.Previous = currentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
 
         Deployment? rollbackTarget = deployment.RollbackOfDeploymentId is { } rb
             ? await db.Deployments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == rb, cancellationToken) : null;
@@ -177,13 +204,16 @@ public sealed class DeployJobHandler : IJobHandler
         DeploymentSnapshot snapshot;
         try
         {
-            snapshot = await FreezeAsync(db, clock, deployment, app, rollbackTarget, cancellationToken);
+            snapshot = preview is not null
+                ? await PreviewDeployments.FreezeAsync(sp, db, clock, deployment, app, preview, context, cancellationToken)
+                : await FreezeAsync(db, clock, deployment, app, rollbackTarget, cancellationToken);
         }
         catch (UnsupportedSourceException ex)
         {
             deployment.Start("{}", clock.UtcNow);
             deployment.MarkFailed(DeploymentStep.Source, ex.Code, ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
+            if (preview is not null) await PreviewDeployments.RestoreAsync(db, clock, preview, previous, ex.Message, failed: true);
             throw JobFailedException.Permanent(ex.Code, "The application cannot be deployed", ex.Message, "source");
         }
 
@@ -191,12 +221,20 @@ public sealed class DeployJobHandler : IJobHandler
         var registry = await ResolveRegistryAsync(sp, snapshot, context, cancellationToken);
         var gitCredential = await ResolveGitCredentialAsync(sp, snapshot, context, cancellationToken);
 
-        await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+        if (preview is not null)
         {
-            app.Status = WorkloadStatus.Deploying;
-            app.StatusChangedAt = clock.UtcNow;
-            app.StatusReason = $"Deployment #{deployment.Number} in progress";
-        }, cancellationToken);
+            await PreviewDeployments.BeginAsync(db, clock, preview, deployment, cancellationToken);
+            await PreviewComments.PostForDeploymentAsync(sp, deployment.Id); // "building"; the outcome is posted when the job ends
+        }
+        else
+        {
+            await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+            {
+                app.Status = WorkloadStatus.Deploying;
+                app.StatusChangedAt = clock.UtcNow;
+                app.StatusReason = $"Deployment #{deployment.Number} in progress";
+            }, cancellationToken);
+        }
 
         var buildRecord = await PrepareBuildRecordAsync(db, clock, deployment, snapshot, context, cancellationToken);
         var resolver = sp.GetRequiredService<IServerTransportResolver>();
@@ -210,12 +248,19 @@ public sealed class DeployJobHandler : IJobHandler
             try
             {
                 composeServices = await DiscoverComposeServicesAsync(snapshot, composeSnapshot, secrets, gitCredential, resolver, deployment, context, cancellationToken);
+                if (preview is not null)
+                {
+                    // The service a preview routes to is only known now; the amended snapshot is what the deployment ran with.
+                    snapshot = PreviewSnapshotFactory.CompleteComposeRoute(snapshot, composeServices);
+                    deployment.AmendSnapshot(snapshot.ToJson());
+                    await db.SaveChangesAsync(cancellationToken);
+                }
             }
             catch (ComposeDiscoveryException ex)
             {
                 deployment.MarkFailed(DeploymentStep.Source, ex.Code, ex.Message, clock.UtcNow);
                 await db.SaveChangesAsync(CancellationToken.None);
-                await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+                await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
                 throw JobFailedException.Permanent(ex.Code, "The compose file cannot be deployed", ex.Message, "Source");
             }
         }
@@ -227,11 +272,11 @@ public sealed class DeployJobHandler : IJobHandler
             if (proxyFailure.Retry)
             {
                 // Not marked failed: the job runs again and resumes this deployment.
-                await NoteRetryAsync(db, clock, app, proxyFailure.Message);
+                await NoteRetryAsync(db, clock, state, proxyFailure.Message);
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
             }
 
-            await RestoreStatusAsync(db, clock, app, previous, proxyFailure.Message, failed: true);
+            await RestoreAsync(db, clock, state, previous, proxyFailure.Message, failed: true);
             if (deployment.FailureCode == FailureCodes.ServerUnavailable)
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
             throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure.Message, "Domain");
@@ -261,14 +306,14 @@ public sealed class DeployJobHandler : IJobHandler
             // A configuration the server cannot run (a private port without a mesh address): nothing was started.
             deployment.MarkFailed(ex.Step, ex.Code, ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+            await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
             throw JobFailedException.Permanent(ex.Code, "The deployment cannot run on this server", ex.Message, ex.Step.ToString());
         }
         catch (ProxyRoutingException ex)
         {
             deployment.MarkFailed(DeploymentStep.Domain, "proxy.failed", ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+            await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
             throw JobFailedException.Permanent("proxy.failed", "The domains cannot be routed", ex.Message, "Domain");
         }
 
@@ -283,18 +328,25 @@ public sealed class DeployJobHandler : IJobHandler
             case DeploymentRunResult.Retry:
                 var transient = runner.TransientFailure!;
                 await context.Log.WriteSystemAsync($"The server could not be reached ({transient.Message}); the deployment will be retried.", CancellationToken.None);
-                await NoteRetryAsync(db, clock, app, transient.Message);
+                await NoteRetryAsync(db, clock, state, transient.Message);
                 throw JobFailedException.Transient(transient.Code, "The server could not be reached", transient.Message, transient.Step.ToString());
 
             case DeploymentRunResult.Running:
-                await RememberDetectedPortAsync(db, app, plan.RanWithDetectedPort, cancellationToken);
-                await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
+                if (preview is not null)
+                {
+                    await PreviewDeployments.PromoteAsync(db, sp, clock, preview, deployment, previous, cancellationToken);
+                }
+                else
+                {
+                    await RememberDetectedPortAsync(db, app, plan.RanWithDetectedPort, cancellationToken);
+                    await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
+                }
                 await context.Log.WriteSystemAsync($"Deployment #{deployment.Number} is running.", cancellationToken);
                 context.SetResult(new { deploymentId = deployment.Id, number = deployment.Number, image = deployment.ImageRef });
                 return;
 
             case DeploymentRunResult.Cancelled:
-                await RestoreStatusAsync(db, clock, app, previous, "Deployment cancelled.", failed: false);
+                await RestoreAsync(db, clock, state, previous, "Deployment cancelled.", failed: false);
                 await context.Log.WriteSystemAsync("The deployment was cancelled.", CancellationToken.None);
                 return;
 
@@ -302,7 +354,7 @@ public sealed class DeployJobHandler : IJobHandler
                 // Recreate brings the old container back when the new one fails (PreviousRestored); only when that did not work is nothing serving.
                 var failedAfterOldRemoved = previous is not null && effectiveStrategy == DeploymentStrategies.Recreate && !plan.PreviousRestored
                                             && deployment.FailedStep is { } step && step >= DeploymentStep.Container;
-                await RestoreStatusAsync(db, clock, app, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
+                await RestoreAsync(db, clock, state, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
                 var code = deployment.FailureCode ?? "deployment.failed";
                 var message = deployment.FailureReason ?? "The deployment failed.";
                 throw code == FailureCodes.ServerUnavailable
@@ -361,11 +413,6 @@ public sealed class DeployJobHandler : IJobHandler
         }, CancellationToken.None);
     }
 
-    /// <summary>Ports a web server usually listens on: the service of a compose file that gets the automatic domain is the first one exposing one.</summary>
-    private static readonly int[] WebPorts = [80, 8080, 3000, 8000, 5000, 4000, 8888, 443];
-
-    private static readonly string[] WebServiceNames = ["web", "app", "frontend", "nginx", "server", "site", "ui", "api"];
-
     /// <summary>
     /// Gives a workload that has no domain its automatic one (ADR 0011) on its first deployment when it did not get it on creation (a compose
     /// application, whose services are only known now; or a server whose address was unknown then). The domain joins the frozen snapshot.
@@ -380,13 +427,8 @@ public sealed class DeployJobHandler : IJobHandler
         int? port = null;
         if (snapshot.Compose is not null)
         {
-            var routable = (composeServices ?? []).Where(s => s.Ports.Count > 0 && s.NetworkMode is null or "bridge" or "default").ToList();
-            var pick = routable.Select(s => (Service: s, Port: WebPorts.Cast<int?>().FirstOrDefault(p => s.Ports.Contains(p!.Value))))
-                .FirstOrDefault(x => x.Port is not null);
-            if (pick.Service is null && routable.FirstOrDefault(s => WebServiceNames.Contains(s.Name)) is { } named)
-                pick = (named, named.Ports[0]);
-            if (pick.Service is null) return snapshot; // no service that looks like a web server: nothing is guessed
-            (service, port) = (pick.Service.Name, pick.Port);
+            if (ComposeRoutePicker.Pick(composeServices) is not { } pick) return snapshot; // no service that looks like a web server: nothing is guessed
+            (service, port) = (pick.Service, pick.Port);
         }
         else if (app is Service && !app.Ports.Any(p => p.IsHttp))
         {
