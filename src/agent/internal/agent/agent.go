@@ -204,7 +204,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.o.DeployTools {
 		work := string(a.o.Dir)
 		runner := build.OSRunner{}
-		a.deps.Builder = &build.Service{Runner: runner, Docker: a.o.Docker, Engines: build.DefaultEngines(), WorkDir: filepath.Join(work, "build"), Now: a.o.Now}
+		a.deps.Builder = &build.Service{
+			Runner: runner, Docker: a.o.Docker, Engines: build.DefaultEngines(), WorkDir: filepath.Join(work, "build"), Now: a.o.Now,
+			Builders: &build.BuildKit{Runner: runner, Docker: a.o.Docker}, // the build quota (ADR 0012)
+		}
 		a.deps.Compose = &compose.Service{Runner: runner, Dir: a.o.Dir.ProjectsPath(), Binds: a.pol}
 		a.deps.Proxy = &proxy.Manager{Docker: a.o.Docker, Dir: filepath.Join(work, "proxy")}
 	}

@@ -27,6 +27,8 @@ type Job struct {
 	Out, Err io.Writer
 	Runner   Runner
 	Docker   docker.API
+	// Builder is the buildx builder to build with (the BuildKit container of the build quota); empty = the daemon's own builder.
+	Builder string
 	// TempDir is private scratch space removed after the build.
 	TempDir  string
 	Progress func(step, message string, percent int32)
@@ -154,6 +156,10 @@ func (DockerfileEngine) Build(ctx context.Context, j *Job) error {
 func dockerBuild(ctx context.Context, j *Job, dockerfile, contextDir string) error {
 	req := j.Req
 	args := []string{"build", "-f", dockerfile}
+	if j.Builder != "" {
+		// Through the quota's builder; --load brings the image back into the daemon so the tag, inspect and push work as usual.
+		args = []string{"buildx", "build", "--builder", j.Builder, "--load", "-f", dockerfile}
+	}
 	for _, t := range j.Tags {
 		args = append(args, "-t", t)
 	}
