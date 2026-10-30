@@ -73,6 +73,20 @@ Instance setting `mesh`: `provider` (`none` default, `wireGuard`, `tailscale`), 
 
 **Comments.** `IPullRequestCommenter` creates the comment once and edits it afterwards (`ProviderCommentId`): status, URL, commit. It needs a token credential on the git source; without one nothing is posted. Comment failures are logged on the preview and never fail the deployment.
 
+## R2.1 implementation notes (placement, build elsewhere, moving)
+
+Where the implementation adds to or differs from the text above:
+
+- **Master servers still take workloads.** The installer creates the local server with `master` + `build`; read literally, "role excludes the kind" would make a fresh install unable to place anything. A server whose roles lack the kind's role but include `Master` is eligible, ranked after servers that have the role (`RoleFit.MasterFallback`). Servers with other roles that lack it (a `Worker` asked to run a database) stay excluded.
+- **Memory is an eligibility rule.** When the request names a memory reservation and the server's memory is known, a server with less unreserved memory is not eligible (`docs/release-0.2.md`: "enough unreserved memory"). CPU shortage is only a reason (CPU over-commits are normal). The candidate `score` is the position among the eligible ones.
+- **Connected** means `AgentStatus == Connected` for agent servers and "not `Unreachable`" for SSH servers.
+- **Kind of a service** follows its data: a service with a volume (every built-in template) is `StatefulService`, one without is `StatelessService`.
+- **`MaxConcurrentBuilds`** (documented in ADR 0004 but not enforced until now) is enforced as PostgreSQL session advisory locks per (server, slot), held for the Build step of the build server (`BuildSlotGate`).
+- **Build quota** is sent only to agents advertising `build.quota`, and not for Nixpacks builds (it drives Docker itself). The agent runs the build through `docker buildx build --builder aethera-buildkit --load`, the builder being a `remote` buildx driver over the `aethera-buildkit` container (`moby/buildkit`, privileged as BuildKit needs, `--cpus`, `--memory`, `--memory-swap`).
+- **Docker Hub** build registries use `docker.io/<namespace>` in references and `https://index.docker.io/v1/` as the credential key.
+- **Moving**: `POST /applications/{id}/move` queues a normal deployment on the target (`DeployPayload.MoveFromServerId`). The deploy job switches the workload and its domains to the target when it starts (so the new deployment is frozen with them), and when it ends: success queues an `application.teardown` job for the *old* server (`TeardownPayload.ServerId`) and removes the old images; failure or cancellation puts the workload and its domains back. No new job type, no migration; the follow-up reruns safely when the job is retried or redelivered.
+- **Responses** of create and update carry `warnings` (strings, always an array); role mismatches, a build server without the build role or registry, and over-commitment are warnings, never errors.
+
 ## Security notes
 
 - The mesh commands configure one named interface. The agent refuses an interface name other than `aethera0`/`tailscale0`, addresses outside the configured CIDR, and allowed IPs wider than `/32` per peer.
