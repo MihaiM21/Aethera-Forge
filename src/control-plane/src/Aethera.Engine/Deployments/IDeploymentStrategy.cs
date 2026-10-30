@@ -136,9 +136,12 @@ public sealed class DeploymentRun(
     /// <summary>Persists the deployment (step rows are the resume checkpoint).</summary>
     public Task SaveAsync(CancellationToken ct) => checkpoint(ct);
 
-    /// <summary>Runs one typed command; transport failures and failed commands become a <see cref="DeploymentFailure"/> at <paramref name="step"/>.</summary>
+    /// <summary>
+    /// Runs one typed command; transport failures and failed commands become a <see cref="DeploymentFailure"/> at <paramref name="step"/>.
+    /// <paramref name="serverId"/> is the server it runs on: the plan's server unless the build runs elsewhere (ADR 0012).
+    /// </summary>
     public async Task<TResult> ExecuteAsync<TCommand, TResult>(
-        TCommand command, string operation, DeploymentStep step, string failureCode, CancellationToken ct)
+        TCommand command, string operation, DeploymentStep step, string failureCode, CancellationToken ct, Guid? serverId = null)
         where TCommand : IServerCommand<TResult>
     {
         var options = new CommandOptions
@@ -151,7 +154,7 @@ public sealed class DeploymentRun(
         };
         try
         {
-            var outcome = await transport.ExecuteAsync<TCommand, TResult>(Plan.ServerId, command, options, ct);
+            var outcome = await transport.ExecuteAsync<TCommand, TResult>(serverId ?? Plan.ServerId, command, options, ct);
             return outcome.EnsureSucceeded();
         }
         catch (ServerTransportException e)

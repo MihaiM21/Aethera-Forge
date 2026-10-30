@@ -8,6 +8,12 @@ namespace Aethera.Infrastructure.Deployments;
 public sealed class DeployPayload
 {
     public Guid DeploymentId { get; set; }
+
+    /// <summary>
+    /// Set when the deployment moves the workload to another server (ADR 0012): the server it ran on. The job switches the workload to the
+    /// deployment's server when it starts and, when the deployment ended, removes the old containers or puts the workload back (<see cref="WorkloadMoves"/>).
+    /// </summary>
+    public Guid? MoveFromServerId { get; set; }
 }
 
 public enum LifecycleAction
@@ -75,7 +81,15 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
 
     /// <summary>Queues a deployment from the application's current configuration (or a redeploy of it).</summary>
     public Task<QueuedDeployment> DeployAsync(Guid applicationId, DeploymentTrigger trigger, DeploymentRequestInfo? info = null, CancellationToken ct = default) =>
-        QueueAsync(applicationId, trigger, null, info, ct);
+        QueueAsync(applicationId, trigger, null, info, null, ct);
+
+    /// <summary>
+    /// Queues the deployment that moves the workload to <paramref name="targetServerId"/> (ADR 0012): a normal deployment of its current configuration
+    /// on that server. The workload itself switches servers when the job starts and goes back if the deployment fails (<see cref="WorkloadMoves"/>);
+    /// the old containers are removed after it succeeded.
+    /// </summary>
+    public Task<QueuedDeployment> MoveAsync(Guid applicationId, Guid targetServerId, CancellationToken ct = default) =>
+        QueueAsync(applicationId, DeploymentTrigger.Manual, null, null, targetServerId, ct);
 
     /// <summary>Queues a rollback that re-applies the frozen configuration and image of <paramref name="targetDeploymentId"/>.</summary>
     public async Task<QueuedDeployment> RollbackAsync(Guid applicationId, Guid targetDeploymentId, CancellationToken ct = default)
@@ -84,7 +98,7 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                      ?? throw new KeyNotFoundException("The deployment does not exist.");
         if (!target.CanRollbackTo || target.ImageRef is not { Length: > 0 } && !IsCompose(target))
             throw new DeploymentConflictException("deployment.not_rollback_point", "Only deployments that ran successfully can be rolled back to.");
-        return await QueueAsync(applicationId, DeploymentTrigger.Rollback, targetDeploymentId, null, ct);
+        return await QueueAsync(applicationId, DeploymentTrigger.Rollback, targetDeploymentId, null, null, ct);
     }
 
     public async Task<Job> LifecycleAsync(Guid applicationId, LifecycleAction action, CancellationToken ct = default)
@@ -104,7 +118,8 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
     private async Task<Guid> OrganizationOfAsync(Guid serverId, CancellationToken ct) =>
         await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => s.OrganizationId).FirstAsync(ct);
 
-    private async Task<QueuedDeployment> QueueAsync(Guid applicationId, DeploymentTrigger trigger, Guid? rollbackOf, DeploymentRequestInfo? info, CancellationToken ct)
+    private async Task<QueuedDeployment> QueueAsync(
+        Guid applicationId, DeploymentTrigger trigger, Guid? rollbackOf, DeploymentRequestInfo? info, Guid? moveToServerId, CancellationToken ct)
     {
         // The application row is also written by the running deployment (status), and two requests may race for the next number: retry on the
         // xmin conflict with a clean tracker, the unique (workload, number) index being the final guard.
@@ -116,7 +131,9 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                           ?? throw new KeyNotFoundException("The application does not exist.");
                 if (app is Application { GitSource: null } application) await db.Entry(application).Reference(a => a.GitSource).LoadAsync(ct);
                 var now = clock.UtcNow;
-                var deployment = Deployment.Queue(app.Id, app.EnvironmentId, app.ServerId, app.AllocateDeploymentNumber(), trigger, now, app.Runtime.DeploymentStrategy);
+                // A move deploys on the target server while the workload still belongs to the one it runs on (see WorkloadMoves).
+                var serverId = moveToServerId ?? app.ServerId;
+                var deployment = Deployment.Queue(app.Id, app.EnvironmentId, serverId, app.AllocateDeploymentNumber(), trigger, now, app.Runtime.DeploymentStrategy);
                 deployment.SourceType = (app as Application)?.SourceKind ?? ApplicationSourceKind.DockerImage;
                 deployment.RollbackOfDeploymentId = rollbackOf;
                 deployment.TriggeredByUserId = actor.UserId;
@@ -132,7 +149,8 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                 db.Deployments.Add(deployment);
                 await db.SaveChangesAsync(ct);
 
-                var job = await jobs.EnqueueAsync(new JobRequest(DeployJobType, new DeployPayload { DeploymentId = deployment.Id })
+                var job = await jobs.EnqueueAsync(new JobRequest(DeployJobType, new DeployPayload
+                    { DeploymentId = deployment.Id, MoveFromServerId = moveToServerId is null ? null : app.ServerId })
                 {
                     OrganizationId = await OrganizationOfAsync(app.ServerId, ct), Resource = new JobResource("application", app.Id), LockKey = LockKey(app.Id),
                     MaxAttempts = DeployMaxAttempts,

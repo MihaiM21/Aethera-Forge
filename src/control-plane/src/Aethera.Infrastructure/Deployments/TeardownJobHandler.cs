@@ -28,6 +28,8 @@ public sealed class TeardownJobHandler : IJobHandler
         // The workload is soft-deleted already: read it past the query filter.
         var workload = await db.Workloads.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(w => w.Id == payload.WorkloadId, cancellationToken)
                        ?? throw JobFailedException.Permanent("workload.not_found", "The workload does not exist", failedStep: "start");
+        // The server named at queue time: a deleted workload's own, or the old server of a workload that moved away (ADR 0012).
+        var serverId = payload.ServerId != Guid.Empty ? payload.ServerId : workload.ServerId;
         var volumes = await db.Volumes.IgnoreQueryFilters().AsNoTracking().Where(v => v.WorkloadId == workload.Id && v.HostPath == null).ToListAsync(cancellationToken);
         var kept = volumes.Select(v => VolumeNames.DockerName(workload.Slug, workload.Id, v.Name)).Order(StringComparer.Ordinal).ToList();
 
@@ -50,7 +52,7 @@ public sealed class TeardownJobHandler : IJobHandler
                 if (compose.FilePath is { Length: > 0 } path && snapshot.Git is { } git)
                     project = project with { Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: 1), ComposePath = path };
                 var down = await resolver.ExecuteAsync<ComposeDownCommand, ComposeOutcome>(
-                    workload.ServerId, new ComposeDownCommand(project, RemoveVolumes: false, RemoveOrphans: true, Timeout: stopTimeout),
+                    serverId, new ComposeDownCommand(project, RemoveVolumes: false, RemoveOrphans: true, Timeout: stopTimeout),
                     WorkloadContainers.Options(context, "teardown.compose_down"), cancellationToken);
                 composeDown = down.Outcome.Succeeded;
                 if (!down.Outcome.Succeeded && down.Outcome.ErrorCode != CommandErrorCode.NotFound)
@@ -60,7 +62,7 @@ public sealed class TeardownJobHandler : IJobHandler
             // Whatever carries the workload's label (the live deployment, a failed one that left a container, a low-downtime candidate) and the
             // containers the deployments recorded.
             var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var container in await sp.GetRequiredService<WorkloadContainers>().ListAsync(workload.ServerId, workload.Id, runningOnly: false, context, cancellationToken))
+            foreach (var container in await sp.GetRequiredService<WorkloadContainers>().ListAsync(serverId, workload.Id, runningOnly: false, context, cancellationToken))
                 names.Add(container.Id);
             // (A compose project that came down took its containers with it.)
             if (!composeDown)
@@ -71,9 +73,9 @@ public sealed class TeardownJobHandler : IJobHandler
                 await context.Log.WriteSystemAsync($"Stopping and removing {name}", cancellationToken);
                 // A stop that fails (not running, already gone) is fine: the forced removal below copes.
                 var stop = await resolver.ExecuteAsync<ContainerStopCommand, DockerContainer>(
-                    workload.ServerId, new ContainerStopCommand(name, stopTimeout), WorkloadContainers.Options(context, $"teardown.stop.{name}"), cancellationToken);
+                    serverId, new ContainerStopCommand(name, stopTimeout), WorkloadContainers.Options(context, $"teardown.stop.{name}"), cancellationToken);
                 var remove = await resolver.ExecuteAsync<ContainerRemoveCommand, Unit>(
-                    workload.ServerId, new ContainerRemoveCommand(name, Force: !stop.Outcome.Succeeded), WorkloadContainers.Options(context, $"teardown.remove.{name}"), cancellationToken);
+                    serverId, new ContainerRemoveCommand(name, Force: !stop.Outcome.Succeeded), WorkloadContainers.Options(context, $"teardown.remove.{name}"), cancellationToken);
                 if (!remove.Outcome.Succeeded && remove.Outcome.ErrorCode != CommandErrorCode.NotFound)
                     throw JobFailedException.Permanent("workload.teardown_failed", "A container could not be removed",
                         $"Removing {name} failed: {remove.Outcome.ErrorMessage ?? remove.Outcome.Status.ToString()}", "remove");

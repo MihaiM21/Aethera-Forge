@@ -138,7 +138,7 @@ public static class DeploymentSnapshotFactory
                     Build = new BuildSnapshot(
                         engine, build?.Context ?? ".", build?.DockerfilePath, build?.InstallCommand, build?.BuildCommand, build?.StartCommand,
                         build?.OutputDirectory, build?.CacheEnabled ?? true, build?.TargetPlatform,
-                        build?.BuildArgs is { Count: > 0 } args ? new Dictionary<string, string>(args) : null),
+                        build?.BuildArgs is { Count: > 0 } args ? new Dictionary<string, string>(args) : null, app.BuildServerId),
                 };
         }
     }

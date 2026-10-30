@@ -62,9 +62,10 @@ public sealed record DeploymentSnapshot
 public sealed record GitSnapshot(string Url, string Branch, string? CommitPin, Guid? CredentialId);
 
 /// <param name="BuildArgs">The build configuration's plain <c>--build-arg</c> values; environment variables marked for the build are added (and win).</param>
+/// <param name="BuildServerId">The server that builds the image (ADR 0012); null = the server the workload runs on. Snapshots from before R2 read as null.</param>
 public sealed record BuildSnapshot(
     string Engine, string Context, string? DockerfilePath, string? InstallCommand, string? BuildCommand, string? StartCommand,
-    string? OutputDirectory, bool CacheEnabled, string? TargetPlatform, IReadOnlyDictionary<string, string>? BuildArgs = null);
+    string? OutputDirectory, bool CacheEnabled, string? TargetPlatform, IReadOnlyDictionary<string, string>? BuildArgs = null, Guid? BuildServerId = null);
 
 public sealed record ImageSnapshot(string Image, string Tag, ImagePullPolicy PullPolicy, Guid? RegistryId, IReadOnlyList<string>? Command = null);
 
