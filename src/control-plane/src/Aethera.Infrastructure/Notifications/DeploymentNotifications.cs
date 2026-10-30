@@ -23,9 +23,13 @@ public static class DeploymentNotifications
             await using var scope = services.GetRequiredService<IServiceScopeFactory>().CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
             var d = await db.Deployments.AsNoTracking().Where(x => x.Id == deploymentId)
-                .Select(x => new { x.Id, x.Status, x.Number, x.WorkloadId, x.EnvironmentId, x.FailureReason, x.FailureCode, x.FailedStep, x.CommitSha, x.Trigger })
+                .Select(x => new { x.Id, x.Status, x.Number, x.WorkloadId, x.EnvironmentId, x.FailureReason, x.FailureCode, x.FailedStep, x.CommitSha, x.Trigger, x.PreviewId })
                 .FirstOrDefaultAsync(CancellationToken.None);
             if (d is null || d.Status is not (DeploymentStatus.Running or DeploymentStatus.Failed)) return;
+            // A pull request preview (ADR 0012) has alerts of its own: its failure must not open the application's alert, nor its success resolve one.
+            var previewNumber = d.PreviewId is { } previewId
+                ? await db.Previews.AsNoTracking().Where(p => p.Id == previewId).Select(p => (int?)p.Number).FirstOrDefaultAsync(CancellationToken.None)
+                : null;
 
             var w = await db.Workloads.IgnoreQueryFilters().AsNoTracking().Where(x => x.Id == d.WorkloadId)
                 .Select(x => new { x.Name, IsService = x is Service, Environment = x.Environment.Name, Project = x.Environment.Project.Name, x.Environment.Project.OrganizationId })
@@ -37,7 +41,9 @@ public static class DeploymentNotifications
                 ["resource"] = w.Name, ["project"] = w.Project, ["environment"] = w.Environment, ["deployment"] = "#" + d.Number, ["trigger"] = d.Trigger.ToString().ToLowerInvariant(),
             };
             if (!string.IsNullOrEmpty(d.CommitSha)) details["commit"] = d.CommitSha.Length > 12 ? d.CommitSha[..12] : d.CommitSha;
+            if (previewNumber is { } pr) details["preview"] = "#" + pr;
             var failed = d.Status == DeploymentStatus.Failed;
+            var subject = previewNumber is { } n ? $"Preview #{n} of {w.Name}" : $"Deployment #{d.Number} of {w.Name}";
             if (failed)
             {
                 if (d.FailedStep is { } step) details["failedStep"] = step.ToString();
@@ -48,11 +54,11 @@ public static class DeploymentNotifications
             await notifier.PublishAsync(new NotificationEvent(
                 w.OrganizationId, failed ? NotificationEvents.DeploymentFailed : NotificationEvents.DeploymentSucceeded,
                 failed ? AlertSeverity.Critical : AlertSeverity.Info,
-                failed ? $"Deployment #{d.Number} of {w.Name} failed" : $"Deployment #{d.Number} of {w.Name} succeeded",
+                failed ? $"{subject} failed" : $"{subject} succeeded",
                 failed ? d.FailureReason : null)
             {
                 ResourceType = w.IsService ? "service" : "application", ResourceId = d.WorkloadId, EnvironmentId = d.EnvironmentId,
-                Path = $"/deployments/{d.Id}", AlertKey = AlertKey(d.WorkloadId), Resolves = !failed, Details = details,
+                Path = $"/deployments/{d.Id}", AlertKey = d.PreviewId is { } pid ? $"preview:{pid}" : AlertKey(d.WorkloadId), Resolves = !failed, Details = details,
             }, CancellationToken.None);
         }
         catch (Exception ex)

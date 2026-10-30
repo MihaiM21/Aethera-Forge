@@ -30,6 +30,18 @@ public static class DeploymentCancellation
         deployment.MarkCancelled(clock.UtcNow);
         await db.SaveChangesAsync(ct);
 
+        if (wasStarted && deployment.PreviewId is { } previewId)
+        {
+            // A pull request preview (ADR 0012) gives its own status back, never the application's.
+            if (await db.Previews.FirstOrDefaultAsync(p => p.Id == previewId, ct) is { Status: PreviewStatus.Deploying } preview)
+            {
+                var previousPreview = preview.CurrentDeploymentId is { } live ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == live, ct) : null;
+                await Previews.PreviewDeployments.RestoreAsync(db, clock, preview, previousPreview, "Deployment cancelled.", failed: false);
+            }
+
+            return true;
+        }
+
         if (wasStarted && await db.Workloads.FirstOrDefaultAsync(w => w.Id == deployment.WorkloadId, ct) is { Status: WorkloadStatus.Deploying } workload)
         {
             var previous = workload.CurrentDeploymentId is { } current ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == current, ct) : null;

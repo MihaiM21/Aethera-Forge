@@ -13,6 +13,7 @@
     <!-- Job system (WP1.3): hosted worker, Prometheus metrics, SignalR test client -->
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.13" />
     <PackageVersion Include="prometheus-net" Version="8.2.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <!-- HTTP API: validation, OpenAPI document (+ build-time generation) and the Scalar reference UI -->
