@@ -165,7 +165,6 @@ export function validateStep(step: StepKey, s: WizardState): Errors {
       break;
     }
     case "server":
-      if (!s.serverId) e.serverId = "Pick the server that runs this application.";
       if (s.method !== "compose" && s.port.trim()) {
         const port = Number(s.port);
         if (!Number.isInteger(port) || port < 1 || port > 65535) e.port = "Enter a port between 1 and 65535, or leave it empty to use the one the image exposes.";
@@ -214,7 +213,7 @@ export function toCreateRequest(s: WizardState): CreateApplicationRequest {
     name: s.name.trim(),
     slug: s.slug,
     environmentId: s.environmentId,
-    serverId: s.serverId,
+    serverId: s.serverId || undefined, // empty = Aethera chooses (ADR 0012)
     sourceKind: kind,
   };
   if (usesRepo(s)) {

@@ -98,7 +98,7 @@ export function fakeApi(over: Partial<Record<keyof ServersApi, unknown>> = {}): 
   const names = [
     "list", "get", "create", "update", "remove", "createJoinToken", "listJoinTokens", "revokeJoinToken", "resetAgent",
     "status", "events", "latestMetrics", "metrics", "discovery", "containers", "images", "volumes", "networks",
-    "prune", "refreshDiscovery", "updateAgent", "job",
+    "prune", "refreshDiscovery", "updateAgent", "job", "capacity", "suggest",
   ] as const;
   const api: Record<string, unknown> = {};
   for (const n of names) api[n] = vi.fn().mockRejectedValue(problem(404, "request.not_found"));

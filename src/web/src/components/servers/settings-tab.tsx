@@ -18,6 +18,7 @@ import { errorMessage } from "@/lib/servers/errors";
 import { formatDateTime } from "@/lib/servers/format";
 import { SERVER_ROLES, type Job, type JoinToken, type PruneRequest, type Server, type ServerLifecycle, type ServerRole } from "@/lib/servers/types";
 import { usePolled } from "@/lib/servers/use-polled";
+import { BuildSettingsForm, ROLE_HELP } from "./build-settings";
 import { ErrorPanel, NativeSelect, SectionTitle } from "./common";
 import { JobProgress } from "./job-progress";
 import { JoinTokenPanel } from "./join-token-panel";
@@ -118,12 +119,16 @@ function GeneralForm({ server, api, onSaved }: { server: Server; api: ServersApi
                   })
                 }
               />
-              <Label htmlFor={`settings-role-${role}`} className="normal-case tracking-normal">
+              <Label htmlFor={`settings-role-${role}`} className="normal-case tracking-normal" title={ROLE_HELP[role]}>
                 {role}
               </Label>
             </div>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Roles guide where Aethera places new things; a server with no roles takes everything. Worker: {ROLE_HELP.worker} Storage: {ROLE_HELP.storage} Build:{" "}
+          {ROLE_HELP.build} They never stop or move what already runs.
+        </p>
       </fieldset>
       <div className="grid gap-1.5 sm:w-56">
         <Label htmlFor="settings-lifecycle">Lifecycle</Label>
@@ -430,6 +435,12 @@ export function SettingsTab({
           <span id="general-title">General</span>
         </SectionTitle>
         <GeneralForm key={server.updatedAt as string} server={server} api={api} onSaved={(s) => onServerChanged(s)} />
+      </section>
+      <section aria-labelledby="builds-title" className="grid gap-3">
+        <SectionTitle index="02">
+          <span id="builds-title">Builds</span>
+        </SectionTitle>
+        <BuildSettingsForm key={`build-${server.updatedAt as string}`} server={server} api={api} onSaved={(s) => onServerChanged(s)} />
       </section>
       <JoinTokensSection server={server} api={api} />
       <MaintenanceSection server={server} api={api} />

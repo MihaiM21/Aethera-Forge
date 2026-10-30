@@ -20,6 +20,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
+import { MovePanel } from "@/components/applications/move-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isApiError } from "@/lib/api/errors";
 import { navigateTo } from "@/lib/navigate";
@@ -169,6 +170,7 @@ function ServiceSettings({ service, template, api, onSaved }: { service: Service
           <SaveButton pending={act.pending} disabled={!dirty || !name.trim()} />
         </div>
       </form>
+      <MovePanel kind="services" id={service.id} name={service.name} currentServerId={service.serverId} api={api} onMoved={onSaved} />
       <section className="grid gap-3 border border-danger/50 p-4">
         <h3 className="text-base font-medium text-danger">Danger zone</h3>
         <p className="text-sm text-muted-foreground">Deleting the service removes it from Aethera. Its data volumes and the running container stay on the server until you remove them.</p>

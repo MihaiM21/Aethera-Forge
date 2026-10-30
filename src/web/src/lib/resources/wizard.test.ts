@@ -47,8 +47,9 @@ describe("validateStep", () => {
     expect(Object.keys(e).sort()).toEqual(["env.2", "env.3"]);
   });
 
-  it("needs a server and a valid port, and a valid hostname when one is given", () => {
-    expect(validateStep("server", { ...base, serverId: "", port: "0" })).toMatchObject({ serverId: expect.any(String), port: expect.any(String) });
+  it("takes no server (Aethera chooses) but needs a valid port, and a valid hostname when one is given", () => {
+    expect(validateStep("server", { ...base, serverId: "", port: "0" })).toEqual({ port: expect.any(String) });
+    expect(validateStep("server", { ...base, serverId: "" })).toEqual({});
     expect(validateStep("server", base)).toEqual({});
     expect(validateStep("domain", { ...base, hostname: "not a host" }).hostname).toBeDefined();
     expect(validateStep("domain", { ...base, hostname: "app.example.com" })).toEqual({});
@@ -62,6 +63,11 @@ describe("validateStep", () => {
 });
 
 describe("toCreateRequest", () => {
+  it("names the server only when one was picked (otherwise the API places the application)", () => {
+    expect(toCreateRequest({ ...base, repoUrl: "https://github.com/o/r.git" }).serverId).toBe("srv-1");
+    expect(toCreateRequest({ ...base, serverId: "", repoUrl: "https://github.com/o/r.git" }).serverId).toBeUndefined();
+  });
+
   it("builds a dockerfile application with git source, build config and an http port", () => {
     const req = toCreateRequest({ ...base, repoUrl: "https://github.com/o/r.git", credentialId: "", healthPath: "/health", port: "8080" });
     expect(req.sourceKind).toBe("dockerfile");

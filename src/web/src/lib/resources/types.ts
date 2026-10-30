@@ -77,6 +77,8 @@ export type UpdateServiceRequest = S["UpdateServiceRequest"];
 
 export type Secret = S["SecretResponse"];
 export type CreateSecretRequest = S["CreateSecretRequest"];
+export type MoveWorkloadResponse = S["MoveWorkloadResponse"];
+export type WorkloadPriority = S["WorkloadPriority"];
 export type Registry = S["RegistryResponse"];
 export type RegistryTestResult = S["RegistryTestResponse"];
 export type CreateRegistryRequest = S["CreateRegistryRequest"];

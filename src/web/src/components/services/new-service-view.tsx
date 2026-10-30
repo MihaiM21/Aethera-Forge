@@ -47,7 +47,11 @@ export function NewServiceView({ api = resourcesApi, servers = serversApi }: { a
   const wanted = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("project");
   const project = projectItems.find((p) => p.id === (projectId || wanted)) ?? projectItems[0];
   const env = project?.environments.find((e) => e.id === environmentId) ?? project?.environments.find((e) => !e.isProduction) ?? project?.environments[0];
-  const server = serverList.data?.items.find((s) => s.id === serverId) ?? serverList.data?.items[0];
+  // Empty = Automatic: the API places the service by role (a database wants a storage server) and room (ADR 0012).
+  const server = serverList.data?.items.find((s) => s.id === serverId);
+  const placementKind = chosen && chosen.volumes.length === 0 ? "statelessService" : "statefulService";
+  const suggestion = usePolled((signal) => servers.suggest({ kind: placementKind }, { signal }).catch(() => null), `ns-suggest-${placementKind}`, { intervalMs: null }).data ?? null;
+  const suggestedServer = serverList.data?.items.find((s) => s.id === suggestion?.suggestedServerId);
   const effVersion = version || chosen?.defaultVersion || "";
 
   function pick(t: ServiceTemplate) {
@@ -61,9 +65,9 @@ export function NewServiceView({ api = resourcesApi, servers = serversApi }: { a
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!chosen || !env || !server) return;
+    if (!chosen || !env) return;
     const svc = await act.run(
-      () => api.services.create({ name: name.trim(), slug: slug || undefined, environmentId: env.id, serverId: server.id, templateKey: chosen.key, version: effVersion }),
+      () => api.services.create({ name: name.trim(), slug: slug || undefined, environmentId: env.id, serverId: server?.id, templateKey: chosen.key, version: effVersion }),
       "Service created",
     );
     if (!svc) return;
@@ -131,9 +135,13 @@ export function NewServiceView({ api = resourcesApi, servers = serversApi }: { a
                   </NativeSelect>
                 )}
               </Field>
-              <Field label="Server" hint={serverList.data?.items.length === 0 ? "Add a server first." : undefined}>
+              <Field
+                label="Server"
+                hint={serverList.data?.items.length === 0 ? "Add a server first." : "Automatic lets Aethera choose by role and free memory: databases go to storage servers."}
+              >
                 {(c) => (
                   <NativeSelect {...c} value={server?.id ?? ""} onChange={(e) => setServerId(e.target.value)}>
+                    <option value="">{suggestedServer ? `Automatic (${suggestedServer.name})` : "Automatic"}</option>
                     {(serverList.data?.items ?? []).map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name} · {s.host}
@@ -142,6 +150,29 @@ export function NewServiceView({ api = resourcesApi, servers = serversApi }: { a
                   </NativeSelect>
                 )}
               </Field>
+              {suggestion && (
+                <div className="grid gap-1 border border-border bg-card px-3 py-2 text-xs sm:col-span-2" aria-label="Why this server">
+                  {(() => {
+                    const shown = server ? suggestion.candidates.find((x) => x.serverId === server.id) : suggestion.candidates.find((x) => x.eligible);
+                    if (!shown) return <p className="text-warning">{suggestion.message ?? "No server accepts this service right now."}</p>;
+                    return (
+                      <>
+                        <p className="mono-label text-muted-foreground">
+                          {server ? shown.serverName : `Suggested: ${shown.serverName}`}
+                          {!shown.eligible && " · not recommended"}
+                        </p>
+                        <ul className="grid gap-0.5 text-muted-foreground">
+                          {shown.reasons.map((r, i) => (
+                            <li key={r} className={!shown.eligible && i === 0 ? "text-warning" : undefined}>
+                              {r}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
               <Field label="Project">
                 {(c) => (
                   <NativeSelect {...c} value={project?.id ?? ""} onChange={(e) => { setProjectId(e.target.value); setEnvironmentId(""); }}>
@@ -191,7 +222,7 @@ export function NewServiceView({ api = resourcesApi, servers = serversApi }: { a
             </div>
             <FormError message={act.error} />
             <div>
-              <Button type="submit" disabled={act.pending || !name.trim() || !env || !server}>
+              <Button type="submit" disabled={act.pending || !name.trim() || !env}>
                 {act.pending && <Loader2Icon className="animate-spin" aria-hidden="true" />}
                 Create and deploy
               </Button>
