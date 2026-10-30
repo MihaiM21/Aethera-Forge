@@ -2445,6 +2445,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/applications/{id}/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listApplicationPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPreviewSettings"];
+        put: operations["updatePreviewSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApplicationPreview"];
+        put?: never;
+        post?: never;
+        delete: operations["removeApplicationPreview"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/{number}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["redeployApplicationPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2977,6 +3041,7 @@ export interface components {
             secretId?: null | string;
             isBuildTime?: null | boolean;
             isRuntime?: null | boolean;
+            isPreview?: null | boolean;
         };
         CreateEnvironmentRequest: {
             name?: null | string;
@@ -3160,6 +3225,8 @@ export interface components {
             /** Format: int64 */
             durationMs: null | number | string;
             steps: null | components["schemas"]["DeploymentStepDto"][];
+            /** Format: uuid */
+            previewId?: null | string;
         };
         DeploymentListItemDto: {
             deployment: components["schemas"]["DeploymentDto"];
@@ -3454,6 +3521,8 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** @default false */
+            isPreview: boolean;
         };
         EnvironmentResponse: {
             /** Format: uuid */
@@ -3909,6 +3978,10 @@ export interface components {
             items: components["schemas"]["JobDto"][];
             nextCursor: null | string;
         };
+        PageOfPreviewDto: {
+            items: components["schemas"]["PreviewDto"][];
+            nextCursor: null | string;
+        };
         PageOfProjectResponse: {
             items: components["schemas"]["ProjectResponse"][];
             nextCursor: null | string;
@@ -3988,6 +4061,74 @@ export interface components {
             publishedPort: null | number | string;
             isHttp: boolean;
         };
+        PreviewDeploymentDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            number: number | string;
+            status: components["schemas"]["DeploymentStatus"];
+            failedStep: null | components["schemas"]["DeploymentStep"];
+            failureCode: null | string;
+            commitSha: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            finishedAt: unknown;
+        };
+        PreviewDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: int32 */
+            number: number | string;
+            title: null | string;
+            authorLogin: null | string;
+            sourceBranch: string;
+            headSha: null | string;
+            fromFork: boolean;
+            provider: components["schemas"]["GitProvider"];
+            /** Format: uuid */
+            serverId: string;
+            hostname: null | string;
+            url: null | string;
+            status: components["schemas"]["PreviewStatus"];
+            statusReason: null | string;
+            /** Format: date-time */
+            statusChangedAt: unknown;
+            /** Format: date-time */
+            lastEventAt: unknown;
+            /** Format: date-time */
+            closedAt: unknown;
+            /** Format: date-time */
+            removedAt: unknown;
+            commentError: null | string;
+            /** Format: uuid */
+            currentDeploymentId: null | string;
+            lastDeployment: null | components["schemas"]["PreviewDeploymentDto"];
+            /** Format: date-time */
+            createdAt: unknown;
+        };
+        PreviewSettingsDto: {
+            enabled: boolean;
+            allowForks: boolean;
+            /** Format: uuid */
+            serverId: null | string;
+            /** Format: int32 */
+            maxActive: null | number | string;
+            /** Format: int32 */
+            defaultMaxActive: number | string;
+            /** Format: uuid */
+            effectiveServerId: string;
+            supported: boolean;
+            unsupportedReason: null | string;
+            webhookConfigured: boolean;
+            webhookProvider: null | components["schemas"]["GitProvider"];
+            webhookPath: null | string;
+            hostnamePattern: null | string;
+        };
+        /** @enum {unknown} */
+        PreviewStatus: "pending" | "deploying" | "running" | "failed" | "closing" | "removed";
         /** @description RFC 9457 problem details. */
         ProblemDetails: {
             /** @description Always urn:aethera:problem:<code>. */
@@ -4696,6 +4837,7 @@ export interface components {
             secretId?: null | string;
             isBuildTime?: null | boolean;
             isRuntime?: null | boolean;
+            isPreview?: null | boolean;
         };
         UpdateEnvironmentRequest: {
             name?: null | string;
@@ -4706,6 +4848,14 @@ export interface components {
         UpdateOrganizationRequest: {
             name?: null | string;
             slug?: null | string;
+        };
+        UpdatePreviewSettingsRequest: {
+            enabled: boolean;
+            allowForks: boolean;
+            /** Format: uuid */
+            serverId?: null | string;
+            /** Format: int32 */
+            maxActive?: null | number | string;
         };
         UpdateProjectRequest: {
             name?: null | string;
@@ -12438,6 +12588,7 @@ export interface operations {
                 Cursor?: string;
                 sort?: string;
                 status?: string;
+                previewId?: string;
             };
             header?: never;
             path: {
@@ -12750,6 +12901,7 @@ export interface operations {
                 Cursor?: string;
                 sort?: string;
                 status?: string;
+                previewId?: string;
             };
             header?: never;
             path: {
@@ -16906,6 +17058,331 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listApplicationPreviews: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                status?: string;
+                includeRemoved?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfPreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getPreviewSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSettingsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updatePreviewSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePreviewSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSettingsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    removeApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeployApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
