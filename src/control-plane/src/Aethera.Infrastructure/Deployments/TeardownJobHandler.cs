@@ -33,7 +33,8 @@ public sealed class TeardownJobHandler : IJobHandler
         var volumes = await db.Volumes.IgnoreQueryFilters().AsNoTracking().Where(v => v.WorkloadId == workload.Id && v.HostPath == null).ToListAsync(cancellationToken);
         var kept = volumes.Select(v => VolumeNames.DockerName(workload.Slug, workload.Id, v.Name)).Order(StringComparer.Ordinal).ToList();
 
-        var deployments = await db.Deployments.AsNoTracking().Where(d => d.WorkloadId == workload.Id).OrderByDescending(d => d.Number).Take(20).ToListAsync(cancellationToken);
+        // The configuration of the application itself: a pull request preview has names of its own and is torn down by its own job (ADR 0012).
+        var deployments = await db.Deployments.AsNoTracking().Where(d => d.WorkloadId == workload.Id && d.PreviewId == null).OrderByDescending(d => d.Number).Take(20).ToListAsync(cancellationToken);
         DeploymentSnapshot? snapshot = null;
         foreach (var d in deployments)
         {

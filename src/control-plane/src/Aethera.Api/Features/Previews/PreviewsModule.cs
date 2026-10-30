@@ -1,3 +1,5 @@
+using Aethera.Infrastructure.Previews;
+
 namespace Aethera.Api.Features.Previews;
 
 /// <summary>
@@ -6,10 +8,18 @@ namespace Aethera.Api.Features.Previews;
 /// </summary>
 public static class PreviewsModule
 {
-    public const string TeardownJobType = "preview.teardown";
-    public const string SweepJobType = "preview.sweep";
+    public const string TeardownJobType = PreviewJobs.TeardownType;
+    public const string SweepJobType = PreviewJobs.SweepType;
 
-    public static IServiceCollection AddPreviews(this IServiceCollection services, IConfiguration configuration) => services;
+    public static IServiceCollection AddPreviews(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddPreviewInfrastructure();
+        return services;
+    }
 
-    public static IEndpointRouteBuilder MapPreviews(this IEndpointRouteBuilder api) => api;
+    public static IEndpointRouteBuilder MapPreviews(this IEndpointRouteBuilder api)
+    {
+        PreviewEndpoints.Map(api);
+        return api;
+    }
 }

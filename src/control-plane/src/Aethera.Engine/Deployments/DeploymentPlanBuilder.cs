@@ -152,6 +152,7 @@ public static class DeploymentPlanBuilder
             ["aethera.environment"] = s.EnvironmentId.ToString(),
             ["aethera.deployment"] = c.DeploymentId.ToString(),
         };
+        if (s.Preview is { } preview) labels["aethera.preview"] = preview.PreviewId.ToString();
 
         if (s.Compose is { } compose)
             return ComposePlan(s, c, compose, routes);
@@ -287,7 +288,8 @@ public static class DeploymentPlanBuilder
             StartCommand = b.StartCommand,
             OutputDir = b.OutputDirectory,
             SpaFallback = engine == BuildEngineKind.Static,
-            Cache = new BuildCacheSpec(b.CacheEnabled, 1, CacheKey: $"{s.WorkloadId:N}"),
+            // A preview builds code from a pull request: its layers never feed the application's own cache (ADR 0012).
+            Cache = new BuildCacheSpec(b.CacheEnabled, 1, CacheKey: s.Preview is { } preview ? $"{s.WorkloadId:N}-pr-{preview.Number}" : $"{s.WorkloadId:N}"),
             TargetPlatforms = b.TargetPlatform is { Length: > 0 } ? [b.TargetPlatform] : null,
             ImageLabels = new Dictionary<string, string>
             {
@@ -454,6 +456,7 @@ public static class DeploymentPlanBuilder
                 {
                     ["aethera.managed"] = "true", ["aethera.workload"] = s.WorkloadId.ToString(), ["aethera.environment"] = s.EnvironmentId.ToString(),
                 };
+                if (s.Preview is { } preview) labels["aethera.preview"] = preview.PreviewId.ToString();
                 if (routed.TryGetValue(service, out var serviceRoutes))
                     foreach (var route in serviceRoutes)
                         foreach (var (k, v) in c.Proxy.RouteLabels(route)) labels[k] = v;
@@ -485,7 +488,8 @@ public static class DeploymentPlanBuilder
                     var aliases = new List<string>();
                     if (n.DockerName == envNetwork)
                     {
-                        aliases.Add(service);
+                        // A preview answers to its own name only: the plain service name belongs to the application it previews.
+                        if (s.Preview is null) aliases.Add(service);
                         aliases.Add($"{s.Slug}-{service}");
                     }
                     if (service == primary) aliases.AddRange(n.Aliases);

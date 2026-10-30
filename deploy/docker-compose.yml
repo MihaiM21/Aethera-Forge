@@ -74,6 +74,9 @@ services:
     depends_on:
       - aethera
     network_mode: host
+    # CAP_NET_ADMIN lets the agent manage the private mesh interface (aethera0, ADR 0012); nothing else is added.
+    cap_add:
+      - NET_ADMIN
     environment:
       AETHERA_ENDPOINT: 127.0.0.1:${AETHERA_GRPC_PORT:-9443}
       AETHERA_ENROLL_DIR: /data/updater

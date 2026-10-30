@@ -24,18 +24,22 @@ function EnvDialog({
   open,
   onOpenChange,
   existing,
+  previewable,
   onSave,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   existing: EnvVar | null;
-  onSave: (v: { key: string; value: string; secret: boolean; build: boolean; runtime: boolean }) => Promise<boolean>;
+  /** Applications can mark a variable as preview-only (ADR 0012). */
+  previewable: boolean;
+  onSave: (v: { key: string; value: string; secret: boolean; build: boolean; runtime: boolean; preview: boolean }) => Promise<boolean>;
 }) {
   const [key, setKey] = React.useState(existing?.key ?? "");
   const [value, setValue] = React.useState(existing?.isSecret ? "" : (existing?.value ?? ""));
   const [secret, setSecret] = React.useState(existing?.isSecret ?? false);
   const [build, setBuild] = React.useState(existing?.isBuildTime ?? true);
   const [runtime, setRuntime] = React.useState(existing?.isRuntime ?? true);
+  const [preview, setPreview] = React.useState(existing?.isPreview ?? false);
   const [show, setShow] = React.useState(false);
   const act = useAction();
   return (
@@ -45,7 +49,7 @@ function EnvDialog({
           className="grid gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            const ok = await act.run(() => onSave({ key: key.trim(), value, secret, build, runtime }));
+            const ok = await act.run(() => onSave({ key: key.trim(), value, secret, build, runtime, preview }));
             if (ok) onOpenChange(false);
           }}
         >
@@ -78,6 +82,11 @@ function EnvDialog({
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={runtime} onChange={(e) => setRuntime(e.target.checked)} /> Runtime
             </label>
+            {previewable && (
+              <label className="flex items-center gap-2" title="Only pull request previews get this variable; it replaces a regular variable with the same name there.">
+                <input type="checkbox" checked={preview} onChange={(e) => setPreview(e.target.checked)} /> Preview only
+              </label>
+            )}
           </div>
           <FormError message={act.error} />
           <DialogFooter>
@@ -178,18 +187,19 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
   const [revealing, setRevealing] = React.useState<EnvVar | null>(null);
   const act = useAction();
 
-  async function save(v: { key: string; value: string; secret: boolean; build: boolean; runtime: boolean }): Promise<boolean> {
+  async function save(v: { key: string; value: string; secret: boolean; build: boolean; runtime: boolean; preview: boolean }): Promise<boolean> {
     if (editing && editing !== "new") {
       const body: Record<string, unknown> = { isBuildTime: v.build, isRuntime: v.runtime };
+      if (kind === "applications") body.isPreview = v.preview;
       if (editing.isSecret) {
         if (v.value && editing.secretId) await api.secrets.rotate(editing.secretId, v.value);
       } else body.value = v.value;
       await api.envVars.update(kind, id, editing.id, body);
     } else if (v.secret) {
-      const secret = await api.secrets.create({ name: `${slug}_${v.key}`, value: v.value, workloadId: id });
-      await api.envVars.create(kind, id, { key: v.key, secretId: secret.id, isBuildTime: v.build, isRuntime: v.runtime });
+      const secret = await api.secrets.create({ name: `${slug}_${v.key}${v.preview ? "_preview" : ""}`, value: v.value, workloadId: id });
+      await api.envVars.create(kind, id, { key: v.key, secretId: secret.id, isBuildTime: v.build, isRuntime: v.runtime, isPreview: v.preview || undefined });
     } else {
-      await api.envVars.create(kind, id, { key: v.key, value: v.value, isBuildTime: v.build, isRuntime: v.runtime });
+      await api.envVars.create(kind, id, { key: v.key, value: v.value, isBuildTime: v.build, isRuntime: v.runtime, isPreview: v.preview || undefined });
     }
     await list.refresh();
     return true;
@@ -246,6 +256,7 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
                     <span className="flex gap-1">
                       {v.isBuildTime && <Badge tone="outline">build</Badge>}
                       {v.isRuntime && <Badge tone="outline">runtime</Badge>}
+                      {v.isPreview && <Badge tone="brand">preview</Badge>}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
@@ -275,7 +286,7 @@ export function EnvTab({ kind, id, slug, api = resourcesApi }: { kind: WorkloadK
           </Table>
         </div>
       )}
-      {editing && <EnvDialog key={editing === "new" ? "new" : editing.id} open onOpenChange={(o) => !o && setEditing(null)} existing={editing === "new" ? null : editing} onSave={save} />}
+      {editing && <EnvDialog key={editing === "new" ? "new" : editing.id} open onOpenChange={(o) => !o && setEditing(null)} existing={editing === "new" ? null : editing} previewable={kind === "applications"} onSave={save} />}
       {revealing && <RevealDialog env={revealing} api={api} onClose={() => setRevealing(null)} />}
       {importing && (
         <ImportDialog

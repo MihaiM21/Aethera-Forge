@@ -23,6 +23,9 @@ public sealed record CreateEnvVarRequest
 
     public bool? IsBuildTime { get; init; }
     public bool? IsRuntime { get; init; }
+
+    /// <summary>Only in pull request previews, where it overrides a regular variable of the same name (applications only; ADR 0012).</summary>
+    public bool? IsPreview { get; init; }
 }
 
 public sealed record UpdateEnvVarRequest
@@ -32,6 +35,7 @@ public sealed record UpdateEnvVarRequest
     public Guid? SecretId { get; init; }
     [NotClearable] public bool? IsBuildTime { get; init; }
     [NotClearable] public bool? IsRuntime { get; init; }
+    [NotClearable] public bool? IsPreview { get; init; }
 }
 
 public sealed record ImportEnvVarsRequest
@@ -48,7 +52,7 @@ public sealed record ImportEnvVarsRequest
 
 public sealed record EnvVarResponse(
     Guid Id, Guid WorkloadId, string Key, string Value, bool IsSecret, Guid? SecretId, string? SecretName, int? SecretVersion, bool IsBuildTime,
-    bool IsRuntime, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    bool IsRuntime, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool IsPreview = false);
 
 public sealed record ImportEnvVarsResponse(IReadOnlyList<string> Created, IReadOnlyList<string> Updated, IReadOnlyList<string> Skipped);
 
@@ -161,18 +165,20 @@ internal static class EnvVarEndpoints
         var org = actor.Org();
         var workload = await FindWorkloadAsync(db, org, isApplication, workloadId, ct);
         var key = request.Key!.Trim();
-        await EnsureKeyFreeAsync(db, workload.Id, key, null, ct);
+        var isPreview = request.IsPreview ?? false;
+        RequirePreviewCapable(isApplication, isPreview);
+        await EnsureKeyFreeAsync(db, workload.Id, key, null, isPreview, ct);
 
         Secret? secret = null;
         if (request.SecretId is { } secretId) secret = await db.RequireSecretForWorkloadAsync(actor, org, secretId, workload, "/secretId", ct);
         var variable = new EnvironmentVariable
         {
             WorkloadId = workload.Id, Key = key, Value = request.Value, SecretId = secret?.Id, Secret = secret,
-            IsBuildTime = request.IsBuildTime ?? false, IsRuntime = request.IsRuntime ?? true,
+            IsBuildTime = request.IsBuildTime ?? false, IsRuntime = request.IsRuntime ?? true, IsPreview = isPreview,
         };
         db.EnvironmentVariables.Add(variable);
         await audit.RecordAsync("env_var.created", "env_var", variable.Id,
-            new { workloadId = workload.Id, variable = key, backing = secret is null ? "plain" : "secret" }, ct);
+            new { workloadId = workload.Id, variable = key, backing = secret is null ? "plain" : "secret", preview = isPreview }, ct);
 
         http.SetETag(variable.RowVersion);
         return TypedResults.Created($"{ResourceHttp.Path(isApplication ? "applications" : "services", workload.Id)}/env-vars/{variable.Id}", ToResponse(variable));
@@ -195,11 +201,18 @@ internal static class EnvVarEndpoints
         http.CheckIfMatch(variable.RowVersion);
         var body = patch.Body;
 
+        var isPreview = patch.Has("isPreview") && body.IsPreview is { } preview ? preview : variable.IsPreview;
+        if (isPreview != variable.IsPreview) RequirePreviewCapable(isApplication, isPreview);
         if (patch.Has("key") && body.Key is { } key && key != variable.Key)
         {
-            await EnsureKeyFreeAsync(db, variable.WorkloadId, key, variable.Id, ct);
+            await EnsureKeyFreeAsync(db, variable.WorkloadId, key, variable.Id, isPreview, ct);
             variable.Key = key.Trim();
         }
+        else if (isPreview != variable.IsPreview)
+        {
+            await EnsureKeyFreeAsync(db, variable.WorkloadId, variable.Key, variable.Id, isPreview, ct);
+        }
+        variable.IsPreview = isPreview;
 
         var value = variable.Value;
         var secretId = variable.SecretId;
@@ -257,7 +270,7 @@ internal static class EnvVarEndpoints
                 $"A value is longer than {EnvVarRules.MaxValueLength} characters.")]));
 
         var overwrite = request.Overwrite ?? false;
-        var existing = await db.EnvironmentVariables.Where(v => v.WorkloadId == workload.Id).ToDictionaryAsync(v => v.Key, ct);
+        var existing = await db.EnvironmentVariables.Where(v => v.WorkloadId == workload.Id && !v.IsPreview).ToDictionaryAsync(v => v.Key, ct);
         var created = new List<string>();
         var updated = new List<string>();
         var skipped = new List<string>();
@@ -296,7 +309,7 @@ internal static class EnvVarEndpoints
         http.RejectUnknownQuery();
         var workload = await FindWorkloadAsync(db, actor.Org(), isApplication, workloadId, ct);
         var plain = await db.EnvironmentVariables.AsNoTracking()
-            .Where(v => v.WorkloadId == workload.Id && v.SecretId == null && v.Value != null)
+            .Where(v => v.WorkloadId == workload.Id && !v.IsPreview && v.SecretId == null && v.Value != null)
             .OrderBy(v => v.Key).Select(v => new { v.Key, v.Value }).ToListAsync(ct);
         var text = DotEnv.Format(plain.Select(v => new KeyValuePair<string, string>(v.Key, v.Value!)));
         return TypedResults.Text(text, "text/plain; charset=utf-8");
@@ -321,13 +334,21 @@ internal static class EnvVarEndpoints
             ?? throw new ApiProblemException(ApiProblems.NotFound("env_var", envVarId));
     }
 
-    private static async Task EnsureKeyFreeAsync(AetheraDbContext db, Guid workloadId, string key, Guid? exceptId, CancellationToken ct)
+    /// <summary>A key is unique among the regular variables and, separately, among the preview-only ones (which override a regular one in previews).</summary>
+    private static async Task EnsureKeyFreeAsync(AetheraDbContext db, Guid workloadId, string key, Guid? exceptId, bool isPreview, CancellationToken ct)
     {
-        if (await db.EnvironmentVariables.AnyAsync(v => v.WorkloadId == workloadId && v.Key == key && v.Id != exceptId, ct))
-            throw new ApiProblemException(ApiProblems.AlreadyExists("env_var", $"The variable '{key}' already exists."));
+        if (await db.EnvironmentVariables.AnyAsync(v => v.WorkloadId == workloadId && v.Key == key && v.IsPreview == isPreview && v.Id != exceptId, ct))
+            throw new ApiProblemException(ApiProblems.AlreadyExists("env_var", $"The {(isPreview ? "preview " : "")}variable '{key}' already exists."));
+    }
+
+    /// <summary>Only applications have previews.</summary>
+    private static void RequirePreviewCapable(bool isApplication, bool isPreview)
+    {
+        if (isPreview && !isApplication)
+            throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/isPreview", "invalid", "Only applications have pull request previews.")]));
     }
 
     internal static EnvVarResponse ToResponse(EnvironmentVariable v) => new(
         v.Id, v.WorkloadId, v.Key, v.SecretId is null ? v.Value ?? "" : SecretResponses.Mask, v.SecretId is not null, v.SecretId,
-        v.Secret?.Name, v.Secret?.CurrentVersion, v.IsBuildTime, v.IsRuntime, v.CreatedAt, v.UpdatedAt);
+        v.Secret?.Name, v.Secret?.CurrentVersion, v.IsBuildTime, v.IsRuntime, v.CreatedAt, v.UpdatedAt, v.IsPreview);
 }

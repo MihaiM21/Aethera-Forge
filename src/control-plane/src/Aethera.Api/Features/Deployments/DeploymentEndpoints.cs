@@ -18,7 +18,7 @@ public sealed record DeploymentDto(
     Guid Id, Guid ApplicationId, int Number, DeploymentStatus Status, DeploymentTrigger Trigger, string Strategy, DeploymentStep? CurrentStep,
     DeploymentStep? FailedStep, string? FailureCode, string? FailureReason, string? Ref, string? CommitSha, string? CommitMessage, string? CommitAuthor,
     string? ImageRef, string? ImageDigest, bool IsRollbackPoint, bool CanRollbackTo, Guid? RollbackOfDeploymentId, Guid? JobId, DateTimeOffset CreatedAt,
-    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, long? DurationMs, IReadOnlyList<DeploymentStepDto>? Steps);
+    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, long? DurationMs, IReadOnlyList<DeploymentStepDto>? Steps, Guid? PreviewId = null);
 
 /// <summary>Optional body of <c>POST /applications/{id}/deployments</c>.</summary>
 public sealed record DeployRequest(string? Reason = null);
@@ -43,8 +43,8 @@ internal static class DeploymentEndpoints
     private static void MapWorkload(IEndpointRouteBuilder api, string prefix, string noun, string kind)
     {
         var group = api.MapGroup($"/{prefix}").WithTags("Deployments");
-        group.MapGet("/{id:guid}/deployments", (Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, [AsParameters] PageRequest page, string? sort, string? status, CancellationToken ct) =>
-            List(id, kind, http, db, actor, cursors, page, sort, status, ct)).WithName($"list{noun}Deployments").RequireRead();
+        group.MapGet("/{id:guid}/deployments", (Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, [AsParameters] PageRequest page, string? sort, string? status, Guid? previewId, CancellationToken ct) =>
+            List(id, kind, http, db, actor, cursors, page, sort, status, previewId, ct)).WithName($"list{noun}Deployments").RequireRead();
         group.MapPost("/{id:guid}/deployments", (Guid id, DeployRequest? request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
             Queue(id, kind, DeploymentTrigger.Manual, db, actor, audit, svc, ct)).WithName($"deploy{noun}").RequireDeploy()
             .Produces<DeploymentDto>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status404NotFound);
@@ -66,14 +66,16 @@ internal static class DeploymentEndpoints
         db.Deployments.Where(d => d.Workload.Environment.Project.OrganizationId == org);
 
     private static async Task<Ok<Page<DeploymentDto>>> List(
-        Guid id, string kind, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, PageRequest page, string? sort, string? status, CancellationToken ct)
+        Guid id, string kind, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, PageRequest page, string? sort, string? status, Guid? previewId, CancellationToken ct)
     {
-        http.RejectUnknownQuery("status");
+        http.RejectUnknownQuery("status", "previewId");
         await RequireWorkloadAsync(db, actor, id, kind, ct);
         var statuses = ResourceHttp.ParseEnumFilter<DeploymentStatus>(status, "status");
         var query = DeploymentsOf(db, actor.Org()).AsNoTracking().Where(d => d.WorkloadId == id);
+        // The history of an application is its own: the deployments of its pull request previews (ADR 0012) are listed per preview.
+        query = previewId is { } preview ? query.Where(d => d.PreviewId == preview) : query.Where(d => d.PreviewId == null);
         if (statuses is not null) query = query.Where(d => statuses.Contains(d.Status));
-        var (items, next) = await Sorts.PageAsync(query, sort, page, cursors, $"id={id}&status={status}", ct);
+        var (items, next) = await Sorts.PageAsync(query, sort, page, cursors, $"id={id}&status={status}&preview={previewId}", ct);
         return TypedResults.Ok(new Page<DeploymentDto>(items.Select(d => ToDto(d, includeSteps: false)).ToList(), next));
     }
 
@@ -149,5 +151,6 @@ internal static class DeploymentEndpoints
         d.StartedAt, d.FinishedAt, d.Duration is { } t ? (long)t.TotalMilliseconds : null,
         includeSteps
             ? d.Steps.OrderBy(s => s.Step).Select(s => new DeploymentStepDto(s.Step, s.Status, s.StartedAt, s.FinishedAt, s.ErrorCode, s.ErrorMessage)).ToList()
-            : null);
+            : null,
+        d.PreviewId);
 }

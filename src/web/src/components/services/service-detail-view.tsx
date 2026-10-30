@@ -30,6 +30,9 @@ import type { Service, ServiceTemplate } from "@/lib/resources/types";
 import { formatAgo, toNum } from "@/lib/servers/format";
 import { usePolled } from "@/lib/servers/use-polled";
 import { useResourceId } from "@/lib/use-resource-id";
+import { ServicePorts } from "@/components/mesh/service-ports";
+import { meshApi } from "@/lib/mesh/api";
+import { publishedAddress } from "@/lib/mesh/format";
 import { WorkloadBackupsTab } from "@/components/backups/workload-backups-tab";
 import { ScheduledTasksTab } from "@/components/tasks/scheduled-tasks-tab";
 
@@ -54,14 +57,22 @@ export function serviceTabFromHash(hash: string): ServiceTab {
 }
 
 /** How other workloads of the environment reach the service: its slug is a DNS alias on the environment network. */
-export function connectionInfo(service: Pick<Service, "slug" | "runtime">): Array<{ label: string; value: string }> {
-  return service.runtime.ports.map((p) => ({ label: `${toNum(p.containerPort)}/${p.protocol}`, value: `${service.slug}:${toNum(p.containerPort)}` }));
+export function connectionInfo(service: Pick<Service, "slug" | "runtime">, meshAddress?: string | null): Array<{ label: string; value: string }> {
+  const rows = service.runtime.ports.map((p) => ({ label: `${toNum(p.containerPort)}/${p.protocol}`, value: `${service.slug}:${toNum(p.containerPort)}` }));
+  // A port on the private network is also reached from other servers at the server's mesh address and the published port (ADR 0012).
+  for (const p of service.runtime.ports) {
+    const address = publishedAddress(p, { meshAddress });
+    if (address) rows.push({ label: `${toNum(p.containerPort)}/${p.protocol} · private network`, value: address });
+  }
+  return rows;
 }
 
 function Overview({ service, api }: { service: Service; api: ResourcesApi }) {
   const deployments = usePolled((signal) => api.services.deployments(service.id, { signal }), `sv-deps:${service.id}`, { intervalMs: 6000 });
   const [now] = React.useState(() => new Date());
-  const conn = connectionInfo(service);
+  const hasPrivate = service.runtime.ports.some((p) => p.bindScope === "private" && p.publishedPort != null);
+  const mesh = usePolled((signal) => meshApi.server(service.serverId, { signal }), `sv-mesh:${service.serverId}`, { intervalMs: 30_000, enabled: hasPrivate });
+  const conn = connectionInfo(service, mesh.data?.address);
   const items = deployments.data?.items ?? [];
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
@@ -69,8 +80,16 @@ function Overview({ service, api }: { service: Service; api: ResourcesApi }) {
         <section className="flex flex-col gap-3">
           <SectionTitle index="01">Connection</SectionTitle>
           <p className="text-xs text-muted-foreground">
-            Applications and services in the same environment reach this service on the environment network by its name. Nothing is published on the server&apos;s own ports.
+            Applications and services in the same environment reach this service on the environment network by its name.{" "}
+            {hasPrivate
+              ? "A port on the private network is also reachable from your other servers at the server's private address."
+              : "Nothing is published on the server's own ports unless you choose so in Settings."}
           </p>
+          {hasPrivate && mesh.data && !mesh.data.address && (
+            <p role="status" className="border border-dashed border-warning/70 bg-warning-soft px-3 py-2 text-xs">
+              This server has no address in the private network yet: turn it on in Settings &gt; Network.
+            </p>
+          )}
           {conn.length === 0 && <p className="text-sm text-muted-foreground">This service exposes no ports.</p>}
           <ul className="grid gap-2">
             {conn.map((c) => (
@@ -171,6 +190,7 @@ function ServiceSettings({ service, template, api, onSaved }: { service: Service
         </div>
       </form>
       <MovePanel kind="services" id={service.id} name={service.name} currentServerId={service.serverId} api={api} onMoved={onSaved} />
+      <ServicePorts service={service} api={api} onSaved={onSaved} />
       <section className="grid gap-3 border border-danger/50 p-4">
         <h3 className="text-base font-medium text-danger">Danger zone</h3>
         <p className="text-sm text-muted-foreground">Deleting the service removes it from Aethera. Its data volumes and the running container stay on the server until you remove them.</p>
