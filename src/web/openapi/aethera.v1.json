@@ -17937,6 +17937,365 @@
         ],
         "x-required-scope": "write"
       }
+    },
+    "/api/v1/system/mesh": {
+      "get": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "The private network between servers",
+        "operationId": "getMeshSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Turn the private network on or off and choose its range",
+        "description": "`wireGuard`: each agent creates the interface `aethera0` and every server gets an address from `cidr`. `tailscale`: the address of `tailscale0` is used; Aethera does not log in to Tailscale. `none` removes the interfaces Aethera created. Saving queues a reconcile of every server.",
+        "operationId": "updateMeshSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeshSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/system/mesh/reconcile": {
+      "post": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Apply the private network to every server again",
+        "operationId": "reconcileMesh",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshReconcileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/servers/{id}/mesh": {
+      "get": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "A server's address, key, endpoint and peers in the private network",
+        "operationId": "getServerMesh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMeshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Set the endpoint and port peers use to reach this server",
+        "operationId": "updateServerMesh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServerMeshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMeshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
     }
   },
   "components": {
@@ -23420,6 +23779,172 @@
           }
         }
       },
+      "MeshPeerResponse": {
+        "required": [
+          "serverId",
+          "name",
+          "publicKey",
+          "address",
+          "endpoint",
+          "lastHandshake",
+          "rxBytes",
+          "txBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastHandshake": {
+            "format": "date-time"
+          },
+          "rxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "txBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "MeshProvider": {
+        "enum": [
+          "none",
+          "wireGuard",
+          "tailscale"
+        ]
+      },
+      "MeshReconcileResponse": {
+        "required": [
+          "queued"
+        ],
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MeshServerSummary": {
+        "required": [
+          "id",
+          "name",
+          "provider",
+          "status",
+          "address",
+          "error",
+          "handshakeAt",
+          "agentConnected"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MeshStatus"
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "handshakeAt": {
+            "format": "date-time"
+          },
+          "agentConnected": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MeshSettingsResponse": {
+        "required": [
+          "provider",
+          "cidr",
+          "listenPort",
+          "servers"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "cidr": {
+            "type": "string"
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeshServerSummary"
+            }
+          }
+        }
+      },
+      "MeshStatus": {
+        "enum": [
+          "disabled",
+          "pending",
+          "up",
+          "degraded",
+          "failed"
+        ]
+      },
       "MetricPointResponse": {
         "required": [
           "timestamp",
@@ -24296,6 +24821,14 @@
           }
         }
       },
+      "PortBindScope": {
+        "enum": [
+          "public",
+          "private",
+          "loopback"
+        ],
+        "default": "public"
+      },
       "PortMappingSpec": {
         "required": [
           "containerPort"
@@ -24371,6 +24904,12 @@
             ],
             "format": "int32"
           },
+          "bindScope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "isHttp": {
             "type": [
               "null",
@@ -24421,6 +24960,9 @@
           },
           "isHttp": {
             "type": "boolean"
+          },
+          "bindScope": {
+            "$ref": "#/components/schemas/PortBindScope"
           }
         }
       },
@@ -26032,6 +26574,107 @@
           "disabled"
         ]
       },
+      "ServerMeshResponse": {
+        "required": [
+          "serverId",
+          "instanceProvider",
+          "provider",
+          "status",
+          "statusChangedAt",
+          "error",
+          "address",
+          "publicKey",
+          "endpoint",
+          "effectiveEndpoint",
+          "listenPort",
+          "effectiveListenPort",
+          "handshakeAt",
+          "agentConnected",
+          "peersLive",
+          "peers"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instanceProvider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MeshStatus"
+          },
+          "statusChangedAt": {
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publicKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "effectiveEndpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "effectiveListenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "handshakeAt": {
+            "format": "date-time"
+          },
+          "agentConnected": {
+            "type": "boolean"
+          },
+          "peersLive": {
+            "type": "boolean"
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeshPeerResponse"
+            }
+          }
+        }
+      },
       "ServerResourcesRequest": {
         "type": "object",
         "properties": {
@@ -27445,6 +28088,32 @@
           }
         }
       },
+      "UpdateMeshSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cidr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateOrganizationRequest": {
         "type": "object",
         "properties": {
@@ -27607,6 +28276,26 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "UpdateServerMeshRequest": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -28375,6 +29064,9 @@
     },
     {
       "name": "DNS providers"
+    },
+    {
+      "name": "Network"
     }
   ]
 }
