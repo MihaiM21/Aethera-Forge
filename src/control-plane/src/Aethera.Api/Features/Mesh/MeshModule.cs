@@ -1,3 +1,5 @@
+using Aethera.Infrastructure.Mesh;
+
 namespace Aethera.Api.Features.Mesh;
 
 /// <summary>
@@ -7,9 +9,17 @@ namespace Aethera.Api.Features.Mesh;
 public static class MeshModule
 {
     /// <summary>Job type that pushes the desired mesh configuration to every connected server.</summary>
-    public const string ReconcileJobType = "mesh.reconcile";
+    public const string ReconcileJobType = MeshReconcileJobHandler.JobType;
 
-    public static IServiceCollection AddMesh(this IServiceCollection services, IConfiguration configuration) => services;
+    public static IServiceCollection AddMesh(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddMeshInfrastructure(configuration);
+        return services;
+    }
 
-    public static IEndpointRouteBuilder MapMesh(this IEndpointRouteBuilder api) => api;
+    public static IEndpointRouteBuilder MapMesh(this IEndpointRouteBuilder api)
+    {
+        MeshEndpoints.Map(api);
+        return api;
+    }
 }

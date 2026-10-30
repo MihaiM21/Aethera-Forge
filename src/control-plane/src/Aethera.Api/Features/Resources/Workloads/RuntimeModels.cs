@@ -12,6 +12,14 @@ public sealed record PortRequest
     public int? ContainerPort { get; init; }
     public string? Protocol { get; init; }
     public int? PublishedPort { get; init; }
+
+    /// <summary>
+    /// Where the published port listens (ADR 0012): <c>public</c> (every interface, the default), <c>private</c> (the server's address in the private
+    /// network, reachable from the other servers and never from the internet) or <c>loopback</c> (127.0.0.1). Needs a published port; absent keeps
+    /// the port's current scope (<c>public</c> for a new one).
+    /// </summary>
+    public string? BindScope { get; init; }
+
     public bool? IsHttp { get; init; }
 
     /// <summary>
@@ -56,7 +64,7 @@ public sealed record RuntimeRequest
 
 // ---- responses ------------------------------------------------------------------------------------------------------------------------
 
-public sealed record PortResponse(Guid Id, int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp);
+public sealed record PortResponse(Guid Id, int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp, PortBindScope BindScope = PortBindScope.Public);
 
 public sealed record ResourceLimitsResponse(
     double? CpuLimitCores, double? CpuReservationCores, long? MemoryLimitBytes, long? MemoryReservationBytes, int? PidsLimit);
@@ -76,6 +84,10 @@ public sealed class PortRequestValidator : AbstractValidator<PortRequest>
         RuleFor(p => p.ContainerPort).NotNull().InclusiveBetween(1, 65535);
         RuleFor(p => p.PublishedPort).InclusiveBetween(1, 65535).When(p => p.PublishedPort is not null);
         RuleFor(p => p.Protocol).MustBeEnum<PortRequest, PortProtocol>();
+        RuleFor(p => p.BindScope).MustBeEnum<PortRequest, PortBindScope>();
+        RuleFor(p => p.BindScope).Must(_ => false).WithErrorCode("required")
+            .WithMessage("The private network and loopback scopes need a published port.")
+            .When(p => p.PublishedPort is null && EnumText.Parse<PortBindScope>(p.BindScope) is PortBindScope.Private or PortBindScope.Loopback);
     }
 }
 
@@ -138,7 +150,7 @@ public static class RuntimeMapper
     public static RuntimeResponse ToResponse(Workload w) => new(
         w.Runtime.RestartPolicy,
         w.Runtime.DeploymentStrategy,
-        w.Ports.OrderBy(p => p.ContainerPort).ThenBy(p => p.Protocol).Select(p => new PortResponse(p.Id, p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
+        w.Ports.OrderBy(p => p.ContainerPort).ThenBy(p => p.Protocol).Select(p => new PortResponse(p.Id, p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp, p.BindScope)).ToList(),
         new ResourceLimitsResponse(w.Runtime.CpuLimit, w.Runtime.CpuReservation, w.Runtime.MemoryLimitBytes, w.Runtime.MemoryReservationBytes, w.Runtime.PidsLimit),
         new HealthCheckResponse(w.Runtime.HealthCheck.Type, w.Runtime.HealthCheck.Path, w.Runtime.HealthCheck.Port, w.Runtime.HealthCheck.IntervalSeconds,
             w.Runtime.HealthCheck.TimeoutSeconds, w.Runtime.HealthCheck.Retries, w.Runtime.HealthCheck.StartPeriodSeconds));
@@ -222,6 +234,8 @@ public static class RuntimeMapper
             }
 
             current.PublishedPort = request.PublishedPort;
+            // Omitted keeps the scope, so a client that does not know about it never turns a private database port public; no host port, no scope.
+            current.BindScope = request.PublishedPort is null ? PortBindScope.Public : EnumText.Parse<PortBindScope>(request.BindScope) ?? current.BindScope;
             current.IsHttp = request.IsHttp ?? false;
         }
     }
