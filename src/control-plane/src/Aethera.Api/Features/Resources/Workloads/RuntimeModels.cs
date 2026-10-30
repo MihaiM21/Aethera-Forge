@@ -51,6 +51,13 @@ public sealed record RuntimeRequest
 
     public List<PortRequest>? Ports { get; init; }
     public ResourceLimitsRequest? Resources { get; init; }
+
+    /// <summary>
+    /// <c>normal</c> (default), <c>high</c> or <c>low</c> (ADR 0012): how the workload fares when its server is short of CPU or memory. High doubles
+    /// its CPU shares and shields it from the OOM killer, low halves them and offers it first.
+    /// </summary>
+    public string? Priority { get; init; }
+
     public HealthCheckRequest? HealthCheck { get; init; }
 }
 
@@ -65,7 +72,8 @@ public sealed record HealthCheckResponse(
     HealthCheckType Type, string? Path, int? Port, int IntervalSeconds, int TimeoutSeconds, int Retries, int StartPeriodSeconds);
 
 public sealed record RuntimeResponse(
-    RestartPolicy RestartPolicy, string Strategy, IReadOnlyList<PortResponse> Ports, ResourceLimitsResponse Resources, HealthCheckResponse HealthCheck);
+    RestartPolicy RestartPolicy, string Strategy, IReadOnlyList<PortResponse> Ports, ResourceLimitsResponse Resources, HealthCheckResponse HealthCheck,
+    WorkloadPriority Priority = WorkloadPriority.Normal);
 
 // ---- validation -----------------------------------------------------------------------------------------------------------------------
 
@@ -123,6 +131,7 @@ public sealed class RuntimeRequestValidator : AbstractValidator<RuntimeRequest>
         RuleFor(x => x.Ports).Must(HaveUniquePorts).WithErrorCode("not_unique").WithMessage("Each container port and protocol may appear once.");
         RuleForEach(x => x.Ports).SetValidator(new PortRequestValidator());
         RuleFor(x => x.Resources).SetValidator(new ResourceLimitsValidator()!);
+        RuleFor(x => x.Priority).MustBeEnum<RuntimeRequest, WorkloadPriority>();
         RuleFor(x => x.HealthCheck).SetValidator(new HealthCheckValidator()!);
     }
 
@@ -141,7 +150,8 @@ public static class RuntimeMapper
         w.Ports.OrderBy(p => p.ContainerPort).ThenBy(p => p.Protocol).Select(p => new PortResponse(p.Id, p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
         new ResourceLimitsResponse(w.Runtime.CpuLimit, w.Runtime.CpuReservation, w.Runtime.MemoryLimitBytes, w.Runtime.MemoryReservationBytes, w.Runtime.PidsLimit),
         new HealthCheckResponse(w.Runtime.HealthCheck.Type, w.Runtime.HealthCheck.Path, w.Runtime.HealthCheck.Port, w.Runtime.HealthCheck.IntervalSeconds,
-            w.Runtime.HealthCheck.TimeoutSeconds, w.Runtime.HealthCheck.Retries, w.Runtime.HealthCheck.StartPeriodSeconds));
+            w.Runtime.HealthCheck.TimeoutSeconds, w.Runtime.HealthCheck.Retries, w.Runtime.HealthCheck.StartPeriodSeconds),
+        w.Runtime.Priority);
 
     /// <summary>
     /// Applies the runtime request to the workload. <paramref name="has"/> says whether a (dotted, camelCase, relative to <c>runtime</c>)
@@ -164,6 +174,7 @@ public static class RuntimeMapper
         if (has("resources.memoryLimitBytes")) runtime.MemoryLimitBytes = r?.MemoryLimitBytes;
         if (has("resources.memoryReservationBytes")) runtime.MemoryReservationBytes = r?.MemoryReservationBytes;
         if (has("resources.pidsLimit")) runtime.PidsLimit = r?.PidsLimit;
+        if (has("priority")) runtime.Priority = EnumText.Parse<WorkloadPriority>(request.Priority) ?? defaults.Priority;
 
         var h = request.HealthCheck;
         var healthDefaults = defaults.HealthCheck;
@@ -189,6 +200,7 @@ public static class RuntimeMapper
         "resources.memoryLimitBytes" => r.Resources?.MemoryLimitBytes is not null,
         "resources.memoryReservationBytes" => r.Resources?.MemoryReservationBytes is not null,
         "resources.pidsLimit" => r.Resources?.PidsLimit is not null,
+        "priority" => r.Priority is not null,
         "healthCheck.type" => r.HealthCheck?.Type is not null,
         "healthCheck.path" => r.HealthCheck?.Path is not null,
         "healthCheck.port" => r.HealthCheck?.Port is not null,

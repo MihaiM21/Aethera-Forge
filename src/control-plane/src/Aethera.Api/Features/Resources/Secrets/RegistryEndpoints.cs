@@ -23,6 +23,12 @@ public sealed record CreateRegistryRequest
 
     /// <summary>Password or access token. Write-only: stored as a secret, never returned.</summary>
     public string? Password { get; init; }
+
+    /// <summary>
+    /// Path under the registry host that images built for another server are pushed to (ADR 0012): <c>mihaim21</c> on <c>ghcr.io</c> gives
+    /// <c>ghcr.io/mihaim21/&lt;app&gt;:&lt;deployment&gt;</c>. Stored in lower case. Absent = the username.
+    /// </summary>
+    public string? Namespace { get; init; }
 }
 
 public sealed record UpdateRegistryRequest
@@ -31,13 +37,16 @@ public sealed record UpdateRegistryRequest
     [NotClearable] public string? Url { get; init; }
     public string? Username { get; init; }
 
+    /// <summary>See <see cref="CreateRegistryRequest.Namespace"/>; null = the username.</summary>
+    public string? Namespace { get; init; }
+
     /// <summary>A new password adds a version to the stored secret; <c>null</c> removes the stored credential.</summary>
     public string? Password { get; init; }
 }
 
 /// <summary>A registry. The credential is write-only: only <c>hasCredentials</c> tells whether one is stored.</summary>
 public sealed record RegistryResponse(
-    Guid Id, string Name, string Url, string? Username, bool HasCredentials, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    Guid Id, string Name, string Url, string? Username, bool HasCredentials, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string? Namespace = null);
 
 /// <summary>
 /// The verdict of <c>POST /registries/{id}/test</c>. <c>result</c> is <c>ok</c> (the registry answered and accepted the stored credentials, or
@@ -60,6 +69,15 @@ public static partial class RegistryRules
     private static partial Regex UrlPattern();
 
     public static bool IsValidUrl(string? url) => url is not null && UrlPattern().IsMatch(url);
+
+    // Registry repository names (lower case letters, digits, '.', '_', '-', separated by '/'); typed in any case, stored lower case.
+    [GeneratedRegex(@"\A[A-Za-z0-9]+([._-][A-Za-z0-9]+)*(/[A-Za-z0-9]+([._-][A-Za-z0-9]+)*)*\z")]
+    private static partial Regex NamespacePattern();
+
+    public static bool IsValidNamespace(string? value) => value is not null && value.Length <= 255 && NamespacePattern().IsMatch(value.Trim());
+
+    /// <summary>The stored form of a namespace: trimmed, lower case; null when empty.</summary>
+    public static string? NormalizeNamespace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Trim('/').ToLowerInvariant();
 }
 
 public sealed class CreateRegistryValidator : AbstractValidator<CreateRegistryRequest>
@@ -72,6 +90,9 @@ public sealed class CreateRegistryValidator : AbstractValidator<CreateRegistryRe
             .WithMessage("Must be a registry host such as ghcr.io or registry.example.com:5000, optionally with an http(s):// scheme.")
             .When(x => !string.IsNullOrEmpty(x.Url));
         RuleFor(x => x.Username).MaximumLength(200);
+        RuleFor(x => x.Namespace).Must(RegistryRules.IsValidNamespace).WithErrorCode("pattern")
+            .WithMessage("Must be a user or organization name such as mihaim21 (letters, digits, '.', '_', '-', and '/' between parts).")
+            .When(x => !string.IsNullOrWhiteSpace(x.Namespace));
         RuleFor(x => x.Password).MaximumLength(SecretRules.MaxValueLength);
     }
 }
@@ -85,6 +106,9 @@ public sealed class UpdateRegistryValidator : AbstractValidator<UpdateRegistryRe
             .WithMessage("Must be a registry host such as ghcr.io or registry.example.com:5000, optionally with an http(s):// scheme.")
             .When(x => x.Url is not null);
         RuleFor(x => x.Username).MaximumLength(200);
+        RuleFor(x => x.Namespace).Must(RegistryRules.IsValidNamespace).WithErrorCode("pattern")
+            .WithMessage("Must be a user or organization name such as mihaim21 (letters, digits, '.', '_', '-', and '/' between parts).")
+            .When(x => !string.IsNullOrWhiteSpace(x.Namespace));
         RuleFor(x => x.Password).MaximumLength(SecretRules.MaxValueLength);
     }
 }
@@ -133,7 +157,10 @@ internal static class RegistryEndpoints
         var name = request.Name!.Trim();
         await EnsureNameFreeAsync(db, org, name, null, ct);
 
-        var registry = new Registry { OrganizationId = org, Name = name, Url = request.Url!.Trim(), Username = request.Username };
+        var registry = new Registry
+        {
+            OrganizationId = org, Name = name, Url = request.Url!.Trim(), Username = request.Username, Namespace = RegistryRules.NormalizeNamespace(request.Namespace),
+        };
         if (!string.IsNullOrEmpty(request.Password))
         {
             var secret = CreateCredential(vault, org, registry, request.Password);
@@ -173,6 +200,7 @@ internal static class RegistryEndpoints
 
         if (patch.Has("url") && body.Url is { } url) { registry.Url = url.Trim(); changed.Add("url"); }
         if (patch.Has("username")) { registry.Username = body.Username; changed.Add("username"); }
+        if (patch.Has("namespace")) { registry.Namespace = RegistryRules.NormalizeNamespace(body.Namespace); changed.Add("namespace"); }
 
         if (patch.Has("password"))
         {
@@ -213,6 +241,10 @@ internal static class RegistryEndpoints
         var users = await db.ImageSources.CountAsync(i => i.RegistryId == id && i.Application.DeletedAt == null, ct);
         if (users > 0)
             throw new ApiProblemException(ApiProblems.Conflict(ResourceProblemCodes.RegistryInUse, $"{users} application(s) pull images from this registry."));
+        var buildServers = await db.Servers.CountAsync(s => s.BuildRegistryId == id, ct);
+        if (buildServers > 0)
+            throw new ApiProblemException(ApiProblems.Conflict(ResourceProblemCodes.RegistryInUse,
+                $"{buildServers} server(s) push the images they build to this registry. Choose another build registry in their settings first."));
 
         var now = clock.UtcNow;
         registry.MarkDeleted(now);
@@ -248,5 +280,5 @@ internal static class RegistryEndpoints
     }
 
     internal static RegistryResponse ToResponse(Registry r) =>
-        new(r.Id, r.Name, r.Url, r.Username, r.PasswordSecretId is not null, r.CreatedAt, r.UpdatedAt);
+        new(r.Id, r.Name, r.Url, r.Username, r.PasswordSecretId is not null, r.CreatedAt, r.UpdatedAt, r.Namespace);
 }

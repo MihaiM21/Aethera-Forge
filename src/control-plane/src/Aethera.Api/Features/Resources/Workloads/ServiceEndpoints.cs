@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Aethera.Api.Features.Placement;
 using Aethera.Api.Features.Resources.Secrets;
 using Aethera.Api.Features.Resources.Services;
 using Aethera.Api.Features.Resources.Trust;
@@ -9,6 +10,7 @@ using Aethera.Api.Http.Pagination;
 using Aethera.Domain;
 using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Placement;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +24,11 @@ public sealed record CreateServiceRequest
     public string? Slug { get; init; }
     public string? Description { get; init; }
     public Guid? EnvironmentId { get; init; }
+
+    /// <summary>
+    /// The server it runs on. Absent = Aethera chooses (ADR 0012): a database or other stateful service (a template with a data volume) goes to a
+    /// server with the storage role, any other service to one with the worker role; 422 <c>placement.no_eligible_server</c> when none accepts it.
+    /// </summary>
     public Guid? ServerId { get; init; }
 
     /// <summary>A key of <c>GET /service-templates</c> (postgres, redis, ...).</summary>
@@ -59,7 +66,7 @@ public sealed record UpdateServiceRequest
 public sealed record ServiceResponse(
     Guid Id, string Name, string Slug, string? Description, Guid ProjectId, Guid EnvironmentId, Guid ServerId, string TemplateKey,
     string? TemplateVersion, string Image, JsonNode? Config, WorkloadStatusResponse State, RuntimeResponse Runtime,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<string>? Warnings = null);
 
 public sealed record ServiceSummary(
     Guid Id, string Name, string Slug, string? Description, Guid ProjectId, Guid EnvironmentId, Guid ServerId, string TemplateKey,
@@ -75,7 +82,6 @@ public sealed class CreateServiceValidator : AbstractValidator<CreateServiceRequ
             .WithMessage("Use lowercase letters, digits and single hyphens (1-63 characters).").When(x => x.Slug is not null);
         RuleFor(x => x.Description).MaximumLength(2000);
         RuleFor(x => x.EnvironmentId).NotNull();
-        RuleFor(x => x.ServerId).NotNull();
         RuleFor(x => x.TemplateKey).NotEmpty()
             .Must(k => k is null || ServiceTemplates.Find(k) is not null).WithErrorCode("not_found")
             .WithMessage($"Unknown template. Available: {string.Join(", ", ServiceTemplates.All.Select(t => t.Key))}.");
@@ -151,16 +157,22 @@ internal static class ServiceEndpoints
 
     private static async Task<Created<ServiceResponse>> Create(
         CreateServiceRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, SecretVault vault,
-        TrustPolicy trust, IOptions<ProxyOptions> proxy, CancellationToken ct)
+        TrustPolicy trust, IOptions<ProxyOptions> proxy, IPlacementService placement, ServerCapacityReader capacities, CancellationToken ct)
     {
         var org = actor.Org();
         CheckConfig(actor, trust, request.Config, null);
         TrustChecks.CheckPorts(actor, trust, request.Runtime?.Ports);
         var references = new ReferenceCheck();
         var environment = references.Check(await db.FindEnvironmentAsync(org, request.EnvironmentId, ct), "/environmentId", "environment")!;
-        var server = references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server")!;
+        var requested = request.ServerId is null ? null : references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server");
         references.ThrowIfAny();
         var template = ServiceTemplates.Find(request.TemplateKey)!;
+
+        // No server named: Aethera chooses (ADR 0012). A template with a data volume is a stateful service and wants a storage server.
+        var resources = request.Runtime?.Resources;
+        var placed = await WorkloadPlacement.ChooseAsync(db, org, requested, PlacementRules.KindOfTemplate(template.Volumes.Count),
+            resources?.CpuReservationCores ?? resources?.CpuLimitCores, resources?.MemoryReservationBytes ?? resources?.MemoryLimitBytes, placement, capacities, ct);
+        var server = placed.Server;
         var name = request.Name!.Trim();
         var slug = WorkloadSupport.ResolveSlug(request.Slug, name);
         await WorkloadSupport.EnsureSlugFreeAsync(db, environment.Id, slug, "service", null, ct);
@@ -174,10 +186,11 @@ internal static class ServiceEndpoints
         else if (request.AutoDomain == false) service.AutoDomainAssigned = true;
         await audit.RecordAsync("service.created", "service", service.Id,
             new { name, slug, environmentId = environment.Id, projectId = environment.ProjectId, serverId = server.Id, template = template.Key,
-                  version = service.TemplateVersion, generatedSecrets = service.EnvironmentVariables.Count(v => v.Secret is not null) }, ct);
+                  version = service.TemplateVersion, generatedSecrets = service.EnvironmentVariables.Count(v => v.Secret is not null),
+                  placement = placed.Automatic ? "automatic" : "chosen", warnings = placed.Warnings.Count }, ct);
 
         http.SetETag(service.RowVersion);
-        return TypedResults.Created(ResourceHttp.Path("services", service.Id), ToResponse(service));
+        return TypedResults.Created(ResourceHttp.Path("services", service.Id), ToResponse(service, placed.Warnings));
     }
 
     private static async Task<Ok<ServiceResponse>> Get(Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, CancellationToken ct)
@@ -273,9 +286,9 @@ internal static class ServiceEndpoints
         return await query.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new ApiProblemException(ApiProblems.NotFound("service", id));
     }
 
-    internal static ServiceResponse ToResponse(Service s) => new(
+    internal static ServiceResponse ToResponse(Service s, IReadOnlyList<string>? warnings = null) => new(
         s.Id, s.Name, s.Slug, s.Description, s.Environment.ProjectId, s.EnvironmentId, s.ServerId, s.TemplateKey, s.TemplateVersion, s.Image,
-        JsonNode.Parse(s.ConfigJson), WorkloadSupport.StatusOf(s), RuntimeMapper.ToResponse(s), s.CreatedAt, s.UpdatedAt);
+        JsonNode.Parse(s.ConfigJson), WorkloadSupport.StatusOf(s), RuntimeMapper.ToResponse(s), s.CreatedAt, s.UpdatedAt, warnings ?? []);
 
     private static ServiceSummary ToSummary(Service s) => new(
         s.Id, s.Name, s.Slug, s.Description, s.Environment.ProjectId, s.EnvironmentId, s.ServerId, s.TemplateKey, s.TemplateVersion, s.Image,
