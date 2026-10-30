@@ -39,6 +39,9 @@ public sealed record DeploymentSnapshot
     /// <summary>Extra container labels of the workload (administrators only), merged over the generated ones. Null in snapshots from before ADR 0010.</summary>
     public Dictionary<string, string>? CustomLabels { get; init; }
 
+    /// <summary>Set for a pull request preview (ADR 0012): the snapshot then runs under the preview's names (<see cref="Slug"/> is its resource slug).</summary>
+    public PreviewSnapshot? Preview { get; init; }
+
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
     public static DeploymentSnapshot FromJson(string json) =>
@@ -60,6 +63,9 @@ public sealed record DeploymentSnapshot
 }
 
 public sealed record GitSnapshot(string Url, string Branch, string? CommitPin, Guid? CredentialId);
+
+/// <summary>The pull request a preview deployment belongs to. Containers carry <c>aethera.preview=&lt;PreviewId&gt;</c>, which is how teardown finds them.</summary>
+public sealed record PreviewSnapshot(Guid PreviewId, int Number);
 
 /// <param name="BuildArgs">The build configuration's plain <c>--build-arg</c> values; environment variables marked for the build are added (and win).</param>
 public sealed record BuildSnapshot(
