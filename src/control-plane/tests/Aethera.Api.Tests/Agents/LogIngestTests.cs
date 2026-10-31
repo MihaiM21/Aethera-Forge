@@ -227,6 +227,39 @@ public sealed class LogIngestTests(GatewayFixture fixture)
     }
 
     [RequiresDatabaseFact]
+    public async Task Compose_and_exec_output_under_the_agents_deploy_stream_id_is_stored_and_seen_also_after_a_redelivery()
+    {
+        // The agent writes the output of non-build commands under deploy:<command id> (ops.composeLog, ops.execLog): it used to be dropped.
+        var (_, serverId) = await fixture.SeedServerAsync();
+        var seen = new List<LogEntry>();
+        var first = FakeAgent.Start(fixture, serverId);
+        await using var _ = first;
+        await first.ExpectWelcomeAsync();
+        var project = new ComposeProjectSpec("turn-one", "services: {}\n");
+        var call = fixture.Transport.ExecuteAsync<ComposeUpCommand, ComposeOutcome>(serverId, new ComposeUpCommand(project),
+            new CommandOptions { IdempotencyKey = "job:compose:0", Deadline = DateTimeOffset.UtcNow.AddMinutes(1), LogStreamId = "deploy:d-2", OnLog = e => { lock (seen) seen.Add(e); } }, default);
+        var original = await first.NextCommandAsync();
+        first.Ack(original.CommandId);
+        await fixture.AckSettledAsync(serverId);
+        first.Send(Chunk("deploy:" + original.CommandId, 1, "#1 building api\n", source: ProtoLogSource.Build));
+        first.Send(Chunk("deploy:" + original.CommandId, 2, "port is already allocated\n", source: ProtoLogSource.Deploy));
+        await GatewayFixture.EventuallyAsync(async () => (await RowsAsync("deploy:d-2")).Count == 2, "two chunks stored");
+        await GatewayFixture.EventuallyAsync(() => Task.FromResult(seen.Count == 2), "the caller saw both");
+        first.Drop();
+        await first.Run.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await using var second = FakeAgent.Start(fixture, serverId);
+        await second.ExpectWelcomeAsync();
+        var redelivered = await second.NextCommandAsync();
+        second.Ack(redelivered.CommandId);
+        second.Send(Chunk("deploy:" + redelivered.CommandId, 1, "again\n", source: ProtoLogSource.Deploy));
+        await GatewayFixture.EventuallyAsync(async () => (await RowsAsync("deploy:d-2")).Count == 3, "the new chunk appended");
+        Assert.Equal(["#1 building api\n", "port is already allocated\n", "again\n"], (await RowsAsync("deploy:d-2")).Select(r => r.Data));
+        second.Result(new CommandResult { CommandId = redelivered.CommandId, Status = Aethera.Agent.V1.CommandStatus.Succeeded, Compose = new ComposeResult { ProjectName = "turn-one" } });
+        Assert.True((await call).Succeeded);
+    }
+
+    [RequiresDatabaseFact]
     public async Task A_stream_is_cut_with_one_marker_at_the_size_cap_and_the_rest_is_still_acknowledged()
     {
         var build = await StartBuildAsync(); // the cap is 600 bytes in these tests

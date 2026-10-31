@@ -249,9 +249,19 @@ public sealed class AgentCommandDispatcher(
         }
         else
         {
-            state.RegisterStream(commandId, commandOptions.LogStreamId ?? $"deploy:{commandId}");
+            var persisted = commandOptions.LogStreamId ?? $"deploy:{commandId}";
+            var output = AgentOutputStream(commandId);
+            pending.StreamIds.Add(output);
+            state.RegisterStream(commandId, persisted);
+            state.RegisterStream(output, persisted);
         }
     }
+
+    /// <summary>
+    /// The stream id under which the agent writes the output of a command that is not an image build (compose, exec): <c>deploy:&lt;command id&gt;</c>.
+    /// Without this alias every such chunk was dropped as a stream nobody asked for.
+    /// </summary>
+    internal static string AgentOutputStream(string commandId) => $"deploy:{commandId}";
 
     private async Task RebindStreamAsync(ServerAgentState state, PendingCommand pending, string oldId, string newId, CancellationToken cancellationToken)
     {
@@ -259,8 +269,13 @@ public sealed class AgentCommandDispatcher(
         if (!state.StreamAliases.TryGetValue(oldId, out var persisted)) return;
         state.RegisterStream(newId, persisted);
         if (pending.Proto.RequestCase == P.Command.RequestOneofCase.Build) return; // build streams are keyed by the stable build id
+        var output = AgentOutputStream(newId);
+        pending.StreamIds.Add(output);
+        state.RegisterStream(output, persisted);
         // A fresh execution restarts its stream at sequence 1: continue after what is already stored.
-        state.SequenceOffsets[newId] = await logs.MaxStoredSequenceAsync(persisted, cancellationToken);
+        var offset = await logs.MaxStoredSequenceAsync(persisted, cancellationToken);
+        state.SequenceOffsets[newId] = offset;
+        state.SequenceOffsets[output] = offset;
     }
 
     private CommandOutcome<TResult> Convert<TCommand, TResult>(CommandMapper.Entry entry, TCommand command, PendingCommand pending, P.CommandResult result)
