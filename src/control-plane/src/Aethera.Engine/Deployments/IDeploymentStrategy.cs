@@ -76,26 +76,30 @@ public sealed class DeploymentRun(
         Deployment.CompleteStep(DeploymentStep.HealthCheck, Clock.UtcNow);
     }
 
-    /// <summary>Best effort: the last <see cref="FailureLogLines"/> lines of the container's output, into the deployment's log.</summary>
-    public async Task CopyContainerLogsAsync(string container)
+    /// <summary>
+    /// Best effort: the last <see cref="FailureLogLines"/> lines of the container's output, into the deployment's log. <paramref name="service"/> names
+    /// the compose service the container belongs to.
+    /// </summary>
+    public async Task CopyContainerLogsAsync(string container, string? service = null)
     {
         if (Plan.WriteLog is null) return;
+        var whose = service is null ? "the container" : $"service {service}";
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var any = false;
             await foreach (var entry in transport.StreamLogsAsync(Plan.ServerId, new LogStreamRequest(container, Follow: false, Since: null, Tail: FailureLogLines), cts.Token))
             {
-                if (!any) await NarrateAsync($"The last {FailureLogLines} lines of the container's output:");
+                if (!any) await NarrateAsync($"The last {FailureLogLines} lines of the output of {whose}:");
                 any = true;
                 if (entry.Text.Length > 0) await Plan.WriteLog(entry.Stream, entry.Text.TrimEnd('\n'), cts.Token);
             }
 
-            if (!any) await NarrateAsync("The container wrote no output.");
+            if (!any) await NarrateAsync(service is null ? "The container wrote no output." : $"Service {service} wrote no output.");
         }
         catch (Exception e) when (e is ServerTransportException or OperationCanceledException or InvalidOperationException or NotSupportedException)
         {
-            await NarrateAsync("The container's output could not be read.");
+            await NarrateAsync($"The output of {whose} could not be read.");
         }
     }
 
@@ -144,13 +148,16 @@ public sealed class DeploymentRun(
         TCommand command, string operation, DeploymentStep step, string failureCode, CancellationToken ct, Guid? serverId = null)
         where TCommand : IServerCommand<TResult>
     {
+        // An image build writes to its own stream (build:<build id>, the deployment's Build log). Everything else the agent prints (compose
+        // build and up, pulls) is copied live into the deployment's log, where the reason of a failure is read.
+        var build = command is BuildImageCommand;
         var options = new CommandOptions
         {
             IdempotencyKey = $"{Plan.JobId?.ToString() ?? Deployment.Id.ToString()}:{operation}:0",
             JobId = Plan.JobId,
             OrganizationId = Plan.OrganizationId,
-            OnLog = Plan.OnLog,
-            LogStreamId = $"deploy:{Deployment.Id}",
+            OnLog = build ? Plan.OnLog : CopyToLog(Plan.OnLog),
+            LogStreamId = build ? null : $"deploy:{Deployment.Id}",
         };
         try
         {
@@ -161,6 +168,19 @@ public sealed class DeploymentRun(
         {
             throw new DeploymentFailure(step, e.Transient ? FailureCodes.ServerUnavailable : failureCode, e.Message, e);
         }
+    }
+
+    /// <summary>A command's output, line by line into the deployment's log (the sink redacts and never blocks), then to <paramref name="inner"/>.</summary>
+    private Action<LogEntry>? CopyToLog(Action<LogEntry>? inner)
+    {
+        if (Plan.WriteLog is not { } write) return inner;
+        return entry =>
+        {
+            inner?.Invoke(entry);
+            if (entry.Text.Length == 0) return;
+            var pending = write(entry.Stream, entry.Text.TrimEnd('\n'), CancellationToken.None);
+            if (!pending.IsCompletedSuccessfully) _ = pending.AsTask();
+        };
     }
 }
 

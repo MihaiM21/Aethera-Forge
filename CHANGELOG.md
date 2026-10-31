@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+- A deployment's log shows what the server printed: the output of `docker compose build` and `up` (and image pulls) appears live in the Deploy log, and an image build's output in the Build log. Both were stored but never shown, so a failed deployment said only "compose up: exit status 1".
+- A compose project that does not start names the service that stopped and why: the deployment log lists every service's state (exited with code 1, unhealthy, not started) with the last lines of the output of each one that stopped, and the failure message names them.
+
 ## [0.2.0] - 2026-10-31
 
 Still **beta**. 0.2 makes Aethera a multi-server platform: builds on one server and the result on another, a private network between servers, and a preview for every pull request.
