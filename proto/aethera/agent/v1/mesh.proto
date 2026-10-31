@@ -1,0 +1,90 @@
+// The private mesh between servers (ADR 0012). With WireGuard the agent owns
+// one interface (`aethera0`): it generates its key pair on first use and keeps
+// the private key in its state directory, so the key never crosses the
+// protocol. The control plane sends the whole desired configuration; the agent
+// applies it declaratively (peers not listed are removed). With Tailscale the
+// agent only reports the address of `tailscale0`. Nothing else on the host
+// (other interfaces, firewall rules, routes outside the mesh) is touched.
+syntax = "proto3";
+
+package aethera.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Aethera.Agent.V1";
+option go_package = "github.com/mihaim21/aethera-forge/agent/gen/aethera/agent/v1;agentv1";
+
+enum MeshProvider {
+  MESH_PROVIDER_UNSPECIFIED = 0;
+  // Kernel WireGuard managed by the agent.
+  MESH_PROVIDER_WIREGUARD = 1;
+  // An existing tailnet; the agent only reads the tailscale0 address.
+  MESH_PROVIDER_TAILSCALE = 2;
+}
+
+// MeshPeer is another server of the mesh.
+message MeshPeer {
+  // Base64 WireGuard public key.
+  string public_key = 1;
+  // "host:port" the peer listens on; empty = wait for the peer to dial in.
+  string endpoint = 2;
+  // The peer's mesh address as a /32 (the agent rejects wider ranges).
+  repeated string allowed_ips = 3;
+  // 0 = off. The control plane sends 25.
+  uint32 persistent_keepalive_seconds = 4;
+  // Server id of the peer, for logs and status only.
+  string name = 5;
+}
+
+// MeshApply brings the mesh interface to exactly this configuration.
+message MeshApply {
+  MeshProvider provider = 1;
+  // "aethera0" for WireGuard (the only accepted name); ignored for Tailscale.
+  string interface_name = 2;
+  // This server's address with the mesh prefix, e.g. "10.210.0.3/16".
+  // The agent rejects an address outside `cidr`.
+  string address = 3;
+  // The mesh range, e.g. "10.210.0.0/16". Peers' allowed IPs must be inside it.
+  string cidr = 4;
+  uint32 listen_port = 5;
+  repeated MeshPeer peers = 6;
+  // 0 = default (1420).
+  uint32 mtu = 7;
+}
+
+// MeshStatus reads the interface without changing it.
+message MeshStatus {
+  MeshProvider provider = 1;
+  string interface_name = 2;
+}
+
+// MeshRemove deletes the WireGuard interface (the key pair is kept, so a
+// server that rejoins keeps its identity). A no-op for Tailscale.
+message MeshRemove {
+  string interface_name = 1;
+}
+
+message MeshPeerState {
+  string public_key = 1;
+  // Endpoint last seen for the peer.
+  string endpoint = 2;
+  // Unset when there was never a handshake.
+  google.protobuf.Timestamp last_handshake = 3;
+  int64 rx_bytes = 4;
+  int64 tx_bytes = 5;
+}
+
+// MeshState is the result of MeshApply and MeshStatus.
+message MeshState {
+  MeshProvider provider = 1;
+  string interface_name = 2;
+  bool up = 3;
+  // This server's base64 public key (WireGuard); empty for Tailscale.
+  string public_key = 4;
+  // Addresses of the interface (CIDR notation).
+  repeated string addresses = 5;
+  uint32 listen_port = 6;
+  repeated MeshPeerState peers = 7;
+  // Why the interface is not up, when known (module missing, no tailscale0).
+  string error = 8;
+}

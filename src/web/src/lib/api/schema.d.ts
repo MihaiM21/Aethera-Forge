@@ -441,6 +441,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/placement/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which server a new workload would be placed on, and why
+         * @description Ranks the organization's servers for a kind of workload (application, statefulService, statelessService, build) and the CPU and memory it reserves. Servers that are not active, whose agent is not connected, whose roles exclude the kind or that lack the unreserved memory are not eligible; the others are ranked by unreserved memory, then free disk, then fewer workloads. Every server comes with its reasons. Give workloadId instead of kind, cpu and memory to judge an existing workload (the server it is on does not count its own reservation).
+         */
+        get: operations["suggestPlacement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cores, memory and disk of every server, what is reserved on it and how much is left */
+        get: operations["listServerCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the application to another server
+         * @description Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).
+         */
+        post: operations["moveApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the service to another server
+         * @description Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).
+         */
+        post: operations["moveService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -2445,6 +2522,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/mesh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The private network between servers */
+        get: operations["getMeshSettings"];
+        /**
+         * Turn the private network on or off and choose its range
+         * @description `wireGuard`: each agent creates the interface `aethera0` and every server gets an address from `cidr`. `tailscale`: the address of `tailscale0` is used; Aethera does not log in to Tailscale. `none` removes the interfaces Aethera created. Saving queues a reconcile of every server.
+         */
+        put: operations["updateMeshSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/mesh/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply the private network to every server again */
+        post: operations["reconcileMesh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/mesh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A server's address, key, endpoint and peers in the private network */
+        get: operations["getServerMesh"];
+        /** Set the endpoint and port peers use to reach this server */
+        put: operations["updateServerMesh"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listApplicationPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPreviewSettings"];
+        put: operations["updatePreviewSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApplicationPreview"];
+        put?: never;
+        post?: never;
+        delete: operations["removeApplicationPreview"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/previews/{number}/redeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["redeployApplicationPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2531,6 +2728,12 @@ export interface components {
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {unknown} */
         AlertState: "open" | "resolved";
+        AllocationResponse: {
+            /** Format: double */
+            cpuCores: number | string;
+            /** Format: int64 */
+            memoryBytes: number | string;
+        };
         ApiTokenResponse: {
             /** Format: uuid */
             id: string;
@@ -2573,6 +2776,9 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** Format: uuid */
+            buildServerId?: null | string;
+            warnings?: null | string[];
         };
         /** @enum {unknown} */
         ApplicationSourceKind: "git" | "dockerImage" | "dockerfile" | "compose" | "static" | "nixpacks" | null;
@@ -2822,6 +3028,20 @@ export interface components {
             candidates: components["schemas"]["BuildCandidateDto"][];
             commitSha: string;
         };
+        CapacityUsageResponse: {
+            /** Format: double */
+            cpuPercent: null | number | string;
+            /** Format: int64 */
+            memoryUsedBytes: null | number | string;
+            /** Format: int64 */
+            memoryTotalBytes: null | number | string;
+            /** Format: int64 */
+            diskUsedBytes: null | number | string;
+            /** Format: int64 */
+            diskTotalBytes: null | number | string;
+            /** Format: date-time */
+            observedAt: unknown;
+        };
         /** @enum {unknown} */
         CertificateStatus: "none" | "pending" | "issued" | "failed" | "expired";
         ChangePasswordRequest: {
@@ -2916,6 +3136,8 @@ export interface components {
             environmentId?: null | string;
             /** Format: uuid */
             serverId?: null | string;
+            /** Format: uuid */
+            buildServerId?: null | string;
             sourceKind?: null | string;
             gitSource?: null | components["schemas"]["GitSourceRequest"];
             image?: null | components["schemas"]["ImageSourceRequest"];
@@ -2977,6 +3199,7 @@ export interface components {
             secretId?: null | string;
             isBuildTime?: null | boolean;
             isRuntime?: null | boolean;
+            isPreview?: null | boolean;
         };
         CreateEnvironmentRequest: {
             name?: null | string;
@@ -3015,6 +3238,7 @@ export interface components {
             url?: null | string;
             username?: null | string;
             password?: null | string;
+            namespace?: null | string;
         };
         CreateScheduledTaskRequest: {
             name?: null | string;
@@ -3049,6 +3273,12 @@ export interface components {
             wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
             /** Format: uuid */
             sshCredentialSecretId?: null | string;
             resources?: null | components["schemas"]["ServerResourcesRequest"];
@@ -3160,6 +3390,8 @@ export interface components {
             /** Format: int64 */
             durationMs: null | number | string;
             steps: null | components["schemas"]["DeploymentStepDto"][];
+            /** Format: uuid */
+            previewId?: null | string;
         };
         DeploymentListItemDto: {
             deployment: components["schemas"]["DeploymentDto"];
@@ -3183,7 +3415,7 @@ export interface components {
             errorMessage: null | string;
         };
         /** @enum {unknown} */
-        DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api";
+        DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api" | "pullRequest";
         /** @enum {unknown} */
         DesiredState: "running" | "stopped";
         DiscoveryInfo: {
@@ -3454,6 +3686,8 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** @default false */
+            isPreview: boolean;
         };
         EnvironmentResponse: {
             /** Format: uuid */
@@ -3478,6 +3712,14 @@ export interface components {
             /** @description Short stable validator id: required, too_long, too_short, pattern, range, invalid_enum, not_unique, or a domain-specific code. */
             code: string;
             message: string;
+        };
+        FreeCapacityResponse: {
+            /** Format: double */
+            cpuCores: null | number | string;
+            /** Format: int64 */
+            memoryBytes: null | number | string;
+            /** Format: int64 */
+            diskBytes: null | number | string;
         };
         /** @enum {unknown} */
         GitCredentialKind: "token" | "deployKey" | "basicAuth";
@@ -3765,6 +4007,46 @@ export interface components {
             organization: components["schemas"]["OrganizationSummary"];
             role: components["schemas"]["OrganizationRole"];
         };
+        MeshPeerResponse: {
+            /** Format: uuid */
+            serverId: null | string;
+            name: null | string;
+            publicKey: string;
+            address: null | string;
+            endpoint: null | string;
+            /** Format: date-time */
+            lastHandshake: unknown;
+            /** Format: int64 */
+            rxBytes: number | string;
+            /** Format: int64 */
+            txBytes: number | string;
+        };
+        /** @enum {unknown} */
+        MeshProvider: "none" | "wireGuard" | "tailscale";
+        MeshReconcileResponse: {
+            queued: boolean;
+        };
+        MeshServerSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            provider: components["schemas"]["MeshProvider"];
+            status: components["schemas"]["MeshStatus"];
+            address: null | string;
+            error: null | string;
+            /** Format: date-time */
+            handshakeAt: unknown;
+            agentConnected: boolean;
+        };
+        MeshSettingsResponse: {
+            provider: components["schemas"]["MeshProvider"];
+            cidr: string;
+            /** Format: int32 */
+            listenPort: number | string;
+            servers: components["schemas"]["MeshServerSummary"][];
+        };
+        /** @enum {unknown} */
+        MeshStatus: "disabled" | "pending" | "up" | "degraded" | "failed";
         MetricPointResponse: {
             /** Format: date-time */
             timestamp: unknown;
@@ -3806,6 +4088,27 @@ export interface components {
         };
         /** @enum {unknown} */
         MountKind: "volume" | "bind" | "tmpfs";
+        MoveWorkloadRequest: {
+            /** Format: uuid */
+            serverId?: null | string;
+            confirm?: null | boolean;
+        };
+        MoveWorkloadResponse: {
+            /** Format: uuid */
+            workloadId: string;
+            /** Format: uuid */
+            fromServerId: string;
+            /** Format: uuid */
+            toServerId: string;
+            /** Format: uuid */
+            deploymentId: null | string;
+            /** Format: uuid */
+            jobId: null | string;
+            dataStaysBehind: boolean;
+            volumes: string[];
+            warnings: string[];
+            message: string;
+        };
         NetworkEndpointInfo: {
             containerId: string;
             containerName: string;
@@ -3909,6 +4212,10 @@ export interface components {
             items: components["schemas"]["JobDto"][];
             nextCursor: null | string;
         };
+        PageOfPreviewDto: {
+            items: components["schemas"]["PreviewDto"][];
+            nextCursor: null | string;
+        };
         PageOfProjectResponse: {
             items: components["schemas"]["ProjectResponse"][];
             nextCursor: null | string;
@@ -3951,6 +4258,33 @@ export interface components {
             /** Format: date-time */
             seenAt: unknown;
         };
+        PlacementCandidateResponse: {
+            /** Format: uuid */
+            serverId: string;
+            serverName: string;
+            eligible: boolean;
+            /** Format: double */
+            score: number | string;
+            reasons: string[];
+            /** Format: double */
+            cpuFreeCores: null | number | string;
+            /** Format: int64 */
+            memoryFreeBytes: null | number | string;
+        };
+        /** @enum {unknown} */
+        PlacementKind: "application" | "statefulService" | "statelessService" | "build";
+        PlacementSuggestionResponse: {
+            kind: components["schemas"]["PlacementKind"];
+            /** Format: uuid */
+            suggestedServerId: null | string;
+            candidates: components["schemas"]["PlacementCandidateResponse"][];
+            message: null | string;
+        };
+        /**
+         * @default public
+         * @enum {unknown}
+         */
+        PortBindScope: "public" | "private" | "loopback";
         PortMappingSpec: {
             /** Format: int32 */
             containerPort: number | string;
@@ -3975,6 +4309,7 @@ export interface components {
             protocol?: null | string;
             /** Format: int32 */
             publishedPort?: null | number | string;
+            bindScope?: null | string;
             isHttp?: null | boolean;
             allowReserved?: null | boolean;
         };
@@ -3987,7 +4322,76 @@ export interface components {
             /** Format: int32 */
             publishedPort: null | number | string;
             isHttp: boolean;
+            bindScope?: components["schemas"]["PortBindScope"];
         };
+        PreviewDeploymentDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            number: number | string;
+            status: components["schemas"]["DeploymentStatus"];
+            failedStep: null | components["schemas"]["DeploymentStep"];
+            failureCode: null | string;
+            commitSha: null | string;
+            /** Format: date-time */
+            createdAt: unknown;
+            /** Format: date-time */
+            finishedAt: unknown;
+        };
+        PreviewDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            applicationId: string;
+            /** Format: int32 */
+            number: number | string;
+            title: null | string;
+            authorLogin: null | string;
+            sourceBranch: string;
+            headSha: null | string;
+            fromFork: boolean;
+            provider: components["schemas"]["GitProvider"];
+            /** Format: uuid */
+            serverId: string;
+            hostname: null | string;
+            url: null | string;
+            status: components["schemas"]["PreviewStatus"];
+            statusReason: null | string;
+            /** Format: date-time */
+            statusChangedAt: unknown;
+            /** Format: date-time */
+            lastEventAt: unknown;
+            /** Format: date-time */
+            closedAt: unknown;
+            /** Format: date-time */
+            removedAt: unknown;
+            commentError: null | string;
+            /** Format: uuid */
+            currentDeploymentId: null | string;
+            lastDeployment: null | components["schemas"]["PreviewDeploymentDto"];
+            /** Format: date-time */
+            createdAt: unknown;
+        };
+        PreviewSettingsDto: {
+            enabled: boolean;
+            allowForks: boolean;
+            /** Format: uuid */
+            serverId: null | string;
+            /** Format: int32 */
+            maxActive: null | number | string;
+            /** Format: int32 */
+            defaultMaxActive: number | string;
+            /** Format: uuid */
+            effectiveServerId: string;
+            supported: boolean;
+            unsupportedReason: null | string;
+            webhookConfigured: boolean;
+            webhookProvider: null | components["schemas"]["GitProvider"];
+            webhookPath: null | string;
+            hostnamePattern: null | string;
+        };
+        /** @enum {unknown} */
+        PreviewStatus: "pending" | "deploying" | "running" | "failed" | "closing" | "removed";
         /** @description RFC 9457 problem details. */
         ProblemDetails: {
             /** @description Always urn:aethera:problem:<code>. */
@@ -4129,6 +4533,7 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            namespace?: null | string;
         };
         RegistryTestResponse: {
             result: string;
@@ -4221,6 +4626,7 @@ export interface components {
             strategy?: null | string;
             ports?: null | components["schemas"]["PortRequest"][];
             resources?: null | components["schemas"]["ResourceLimitsRequest"];
+            priority?: null | string;
             healthCheck?: null | components["schemas"]["HealthCheckRequest"];
         };
         RuntimeResponse: {
@@ -4229,6 +4635,7 @@ export interface components {
             ports: components["schemas"]["PortResponse"][];
             resources: components["schemas"]["ResourceLimitsResponse"];
             healthCheck: components["schemas"]["HealthCheckResponse"];
+            priority?: components["schemas"]["WorkloadPriority"];
         };
         ScanHostKeyRequest: {
             host?: null | string;
@@ -4351,6 +4758,29 @@ export interface components {
         };
         /** @enum {unknown} */
         SecretScope: "organization" | "project" | "environment" | "workload";
+        ServerCapacityResponse: {
+            /** Format: uuid */
+            serverId: string;
+            name: string;
+            lifecycle: components["schemas"]["ServerLifecycle"];
+            roles: components["schemas"]["ServerRole"][];
+            connected: boolean;
+            /** Format: int32 */
+            cores: null | number | string;
+            /** Format: int64 */
+            memoryBytes: null | number | string;
+            /** Format: int64 */
+            diskBytes: null | number | string;
+            usage: null | components["schemas"]["CapacityUsageResponse"];
+            reservations: components["schemas"]["AllocationResponse"];
+            limits: components["schemas"]["AllocationResponse"];
+            committed: components["schemas"]["AllocationResponse"];
+            free: components["schemas"]["FreeCapacityResponse"];
+            /** Format: int32 */
+            workloadCount: number | string;
+            overCommitted: boolean;
+            warnings: string[];
+        };
         ServerFactsResponse: {
             os: null | string;
             osVersion: null | string;
@@ -4382,6 +4812,29 @@ export interface components {
         };
         /** @enum {unknown} */
         ServerLifecycle: "pending" | "active" | "maintenance" | "disabled";
+        ServerMeshResponse: {
+            /** Format: uuid */
+            serverId: string;
+            instanceProvider: components["schemas"]["MeshProvider"];
+            provider: components["schemas"]["MeshProvider"];
+            status: components["schemas"]["MeshStatus"];
+            /** Format: date-time */
+            statusChangedAt: unknown;
+            error: null | string;
+            address: null | string;
+            publicKey: null | string;
+            endpoint: null | string;
+            effectiveEndpoint: null | string;
+            /** Format: int32 */
+            listenPort: null | number | string;
+            /** Format: int32 */
+            effectiveListenPort: number | string;
+            /** Format: date-time */
+            handshakeAt: unknown;
+            agentConnected: boolean;
+            peersLive: boolean;
+            peers: components["schemas"]["MeshPeerResponse"][];
+        };
         ServerResourcesRequest: {
             /** Format: int32 */
             cpuCores?: null | number | string;
@@ -4429,6 +4882,12 @@ export interface components {
             updatedAt: unknown;
             wildcardDomain?: null | string;
             automaticDomainBase?: null | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
         };
         /** @enum {unknown} */
         ServerRole: "master" | "build" | "storage" | "ci" | "worker";
@@ -4461,6 +4920,7 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            warnings?: null | string[];
         };
         ServiceSummary: {
             /** Format: uuid */
@@ -4626,6 +5086,8 @@ export interface components {
             description?: null | string;
             /** Format: uuid */
             serverId?: null | string;
+            /** Format: uuid */
+            buildServerId?: null | string;
             gitSource?: null | components["schemas"]["GitSourceRequest"];
             image?: null | components["schemas"]["ImageSourceRequest"];
             compose?: null | components["schemas"]["ComposeSourceRequest"];
@@ -4696,6 +5158,7 @@ export interface components {
             secretId?: null | string;
             isBuildTime?: null | boolean;
             isRuntime?: null | boolean;
+            isPreview?: null | boolean;
         };
         UpdateEnvironmentRequest: {
             name?: null | string;
@@ -4703,9 +5166,23 @@ export interface components {
             description?: null | string;
             isProduction?: null | boolean;
         };
+        UpdateMeshSettingsRequest: {
+            provider?: null | string;
+            cidr?: null | string;
+            /** Format: int32 */
+            listenPort?: null | number | string;
+        };
         UpdateOrganizationRequest: {
             name?: null | string;
             slug?: null | string;
+        };
+        UpdatePreviewSettingsRequest: {
+            enabled: boolean;
+            allowForks: boolean;
+            /** Format: uuid */
+            serverId?: null | string;
+            /** Format: int32 */
+            maxActive?: null | number | string;
         };
         UpdateProjectRequest: {
             name?: null | string;
@@ -4722,6 +5199,7 @@ export interface components {
             name?: null | string;
             url?: null | string;
             username?: null | string;
+            namespace?: null | string;
             password?: null | string;
         };
         UpdateScheduledTaskRequest: {
@@ -4738,6 +5216,11 @@ export interface components {
             name?: null | string;
             description?: null | string;
         };
+        UpdateServerMeshRequest: {
+            endpoint?: null | string;
+            /** Format: int32 */
+            listenPort?: null | number | string;
+        };
         UpdateServerRequest: {
             name?: null | string;
             host?: null | string;
@@ -4750,6 +5233,12 @@ export interface components {
             wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
             /** Format: uuid */
             sshCredentialSecretId?: null | string;
             lifecycle?: null | string;
@@ -4893,6 +5382,11 @@ export interface components {
             jobId: string;
             volumesKept: string[];
         };
+        /**
+         * @default normal
+         * @enum {unknown}
+         */
+        WorkloadPriority: "normal" | "high" | "low";
         /** @enum {unknown} */
         WorkloadStatus: "unknown" | "notDeployed" | "deploying" | "running" | "unhealthy" | "stopped" | "failed";
         WorkloadStatusResponse: {
@@ -6519,6 +7013,283 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    suggestPlacement: {
+        parameters: {
+            query?: {
+                kind?: string;
+                cpu?: number | string;
+                memory?: number | string;
+                workloadId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementSuggestionResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listServerCapacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerCapacityResponse"][];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    moveApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveWorkloadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    moveService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveWorkloadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12438,6 +13209,7 @@ export interface operations {
                 Cursor?: string;
                 sort?: string;
                 status?: string;
+                previewId?: string;
             };
             header?: never;
             path: {
@@ -12750,6 +13522,7 @@ export interface operations {
                 Cursor?: string;
                 sort?: string;
                 status?: string;
+                previewId?: string;
             };
             header?: never;
             path: {
@@ -16906,6 +17679,596 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getMeshSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateMeshSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeshSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshSettingsResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    reconcileMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeshReconcileResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getServerMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerMeshResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updateServerMesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateServerMeshRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerMeshResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listApplicationPreviews: {
+        parameters: {
+            query?: {
+                Limit?: number | string;
+                Cursor?: string;
+                sort?: string;
+                status?: string;
+                includeRemoved?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageOfPreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getPreviewSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSettingsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    updatePreviewSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePreviewSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewSettingsDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    removeApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    redeployApplicationPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

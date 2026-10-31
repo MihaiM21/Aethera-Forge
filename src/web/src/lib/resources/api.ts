@@ -28,6 +28,7 @@ import type {
   Job,
   Maintenance,
   MaintenanceReport,
+  MoveWorkloadResponse,
   OrganizationRole,
   Page,
   Project,
@@ -103,6 +104,8 @@ export function createResourcesApi(client: ApiClient) {
       /** Reads the compose file on the application's server: its services and ports (a service picker for domains). */
       composeInspect: (id: string) => client.post<ComposeInspect>(`${workload("applications", id)}/compose/inspect`),
       redeploy: (id: string) => client.post<Deployment>(`${workload("applications", id)}/redeploy`),
+      /** Moves the application to another server (a deployment there, then the old containers go). Volumes stay: `confirm` is needed when it has some. */
+      move: (id: string, serverId: string, confirm = false) => client.post<MoveWorkloadResponse>(`${workload("applications", id)}/move`, { serverId, confirm }),
       lifecycle: (id: string, action: "start" | "stop" | "restart") => client.post<Job>(`${workload("applications", id)}/${action}`),
       deployments: (id: string, q: { limit?: number; cursor?: string; status?: string } = {}, o: Signal = {}) =>
         client.get<Page<Deployment>>(`${workload("applications", id)}/deployments`, {
@@ -184,6 +187,8 @@ export function createResourcesApi(client: ApiClient) {
       update: (id: string, body: UpdateServiceRequest) => client.patch<Service>(workload("services", id), body),
       remove: (id: string, confirm: string) => client.delete<void>(workload("services", id), { query: { confirm } }),
       deploy: (id: string) => client.post<Deployment>(`${workload("services", id)}/deployments`, {}),
+      /** Moves the service to another server (a deployment there, then the old containers go). Volumes stay: `confirm` is needed when it has some. */
+      move: (id: string, serverId: string, confirm = false) => client.post<MoveWorkloadResponse>(`${workload("services", id)}/move`, { serverId, confirm }),
       lifecycle: (id: string, action: "start" | "stop" | "restart") => client.post<Job>(`${workload("services", id)}/${action}`),
       deployments: (id: string, o: Signal = {}) =>
         client.get<Page<Deployment>>(`${workload("services", id)}/deployments`, { query: { limit: 30 }, signal: o.signal }),
@@ -208,7 +213,8 @@ export function createResourcesApi(client: ApiClient) {
       list: (q: ListQuery = {}, o: Signal = {}) => client.get<Page<Registry>>("/registries", { query: paged(q), signal: o.signal }),
       create: (body: CreateRegistryRequest) => client.post<Registry>("/registries", body),
       update: (id: string, body: Partial<CreateRegistryRequest>) => client.patch<Registry>(`/registries/${enc(id)}`, body),
-      remove: (id: string) => client.delete<void>(`/registries/${enc(id)}`),
+      /** Needs the registry name as `?confirm=`; 409 `registry.in_use` while it is a server's build registry. */
+      remove: (id: string, confirm: string) => client.delete<void>(`/registries/${enc(id)}`, { query: { confirm } }),
       /** The control plane calls the registry's v2 API with the stored credentials: result is ok, unauthorized or unreachable. */
       test: (id: string) => client.post<RegistryTestResult>(`/registries/${enc(id)}/test`),
     },

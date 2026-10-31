@@ -21,6 +21,9 @@ const (
 	CapBuilds = "build.dockerfile"
 	// CapNixpacks is advertised only when the nixpacks CLI is installed on the host.
 	CapNixpacks = "build.nixpacks"
+	// CapBuildQuota (ADR 0012) is advertised when builds can run in the BuildKit builder container `aethera-buildkit` with the server's
+	// build limits. The control plane only sends BuildRequest.builder_limits to an agent that lists it.
+	CapBuildQuota = "build.quota"
 	CapCompose  = "compose.v2"
 	// CapComposeGit (compose projects checked out of a Git repository, ComposeInspect) is advertised when compose is wired
 	// and the git CLI is installed.
@@ -248,6 +251,9 @@ func (d *Deps) phase3Capabilities() []string {
 		}
 		if _, err := lookPath("nixpacks"); err == nil {
 			c = append(c, CapNixpacks)
+		}
+		if d.Builder.Builders != nil {
+			c = append(c, CapBuildQuota)
 		}
 	}
 	if d.Compose != nil {

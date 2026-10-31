@@ -39,6 +39,9 @@ public sealed record DeploymentSnapshot
     /// <summary>Extra container labels of the workload (administrators only), merged over the generated ones. Null in snapshots from before ADR 0010.</summary>
     public Dictionary<string, string>? CustomLabels { get; init; }
 
+    /// <summary>Set for a pull request preview (ADR 0012): the snapshot then runs under the preview's names (<see cref="Slug"/> is its resource slug).</summary>
+    public PreviewSnapshot? Preview { get; init; }
+
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
     public static DeploymentSnapshot FromJson(string json) =>
@@ -61,10 +64,14 @@ public sealed record DeploymentSnapshot
 
 public sealed record GitSnapshot(string Url, string Branch, string? CommitPin, Guid? CredentialId);
 
+/// <summary>The pull request a preview deployment belongs to. Containers carry <c>aethera.preview=&lt;PreviewId&gt;</c>, which is how teardown finds them.</summary>
+public sealed record PreviewSnapshot(Guid PreviewId, int Number);
+
 /// <param name="BuildArgs">The build configuration's plain <c>--build-arg</c> values; environment variables marked for the build are added (and win).</param>
+/// <param name="BuildServerId">The server that builds the image (ADR 0012); null = the server the workload runs on. Snapshots from before R2 read as null.</param>
 public sealed record BuildSnapshot(
     string Engine, string Context, string? DockerfilePath, string? InstallCommand, string? BuildCommand, string? StartCommand,
-    string? OutputDirectory, bool CacheEnabled, string? TargetPlatform, IReadOnlyDictionary<string, string>? BuildArgs = null);
+    string? OutputDirectory, bool CacheEnabled, string? TargetPlatform, IReadOnlyDictionary<string, string>? BuildArgs = null, Guid? BuildServerId = null);
 
 public sealed record ImageSnapshot(string Image, string Tag, ImagePullPolicy PullPolicy, Guid? RegistryId, IReadOnlyList<string>? Command = null);
 
@@ -84,6 +91,10 @@ public sealed record RuntimeSnapshot
     public long? MemoryLimitBytes { get; init; }
     public long? MemoryReservationBytes { get; init; }
     public int? PidsLimit { get; init; }
+
+    /// <summary>ADR 0012; snapshots from before R2 read as Normal.</summary>
+    public WorkloadPriority Priority { get; init; } = WorkloadPriority.Normal;
+
     public HealthCheckType HealthType { get; init; } = HealthCheckType.None;
     public string? HealthPath { get; init; }
     public int? HealthPort { get; init; }
@@ -102,7 +113,8 @@ public sealed record RuntimeSnapshot
 /// <summary>An environment variable. Exactly one of <see cref="Value"/> and <see cref="SecretId"/> is set.</summary>
 public sealed record EnvEntry(string Key, string? Value, Guid? SecretId, int? SecretVersion, bool Build, bool Runtime);
 
-public sealed record PortEntry(int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp);
+/// <param name="BindScope">Where a published port listens (ADR 0012); snapshots from before R2 read as Public.</param>
+public sealed record PortEntry(int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp, PortBindScope BindScope = PortBindScope.Public);
 
 public sealed record VolumeEntry(string Name, string MountPath, string? HostPath, bool ReadOnly);
 

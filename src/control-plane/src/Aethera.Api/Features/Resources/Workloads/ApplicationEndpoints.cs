@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Aethera.Api.Features.Placement;
 using Aethera.Api.Features.Resources.Trust;
 using Aethera.Api.Http;
 using Aethera.Api.Http.Errors;
@@ -6,6 +7,7 @@ using Aethera.Api.Http.Pagination;
 using Aethera.Domain;
 using Aethera.Infrastructure.Deployments;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Placement;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
@@ -57,15 +59,24 @@ internal static class ApplicationEndpoints
 
     private static async Task<Created<ApplicationResponse>> Create(
         CreateApplicationRequest request, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, TrustPolicy trust,
-        IOptions<ProxyOptions> proxy, CancellationToken ct)
+        IOptions<ProxyOptions> proxy, IPlacementService placement, ServerCapacityReader capacities, CancellationToken ct)
     {
         var org = actor.Org();
         TrustChecks.CheckCompose(actor, trust, request.Compose?.InlineContent, "/compose/inlineContent");
         TrustChecks.CheckPorts(actor, trust, request.Runtime?.Ports);
         var references = new ReferenceCheck();
         var environment = references.Check(await db.FindEnvironmentAsync(org, request.EnvironmentId, ct), "/environmentId", "environment");
-        var server = references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server");
+        var requested = request.ServerId is null ? null : references.Check(await db.FindServerAsync(org, request.ServerId, ct), "/serverId", "server");
+        var buildServer = request.BuildServerId is null ? null : references.Check(await db.FindServerAsync(org, request.BuildServerId, ct), "/buildServerId", "server");
         references.ThrowIfAny();
+
+        // No server named: Aethera chooses by role and unreserved memory (ADR 0012); one named against its roles is accepted with a warning.
+        var resources = request.Runtime?.Resources;
+        var placed = await WorkloadPlacement.ChooseAsync(db, org, requested, PlacementKind.Application,
+            resources?.CpuReservationCores ?? resources?.CpuLimitCores, resources?.MemoryReservationBytes ?? resources?.MemoryLimitBytes, placement, capacities, ct);
+        var server = placed.Server;
+        var warnings = new List<string>(placed.Warnings);
+        if (buildServer is not null) warnings.AddRange(BuildServerChecks.Check(buildServer, server.Id, "/buildServerId"));
         var name = request.Name!.Trim();
         var slug = WorkloadSupport.ResolveSlug(request.Slug, name);
         await WorkloadSupport.EnsureSlugFreeAsync(db, environment!.Id, slug, "application", null, ct);
@@ -73,7 +84,8 @@ internal static class ApplicationEndpoints
         var kind = EnumText.Parse<ApplicationSourceKind>(request.SourceKind)!.Value;
         var app = new Application
         {
-            EnvironmentId = environment!.Id, ServerId = server!.Id, Name = name, Slug = slug, Description = request.Description, SourceKind = kind,
+            EnvironmentId = environment!.Id, ServerId = server.Id, Name = name, Slug = slug, Description = request.Description, SourceKind = kind,
+            BuildServerId = buildServer?.Id,
         };
         app.Environment = environment;
         await ApplySourcesAsync(db, org, app, request.GitSource, request.Image, request.Compose, request.Build, _ => true, null, create: true, resetBuild: false, ct);
@@ -84,10 +96,11 @@ internal static class ApplicationEndpoints
         else if (kind != ApplicationSourceKind.Compose)
             await DefaultDomainService.AssignAsync(db, app, null, await ProxyConfigurator.AcmeAvailableAsync(db, proxy.Value, ct), ct);
         await audit.RecordAsync("application.created", "application", app.Id,
-            new { name, slug, environmentId = environment.Id, projectId = environment.ProjectId, serverId = server.Id, sourceKind = kind }, ct);
+            new { name, slug, environmentId = environment.Id, projectId = environment.ProjectId, serverId = server.Id, sourceKind = kind,
+                  placement = placed.Automatic ? "automatic" : "chosen", buildServerId = buildServer?.Id, warnings = warnings.Count }, ct);
 
         http.SetETag(app.RowVersion);
-        return TypedResults.Created(ResourceHttp.Path("applications", app.Id), ToResponse(app));
+        return TypedResults.Created(ResourceHttp.Path("applications", app.Id), ToResponse(app, warnings));
     }
 
     private static async Task<Ok<ApplicationResponse>> Get(Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, CancellationToken ct)
@@ -136,6 +149,17 @@ internal static class ApplicationEndpoints
         var kind = app.SourceKind;
         void NotApplicable(string property) => throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer(
             "/" + property, "not_applicable", $"Does not apply to source kind '{kind.ToString().ToLowerInvariant()}'.")]));
+        var warnings = new List<string>();
+        if (patch.Has("buildServerId"))
+        {
+            // The server that builds the image (ADR 0012); null builds on the run server.
+            if (body.BuildServerId is not null && !ApplicationRules.UsesBuild(kind)) NotApplicable("buildServerId");
+            var buildServer = body.BuildServerId is null ? null : await db.RequireServerAsync(org, body.BuildServerId, "/buildServerId", ct);
+            if (buildServer is not null) warnings.AddRange(BuildServerChecks.Check(buildServer, app.ServerId, "/buildServerId"));
+            app.BuildServerId = buildServer?.Id;
+            changed.Add("buildServerId");
+        }
+
         if (patch.Has("gitSource") && !ApplicationRules.UsesGit(kind)) NotApplicable("gitSource");
         if (patch.Has("image") && kind != ApplicationSourceKind.DockerImage) NotApplicable("image");
         if (patch.Has("compose") && kind != ApplicationSourceKind.Compose) NotApplicable("compose");
@@ -159,7 +183,7 @@ internal static class ApplicationEndpoints
 
         await audit.RecordAsync("application.updated", "application", id, new { slug = app.Slug, changed }, ct);
         http.SetETag(app.RowVersion);
-        return TypedResults.Ok(ToResponse(app));
+        return TypedResults.Ok(ToResponse(app, warnings));
     }
 
     /// <summary>
@@ -194,7 +218,8 @@ internal static class ApplicationEndpoints
         return await query.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new ApiProblemException(ApiProblems.NotFound("application", id));
     }
 
-    internal static ApplicationResponse ToResponse(Application a) => new(
+    /// <param name="warnings">Things the caller should know about a create or update (a server chosen against its roles); null on reads.</param>
+    internal static ApplicationResponse ToResponse(Application a, IReadOnlyList<string>? warnings = null) => new(
         a.Id, a.Name, a.Slug, a.Description, a.Environment.ProjectId, a.EnvironmentId, a.ServerId, a.SourceKind, WorkloadSupport.StatusOf(a),
         a.GitSource is { } g ? new GitSourceResponse(g.Provider, g.RepositoryUrl, g.Branch, g.CommitPin, g.GitCredentialId, g.AutoDeploy) : null,
         a.ImageSource is { } i ? new ImageSourceResponse(i.RegistryId, i.Image, i.Tag, i.PullPolicy) : null,
@@ -203,7 +228,7 @@ internal static class ApplicationEndpoints
             ? new BuildConfigResponse(b.Engine, b.Context, b.DockerfilePath, b.DockerfileInline, b.InstallCommand, b.BuildCommand, b.StartCommand,
                 b.OutputDirectory, ToJson(b.BuildArgs), b.CacheEnabled, b.TargetPlatform)
             : null,
-        RuntimeMapper.ToResponse(a), ToJson(a.CustomLabels), a.CreatedAt, a.UpdatedAt);
+        RuntimeMapper.ToResponse(a), ToJson(a.CustomLabels), a.CreatedAt, a.UpdatedAt, a.BuildServerId, warnings ?? []);
 
     // A JsonObject, not a dictionary: dictionary keys would be run through the camelCase policy, and build argument names are exact.
     private static JsonObject ToJson(IReadOnlyDictionary<string, string> values)

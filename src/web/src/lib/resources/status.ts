@@ -66,6 +66,7 @@ export const TRIGGER_LABEL: Record<string, string> = {
   rollback: "Rollback",
   schedule: "Schedule",
   api: "API",
+  pullRequest: "Pull request",
 };
 
 /** `1m 23s`, `42s`, `850ms`; `-` without a duration. */

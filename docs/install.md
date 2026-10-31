@@ -80,6 +80,10 @@ Also read from the environment and written to the `.env`: `AETHERA_IMAGE`, `AETH
 
    The new server only needs **outbound** access to the control plane's port 9443. The token is single use and expires after an hour; the fingerprint pins the control plane's certificate authority, so the agent cannot be tricked into talking to someone else. The installer sets up Docker, a hardened systemd service and the agent's own policy file `/etc/aethera/agent.yaml`, which the control plane cannot change.
 
+### More than one server: the private network
+
+With several servers, turn on the private network in **Settings > Network** so databases never need a public port. It needs the WireGuard kernel module, `CAP_NET_ADMIN` for the agent (the installer and the compose files set it) and **UDP 51820 open between the servers**. See [networking.md](networking.md).
+
 ## Operating it
 
 ```bash

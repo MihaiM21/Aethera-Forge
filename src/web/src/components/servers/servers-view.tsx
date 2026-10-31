@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { PlusIcon, RefreshCwIcon, SearchIcon, ServerIcon } from "lucide-react";
+import { GaugeIcon, PlusIcon, RefreshCwIcon, SearchIcon, ServerIcon } from "lucide-react";
 import Link from "next/link";
 import { DotGrid } from "@/components/aethera/dot-grid";
 import { EmptyState } from "@/components/aethera/empty-state";
@@ -17,6 +17,7 @@ import { serversApi, type ServersApi } from "@/lib/servers/api";
 import { describeHealth } from "@/lib/servers/status";
 import type { LatestMetrics, Server, ServerHealth } from "@/lib/servers/types";
 import { usePolled } from "@/lib/servers/use-polled";
+import { CapacityView } from "./capacity-view";
 import { ErrorPanel, NativeSelect } from "./common";
 import { LocalServerCard } from "./local-server-card";
 import { ServerStatusBadges } from "./status-badges";
@@ -152,6 +153,7 @@ function RowSkeleton() {
 export function ServersView({ api = serversApi, pollMs = LIST_POLL_MS }: { api?: ServersApi; pollMs?: number }) {
   const [query, setQuery] = React.useState("");
   const [agent, setAgent] = React.useState("all");
+  const [showCapacity, setShowCapacity] = React.useState(false);
   const { data, error, loading, refreshing, updatedAt, refresh } = usePolled((signal) => loadRows(api, signal), "list", {
     intervalMs: pollMs,
   });
@@ -176,6 +178,9 @@ export function ServersView({ api = serversApi, pollMs = LIST_POLL_MS }: { api?:
               <RefreshCwIcon className={refreshing ? "animate-spin motion-reduce:animate-none" : undefined} aria-hidden="true" />
               Refresh
             </Button>
+            <Button variant="outline" onClick={() => setShowCapacity((v) => !v)} aria-pressed={showCapacity}>
+              <GaugeIcon aria-hidden="true" /> Capacity
+            </Button>
             <Button asChild>
               <Link href="/servers/new">
                 <PlusIcon aria-hidden="true" /> Add server
@@ -184,6 +189,16 @@ export function ServersView({ api = serversApi, pollMs = LIST_POLL_MS }: { api?:
           </>
         }
       />
+
+      {showCapacity && (
+        <section aria-label="Capacity of all servers" className="grid gap-3">
+          <p className="text-xs text-muted-foreground">
+            Cores, memory and disk of every server, how much is in use now and how much the workloads placed there have reserved. Servers with
+            reservations beyond their size are marked over-committed.
+          </p>
+          <CapacityView api={api} />
+        </section>
+      )}
 
       <LocalServerCard onConnected={() => void refresh()} />
 

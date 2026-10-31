@@ -8,6 +8,9 @@ public enum DeploymentTrigger
     Rollback = 3,
     Schedule = 4,
     Api = 5,
+
+    /// <summary>A pull request preview (ADR 0012): <see cref="Deployment.PreviewId"/> is set.</summary>
+    PullRequest = 6,
 }
 
 /// <summary>
@@ -164,6 +167,16 @@ public class Deployment : MutableEntity
     /// <summary>True once the deployment has reached Running; such deployments can be rolled back to.</summary>
     public bool IsRollbackPoint { get; private set; }
 
+    /// <summary>
+    /// Set for a pull request preview (ADR 0012): the deployment runs under the preview's names and host and never touches the workload's status
+    /// or <see cref="Workload.CurrentDeploymentId"/>.
+    /// </summary>
+    public Guid? PreviewId { get; set; }
+    public PreviewEnvironment? Preview { get; set; }
+
+    /// <summary>Server that built the image when it is not <see cref="ServerId"/> (ADR 0012); the image then came through a registry.</summary>
+    public Guid? BuildServerId { get; set; }
+
     /// <summary>For Trigger=Rollback: the earlier deployment being restored.</summary>
     public Guid? RollbackOfDeploymentId { get; set; }
     public Deployment? RollbackOfDeployment { get; set; }
@@ -179,8 +192,8 @@ public class Deployment : MutableEntity
     /// <summary>Queued or somewhere in the pipeline.</summary>
     public bool IsInProgress => Status is DeploymentStatus.Queued or DeploymentStatus.InProgress;
 
-    /// <summary>Can be selected as a rollback target (the image may still have been pruned; check separately).</summary>
-    public bool CanRollbackTo => IsRollbackPoint && Status is DeploymentStatus.Running or DeploymentStatus.Stopped or DeploymentStatus.Superseded;
+    /// <summary>Can be selected as a rollback target (the image may still have been pruned; check separately). Never a pull request preview (ADR 0012).</summary>
+    public bool CanRollbackTo => PreviewId is null && IsRollbackPoint && Status is DeploymentStatus.Running or DeploymentStatus.Stopped or DeploymentStatus.Superseded;
 
     public TimeSpan? Duration => StartedAt is { } s && FinishedAt is { } f ? f - s : null;
 

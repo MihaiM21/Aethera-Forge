@@ -307,6 +307,18 @@ type nopSender struct{}
 
 func (nopSender) Control(*agentv1.AgentMessage) bool { return true }
 
+func TestBuildQuotaIsAdvertisedOnlyWithABuilderManager(t *testing.T) {
+	d, _ := newDeps()
+	d.Builder = &build.Service{}
+	if got := strings.Join(d.Capabilities(), " "); strings.Contains(got, "build.quota") {
+		t.Errorf("build.quota advertised without a builder manager: %s", got)
+	}
+	d.Builder.Builders = &build.BuildKit{}
+	if got := strings.Join(d.Capabilities(), " "); !strings.Contains(got, "build.quota") {
+		t.Errorf("build.quota not advertised: %s", got)
+	}
+}
+
 func TestPhase3CapabilitiesUseTheProtocolNames(t *testing.T) {
 	d, _ := newDeps()
 	d.Builder, d.Compose, d.Proxy = &build.Service{}, &compose.Service{}, &proxy.Manager{}

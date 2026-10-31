@@ -12,6 +12,14 @@ public sealed record PortRequest
     public int? ContainerPort { get; init; }
     public string? Protocol { get; init; }
     public int? PublishedPort { get; init; }
+
+    /// <summary>
+    /// Where the published port listens (ADR 0012): <c>public</c> (every interface, the default), <c>private</c> (the server's address in the private
+    /// network, reachable from the other servers and never from the internet) or <c>loopback</c> (127.0.0.1). Needs a published port; absent keeps
+    /// the port's current scope (<c>public</c> for a new one).
+    /// </summary>
+    public string? BindScope { get; init; }
+
     public bool? IsHttp { get; init; }
 
     /// <summary>
@@ -51,12 +59,19 @@ public sealed record RuntimeRequest
 
     public List<PortRequest>? Ports { get; init; }
     public ResourceLimitsRequest? Resources { get; init; }
+
+    /// <summary>
+    /// <c>normal</c> (default), <c>high</c> or <c>low</c> (ADR 0012): how the workload fares when its server is short of CPU or memory. High doubles
+    /// its CPU shares and shields it from the OOM killer, low halves them and offers it first.
+    /// </summary>
+    public string? Priority { get; init; }
+
     public HealthCheckRequest? HealthCheck { get; init; }
 }
 
 // ---- responses ------------------------------------------------------------------------------------------------------------------------
 
-public sealed record PortResponse(Guid Id, int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp);
+public sealed record PortResponse(Guid Id, int ContainerPort, PortProtocol Protocol, int? PublishedPort, bool IsHttp, PortBindScope BindScope = PortBindScope.Public);
 
 public sealed record ResourceLimitsResponse(
     double? CpuLimitCores, double? CpuReservationCores, long? MemoryLimitBytes, long? MemoryReservationBytes, int? PidsLimit);
@@ -65,7 +80,8 @@ public sealed record HealthCheckResponse(
     HealthCheckType Type, string? Path, int? Port, int IntervalSeconds, int TimeoutSeconds, int Retries, int StartPeriodSeconds);
 
 public sealed record RuntimeResponse(
-    RestartPolicy RestartPolicy, string Strategy, IReadOnlyList<PortResponse> Ports, ResourceLimitsResponse Resources, HealthCheckResponse HealthCheck);
+    RestartPolicy RestartPolicy, string Strategy, IReadOnlyList<PortResponse> Ports, ResourceLimitsResponse Resources, HealthCheckResponse HealthCheck,
+    WorkloadPriority Priority = WorkloadPriority.Normal);
 
 // ---- validation -----------------------------------------------------------------------------------------------------------------------
 
@@ -76,6 +92,10 @@ public sealed class PortRequestValidator : AbstractValidator<PortRequest>
         RuleFor(p => p.ContainerPort).NotNull().InclusiveBetween(1, 65535);
         RuleFor(p => p.PublishedPort).InclusiveBetween(1, 65535).When(p => p.PublishedPort is not null);
         RuleFor(p => p.Protocol).MustBeEnum<PortRequest, PortProtocol>();
+        RuleFor(p => p.BindScope).MustBeEnum<PortRequest, PortBindScope>();
+        RuleFor(p => p.BindScope).Must(_ => false).WithErrorCode("required")
+            .WithMessage("The private network and loopback scopes need a published port.")
+            .When(p => p.PublishedPort is null && EnumText.Parse<PortBindScope>(p.BindScope) is PortBindScope.Private or PortBindScope.Loopback);
     }
 }
 
@@ -123,6 +143,7 @@ public sealed class RuntimeRequestValidator : AbstractValidator<RuntimeRequest>
         RuleFor(x => x.Ports).Must(HaveUniquePorts).WithErrorCode("not_unique").WithMessage("Each container port and protocol may appear once.");
         RuleForEach(x => x.Ports).SetValidator(new PortRequestValidator());
         RuleFor(x => x.Resources).SetValidator(new ResourceLimitsValidator()!);
+        RuleFor(x => x.Priority).MustBeEnum<RuntimeRequest, WorkloadPriority>();
         RuleFor(x => x.HealthCheck).SetValidator(new HealthCheckValidator()!);
     }
 
@@ -138,10 +159,11 @@ public static class RuntimeMapper
     public static RuntimeResponse ToResponse(Workload w) => new(
         w.Runtime.RestartPolicy,
         w.Runtime.DeploymentStrategy,
-        w.Ports.OrderBy(p => p.ContainerPort).ThenBy(p => p.Protocol).Select(p => new PortResponse(p.Id, p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
+        w.Ports.OrderBy(p => p.ContainerPort).ThenBy(p => p.Protocol).Select(p => new PortResponse(p.Id, p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp, p.BindScope)).ToList(),
         new ResourceLimitsResponse(w.Runtime.CpuLimit, w.Runtime.CpuReservation, w.Runtime.MemoryLimitBytes, w.Runtime.MemoryReservationBytes, w.Runtime.PidsLimit),
         new HealthCheckResponse(w.Runtime.HealthCheck.Type, w.Runtime.HealthCheck.Path, w.Runtime.HealthCheck.Port, w.Runtime.HealthCheck.IntervalSeconds,
-            w.Runtime.HealthCheck.TimeoutSeconds, w.Runtime.HealthCheck.Retries, w.Runtime.HealthCheck.StartPeriodSeconds));
+            w.Runtime.HealthCheck.TimeoutSeconds, w.Runtime.HealthCheck.Retries, w.Runtime.HealthCheck.StartPeriodSeconds),
+        w.Runtime.Priority);
 
     /// <summary>
     /// Applies the runtime request to the workload. <paramref name="has"/> says whether a (dotted, camelCase, relative to <c>runtime</c>)
@@ -164,6 +186,7 @@ public static class RuntimeMapper
         if (has("resources.memoryLimitBytes")) runtime.MemoryLimitBytes = r?.MemoryLimitBytes;
         if (has("resources.memoryReservationBytes")) runtime.MemoryReservationBytes = r?.MemoryReservationBytes;
         if (has("resources.pidsLimit")) runtime.PidsLimit = r?.PidsLimit;
+        if (has("priority")) runtime.Priority = EnumText.Parse<WorkloadPriority>(request.Priority) ?? defaults.Priority;
 
         var h = request.HealthCheck;
         var healthDefaults = defaults.HealthCheck;
@@ -189,6 +212,7 @@ public static class RuntimeMapper
         "resources.memoryLimitBytes" => r.Resources?.MemoryLimitBytes is not null,
         "resources.memoryReservationBytes" => r.Resources?.MemoryReservationBytes is not null,
         "resources.pidsLimit" => r.Resources?.PidsLimit is not null,
+        "priority" => r.Priority is not null,
         "healthCheck.type" => r.HealthCheck?.Type is not null,
         "healthCheck.path" => r.HealthCheck?.Path is not null,
         "healthCheck.port" => r.HealthCheck?.Port is not null,
@@ -222,6 +246,8 @@ public static class RuntimeMapper
             }
 
             current.PublishedPort = request.PublishedPort;
+            // Omitted keeps the scope, so a client that does not know about it never turns a private database port public; no host port, no scope.
+            current.BindScope = request.PublishedPort is null ? PortBindScope.Public : EnumText.Parse<PortBindScope>(request.BindScope) ?? current.BindScope;
             current.IsHttp = request.IsHttp ?? false;
         }
     }

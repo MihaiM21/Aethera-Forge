@@ -141,6 +141,9 @@ type Command struct {
 	//	*Command_BackupRun
 	//	*Command_BackupRestore
 	//	*Command_BackupDelete
+	//	*Command_MeshApply
+	//	*Command_MeshStatus
+	//	*Command_MeshRemove
 	Request       isCommand_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -578,6 +581,33 @@ func (x *Command) GetBackupDelete() *BackupDelete {
 	return nil
 }
 
+func (x *Command) GetMeshApply() *MeshApply {
+	if x != nil {
+		if x, ok := x.Request.(*Command_MeshApply); ok {
+			return x.MeshApply
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetMeshStatus() *MeshStatus {
+	if x != nil {
+		if x, ok := x.Request.(*Command_MeshStatus); ok {
+			return x.MeshStatus
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetMeshRemove() *MeshRemove {
+	if x != nil {
+		if x, ok := x.Request.(*Command_MeshRemove); ok {
+			return x.MeshRemove
+		}
+	}
+	return nil
+}
+
 type isCommand_Request interface {
 	isCommand_Request()
 }
@@ -754,6 +784,19 @@ type Command_BackupDelete struct {
 	BackupDelete *BackupDelete `protobuf:"bytes,122,opt,name=backup_delete,json=backupDelete,proto3,oneof"`
 }
 
+type Command_MeshApply struct {
+	// Private mesh between servers (ADR 0012).
+	MeshApply *MeshApply `protobuf:"bytes,130,opt,name=mesh_apply,json=meshApply,proto3,oneof"`
+}
+
+type Command_MeshStatus struct {
+	MeshStatus *MeshStatus `protobuf:"bytes,131,opt,name=mesh_status,json=meshStatus,proto3,oneof"`
+}
+
+type Command_MeshRemove struct {
+	MeshRemove *MeshRemove `protobuf:"bytes,132,opt,name=mesh_remove,json=meshRemove,proto3,oneof"`
+}
+
 func (*Command_ContainerCreate) isCommand_Request() {}
 
 func (*Command_ContainerStart) isCommand_Request() {}
@@ -833,6 +876,12 @@ func (*Command_BackupRun) isCommand_Request() {}
 func (*Command_BackupRestore) isCommand_Request() {}
 
 func (*Command_BackupDelete) isCommand_Request() {}
+
+func (*Command_MeshApply) isCommand_Request() {}
+
+func (*Command_MeshStatus) isCommand_Request() {}
+
+func (*Command_MeshRemove) isCommand_Request() {}
 
 // LogStreamStart starts streaming a container's logs as LogChunk messages
 // tagged with `stream_id`. Build/deploy logs are not started this way: they are
@@ -2020,6 +2069,7 @@ type CommandResult struct {
 	//	*CommandResult_ContainerExec
 	//	*CommandResult_BackupRun
 	//	*CommandResult_BackupRestore
+	//	*CommandResult_Mesh
 	Result        isCommandResult_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2343,6 +2393,15 @@ func (x *CommandResult) GetBackupRestore() *BackupRestoreResult {
 	return nil
 }
 
+func (x *CommandResult) GetMesh() *MeshState {
+	if x != nil {
+		if x, ok := x.Result.(*CommandResult_Mesh); ok {
+			return x.Mesh
+		}
+	}
+	return nil
+}
+
 type isCommandResult_Result interface {
 	isCommandResult_Result()
 }
@@ -2447,6 +2506,10 @@ type CommandResult_BackupRestore struct {
 	BackupRestore *BackupRestoreResult `protobuf:"bytes,121,opt,name=backup_restore,json=backupRestore,proto3,oneof"`
 }
 
+type CommandResult_Mesh struct {
+	Mesh *MeshState `protobuf:"bytes,130,opt,name=mesh,proto3,oneof"`
+}
+
 func (*CommandResult_Empty) isCommandResult_Result() {}
 
 func (*CommandResult_ContainerCreate) isCommandResult_Result() {}
@@ -2497,11 +2560,13 @@ func (*CommandResult_BackupRun) isCommandResult_Result() {}
 
 func (*CommandResult_BackupRestore) isCommandResult_Result() {}
 
+func (*CommandResult_Mesh) isCommandResult_Result() {}
+
 var File_aethera_agent_v1_commands_proto protoreflect.FileDescriptor
 
 const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\n" +
-	"\x1faethera/agent/v1/commands.proto\x12\x10aethera.agent.v1\x1a\x1daethera/agent/v1/backup.proto\x1a\x1caethera/agent/v1/build.proto\x1a\x1daethera/agent/v1/common.proto\x1a aethera/agent/v1/discovery.proto\x1a\x1daethera/agent/v1/docker.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\x18\n" +
+	"\x1faethera/agent/v1/commands.proto\x12\x10aethera.agent.v1\x1a\x1daethera/agent/v1/backup.proto\x1a\x1caethera/agent/v1/build.proto\x1a\x1daethera/agent/v1/common.proto\x1a aethera/agent/v1/discovery.proto\x1a\x1daethera/agent/v1/docker.proto\x1a\x1baethera/agent/v1/mesh.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc3\x19\n" +
 	"\aCommand\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12'\n" +
@@ -2556,7 +2621,13 @@ const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\n" +
 	"backup_run\x18x \x01(\v2\x1b.aethera.agent.v1.BackupRunH\x00R\tbackupRun\x12H\n" +
 	"\x0ebackup_restore\x18y \x01(\v2\x1f.aethera.agent.v1.BackupRestoreH\x00R\rbackupRestore\x12E\n" +
-	"\rbackup_delete\x18z \x01(\v2\x1e.aethera.agent.v1.BackupDeleteH\x00R\fbackupDeleteB\t\n" +
+	"\rbackup_delete\x18z \x01(\v2\x1e.aethera.agent.v1.BackupDeleteH\x00R\fbackupDelete\x12=\n" +
+	"\n" +
+	"mesh_apply\x18\x82\x01 \x01(\v2\x1b.aethera.agent.v1.MeshApplyH\x00R\tmeshApply\x12@\n" +
+	"\vmesh_status\x18\x83\x01 \x01(\v2\x1c.aethera.agent.v1.MeshStatusH\x00R\n" +
+	"meshStatus\x12@\n" +
+	"\vmesh_remove\x18\x84\x01 \x01(\v2\x1c.aethera.agent.v1.MeshRemoveH\x00R\n" +
+	"meshRemoveB\t\n" +
 	"\arequest\"\xf7\x01\n" +
 	"\x0eLogStreamStart\x12\x1b\n" +
 	"\tstream_id\x18\x01 \x01(\tR\bstreamId\x12\x1c\n" +
@@ -2647,7 +2718,7 @@ const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\n" +
 	"restarting\x18\x03 \x01(\bR\n" +
 	"restarting\"\r\n" +
-	"\vEmptyResult\"\xbd\x11\n" +
+	"\vEmptyResult\"\xf1\x11\n" +
 	"\rCommandResult\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x127\n" +
@@ -2689,7 +2760,8 @@ const file_aethera_agent_v1_commands_proto_rawDesc = "" +
 	"\x0econtainer_exec\x18n \x01(\v2%.aethera.agent.v1.ContainerExecResultH\x00R\rcontainerExec\x12B\n" +
 	"\n" +
 	"backup_run\x18x \x01(\v2!.aethera.agent.v1.BackupRunResultH\x00R\tbackupRun\x12N\n" +
-	"\x0ebackup_restore\x18y \x01(\v2%.aethera.agent.v1.BackupRestoreResultH\x00R\rbackupRestoreB\b\n" +
+	"\x0ebackup_restore\x18y \x01(\v2%.aethera.agent.v1.BackupRestoreResultH\x00R\rbackupRestore\x122\n" +
+	"\x04mesh\x18\x82\x01 \x01(\v2\x1b.aethera.agent.v1.MeshStateH\x00R\x04meshB\b\n" +
 	"\x06result*\xa4\x01\n" +
 	"\rCommandStatus\x12\x1e\n" +
 	"\x1aCOMMAND_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
@@ -2767,29 +2839,33 @@ var file_aethera_agent_v1_commands_proto_goTypes = []any{
 	(*BackupRun)(nil),              // 50: aethera.agent.v1.BackupRun
 	(*BackupRestore)(nil),          // 51: aethera.agent.v1.BackupRestore
 	(*BackupDelete)(nil),           // 52: aethera.agent.v1.BackupDelete
-	(*durationpb.Duration)(nil),    // 53: google.protobuf.Duration
-	(*EnvVar)(nil),                 // 54: aethera.agent.v1.EnvVar
-	(ErrorCode)(0),                 // 55: aethera.agent.v1.ErrorCode
-	(*ContainerCreateResult)(nil),  // 56: aethera.agent.v1.ContainerCreateResult
-	(*ContainerStateResult)(nil),   // 57: aethera.agent.v1.ContainerStateResult
-	(*ContainerInspectResult)(nil), // 58: aethera.agent.v1.ContainerInspectResult
-	(*ContainerListResult)(nil),    // 59: aethera.agent.v1.ContainerListResult
-	(*ImagePullResult)(nil),        // 60: aethera.agent.v1.ImagePullResult
-	(*ImageListResult)(nil),        // 61: aethera.agent.v1.ImageListResult
-	(*ImageInspectResult)(nil),     // 62: aethera.agent.v1.ImageInspectResult
-	(*PruneResult)(nil),            // 63: aethera.agent.v1.PruneResult
-	(*VolumeCreateResult)(nil),     // 64: aethera.agent.v1.VolumeCreateResult
-	(*VolumeListResult)(nil),       // 65: aethera.agent.v1.VolumeListResult
-	(*NetworkCreateResult)(nil),    // 66: aethera.agent.v1.NetworkCreateResult
-	(*NetworkListResult)(nil),      // 67: aethera.agent.v1.NetworkListResult
-	(*ComposeResult)(nil),          // 68: aethera.agent.v1.ComposeResult
-	(*ComposeInspectResult)(nil),   // 69: aethera.agent.v1.ComposeInspectResult
-	(*BuildResult)(nil),            // 70: aethera.agent.v1.BuildResult
-	(*BuildDetectResult)(nil),      // 71: aethera.agent.v1.BuildDetectResult
-	(*DiscoveryReport)(nil),        // 72: aethera.agent.v1.DiscoveryReport
-	(*ContainerExecResult)(nil),    // 73: aethera.agent.v1.ContainerExecResult
-	(*BackupRunResult)(nil),        // 74: aethera.agent.v1.BackupRunResult
-	(*BackupRestoreResult)(nil),    // 75: aethera.agent.v1.BackupRestoreResult
+	(*MeshApply)(nil),              // 53: aethera.agent.v1.MeshApply
+	(*MeshStatus)(nil),             // 54: aethera.agent.v1.MeshStatus
+	(*MeshRemove)(nil),             // 55: aethera.agent.v1.MeshRemove
+	(*durationpb.Duration)(nil),    // 56: google.protobuf.Duration
+	(*EnvVar)(nil),                 // 57: aethera.agent.v1.EnvVar
+	(ErrorCode)(0),                 // 58: aethera.agent.v1.ErrorCode
+	(*ContainerCreateResult)(nil),  // 59: aethera.agent.v1.ContainerCreateResult
+	(*ContainerStateResult)(nil),   // 60: aethera.agent.v1.ContainerStateResult
+	(*ContainerInspectResult)(nil), // 61: aethera.agent.v1.ContainerInspectResult
+	(*ContainerListResult)(nil),    // 62: aethera.agent.v1.ContainerListResult
+	(*ImagePullResult)(nil),        // 63: aethera.agent.v1.ImagePullResult
+	(*ImageListResult)(nil),        // 64: aethera.agent.v1.ImageListResult
+	(*ImageInspectResult)(nil),     // 65: aethera.agent.v1.ImageInspectResult
+	(*PruneResult)(nil),            // 66: aethera.agent.v1.PruneResult
+	(*VolumeCreateResult)(nil),     // 67: aethera.agent.v1.VolumeCreateResult
+	(*VolumeListResult)(nil),       // 68: aethera.agent.v1.VolumeListResult
+	(*NetworkCreateResult)(nil),    // 69: aethera.agent.v1.NetworkCreateResult
+	(*NetworkListResult)(nil),      // 70: aethera.agent.v1.NetworkListResult
+	(*ComposeResult)(nil),          // 71: aethera.agent.v1.ComposeResult
+	(*ComposeInspectResult)(nil),   // 72: aethera.agent.v1.ComposeInspectResult
+	(*BuildResult)(nil),            // 73: aethera.agent.v1.BuildResult
+	(*BuildDetectResult)(nil),      // 74: aethera.agent.v1.BuildDetectResult
+	(*DiscoveryReport)(nil),        // 75: aethera.agent.v1.DiscoveryReport
+	(*ContainerExecResult)(nil),    // 76: aethera.agent.v1.ContainerExecResult
+	(*BackupRunResult)(nil),        // 77: aethera.agent.v1.BackupRunResult
+	(*BackupRestoreResult)(nil),    // 78: aethera.agent.v1.BackupRestoreResult
+	(*MeshState)(nil),              // 79: aethera.agent.v1.MeshState
 }
 var file_aethera_agent_v1_commands_proto_depIdxs = []int32{
 	19, // 0: aethera.agent.v1.Command.deadline:type_name -> google.protobuf.Timestamp
@@ -2833,52 +2909,56 @@ var file_aethera_agent_v1_commands_proto_depIdxs = []int32{
 	50, // 38: aethera.agent.v1.Command.backup_run:type_name -> aethera.agent.v1.BackupRun
 	51, // 39: aethera.agent.v1.Command.backup_restore:type_name -> aethera.agent.v1.BackupRestore
 	52, // 40: aethera.agent.v1.Command.backup_delete:type_name -> aethera.agent.v1.BackupDelete
-	19, // 41: aethera.agent.v1.LogStreamStart.since:type_name -> google.protobuf.Timestamp
-	18, // 42: aethera.agent.v1.HttpProbe.headers:type_name -> aethera.agent.v1.HttpProbe.HeadersEntry
-	5,  // 43: aethera.agent.v1.HealthProbe.http:type_name -> aethera.agent.v1.HttpProbe
-	6,  // 44: aethera.agent.v1.HealthProbe.tcp:type_name -> aethera.agent.v1.TcpProbe
-	7,  // 45: aethera.agent.v1.HealthProbe.container:type_name -> aethera.agent.v1.ContainerHealthProbe
-	53, // 46: aethera.agent.v1.HealthProbe.timeout:type_name -> google.protobuf.Duration
-	53, // 47: aethera.agent.v1.HealthProbe.interval:type_name -> google.protobuf.Duration
-	53, // 48: aethera.agent.v1.HealthProbe.start_period:type_name -> google.protobuf.Duration
-	53, // 49: aethera.agent.v1.HealthProbeResult.latency:type_name -> google.protobuf.Duration
-	19, // 50: aethera.agent.v1.HealthProbeResult.checked_at:type_name -> google.protobuf.Timestamp
-	54, // 51: aethera.agent.v1.ProxyEnsure.env:type_name -> aethera.agent.v1.EnvVar
-	53, // 52: aethera.agent.v1.SystemPrune.older_than:type_name -> google.protobuf.Duration
-	0,  // 53: aethera.agent.v1.CommandResult.status:type_name -> aethera.agent.v1.CommandStatus
-	55, // 54: aethera.agent.v1.CommandResult.error_code:type_name -> aethera.agent.v1.ErrorCode
-	19, // 55: aethera.agent.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
-	19, // 56: aethera.agent.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
-	16, // 57: aethera.agent.v1.CommandResult.empty:type_name -> aethera.agent.v1.EmptyResult
-	56, // 58: aethera.agent.v1.CommandResult.container_create:type_name -> aethera.agent.v1.ContainerCreateResult
-	57, // 59: aethera.agent.v1.CommandResult.container_state:type_name -> aethera.agent.v1.ContainerStateResult
-	58, // 60: aethera.agent.v1.CommandResult.container_inspect:type_name -> aethera.agent.v1.ContainerInspectResult
-	59, // 61: aethera.agent.v1.CommandResult.container_list:type_name -> aethera.agent.v1.ContainerListResult
-	60, // 62: aethera.agent.v1.CommandResult.image_pull:type_name -> aethera.agent.v1.ImagePullResult
-	61, // 63: aethera.agent.v1.CommandResult.image_list:type_name -> aethera.agent.v1.ImageListResult
-	62, // 64: aethera.agent.v1.CommandResult.image_inspect:type_name -> aethera.agent.v1.ImageInspectResult
-	63, // 65: aethera.agent.v1.CommandResult.prune:type_name -> aethera.agent.v1.PruneResult
-	64, // 66: aethera.agent.v1.CommandResult.volume_create:type_name -> aethera.agent.v1.VolumeCreateResult
-	65, // 67: aethera.agent.v1.CommandResult.volume_list:type_name -> aethera.agent.v1.VolumeListResult
-	66, // 68: aethera.agent.v1.CommandResult.network_create:type_name -> aethera.agent.v1.NetworkCreateResult
-	67, // 69: aethera.agent.v1.CommandResult.network_list:type_name -> aethera.agent.v1.NetworkListResult
-	68, // 70: aethera.agent.v1.CommandResult.compose:type_name -> aethera.agent.v1.ComposeResult
-	69, // 71: aethera.agent.v1.CommandResult.compose_inspect:type_name -> aethera.agent.v1.ComposeInspectResult
-	70, // 72: aethera.agent.v1.CommandResult.build:type_name -> aethera.agent.v1.BuildResult
-	71, // 73: aethera.agent.v1.CommandResult.build_detect:type_name -> aethera.agent.v1.BuildDetectResult
-	4,  // 74: aethera.agent.v1.CommandResult.log_stream_start:type_name -> aethera.agent.v1.LogStreamStartResult
-	9,  // 75: aethera.agent.v1.CommandResult.health_probe:type_name -> aethera.agent.v1.HealthProbeResult
-	11, // 76: aethera.agent.v1.CommandResult.proxy_ensure:type_name -> aethera.agent.v1.ProxyEnsureResult
-	72, // 77: aethera.agent.v1.CommandResult.discovery:type_name -> aethera.agent.v1.DiscoveryReport
-	15, // 78: aethera.agent.v1.CommandResult.agent_self_update:type_name -> aethera.agent.v1.AgentSelfUpdateResult
-	73, // 79: aethera.agent.v1.CommandResult.container_exec:type_name -> aethera.agent.v1.ContainerExecResult
-	74, // 80: aethera.agent.v1.CommandResult.backup_run:type_name -> aethera.agent.v1.BackupRunResult
-	75, // 81: aethera.agent.v1.CommandResult.backup_restore:type_name -> aethera.agent.v1.BackupRestoreResult
-	82, // [82:82] is the sub-list for method output_type
-	82, // [82:82] is the sub-list for method input_type
-	82, // [82:82] is the sub-list for extension type_name
-	82, // [82:82] is the sub-list for extension extendee
-	0,  // [0:82] is the sub-list for field type_name
+	53, // 41: aethera.agent.v1.Command.mesh_apply:type_name -> aethera.agent.v1.MeshApply
+	54, // 42: aethera.agent.v1.Command.mesh_status:type_name -> aethera.agent.v1.MeshStatus
+	55, // 43: aethera.agent.v1.Command.mesh_remove:type_name -> aethera.agent.v1.MeshRemove
+	19, // 44: aethera.agent.v1.LogStreamStart.since:type_name -> google.protobuf.Timestamp
+	18, // 45: aethera.agent.v1.HttpProbe.headers:type_name -> aethera.agent.v1.HttpProbe.HeadersEntry
+	5,  // 46: aethera.agent.v1.HealthProbe.http:type_name -> aethera.agent.v1.HttpProbe
+	6,  // 47: aethera.agent.v1.HealthProbe.tcp:type_name -> aethera.agent.v1.TcpProbe
+	7,  // 48: aethera.agent.v1.HealthProbe.container:type_name -> aethera.agent.v1.ContainerHealthProbe
+	56, // 49: aethera.agent.v1.HealthProbe.timeout:type_name -> google.protobuf.Duration
+	56, // 50: aethera.agent.v1.HealthProbe.interval:type_name -> google.protobuf.Duration
+	56, // 51: aethera.agent.v1.HealthProbe.start_period:type_name -> google.protobuf.Duration
+	56, // 52: aethera.agent.v1.HealthProbeResult.latency:type_name -> google.protobuf.Duration
+	19, // 53: aethera.agent.v1.HealthProbeResult.checked_at:type_name -> google.protobuf.Timestamp
+	57, // 54: aethera.agent.v1.ProxyEnsure.env:type_name -> aethera.agent.v1.EnvVar
+	56, // 55: aethera.agent.v1.SystemPrune.older_than:type_name -> google.protobuf.Duration
+	0,  // 56: aethera.agent.v1.CommandResult.status:type_name -> aethera.agent.v1.CommandStatus
+	58, // 57: aethera.agent.v1.CommandResult.error_code:type_name -> aethera.agent.v1.ErrorCode
+	19, // 58: aethera.agent.v1.CommandResult.started_at:type_name -> google.protobuf.Timestamp
+	19, // 59: aethera.agent.v1.CommandResult.finished_at:type_name -> google.protobuf.Timestamp
+	16, // 60: aethera.agent.v1.CommandResult.empty:type_name -> aethera.agent.v1.EmptyResult
+	59, // 61: aethera.agent.v1.CommandResult.container_create:type_name -> aethera.agent.v1.ContainerCreateResult
+	60, // 62: aethera.agent.v1.CommandResult.container_state:type_name -> aethera.agent.v1.ContainerStateResult
+	61, // 63: aethera.agent.v1.CommandResult.container_inspect:type_name -> aethera.agent.v1.ContainerInspectResult
+	62, // 64: aethera.agent.v1.CommandResult.container_list:type_name -> aethera.agent.v1.ContainerListResult
+	63, // 65: aethera.agent.v1.CommandResult.image_pull:type_name -> aethera.agent.v1.ImagePullResult
+	64, // 66: aethera.agent.v1.CommandResult.image_list:type_name -> aethera.agent.v1.ImageListResult
+	65, // 67: aethera.agent.v1.CommandResult.image_inspect:type_name -> aethera.agent.v1.ImageInspectResult
+	66, // 68: aethera.agent.v1.CommandResult.prune:type_name -> aethera.agent.v1.PruneResult
+	67, // 69: aethera.agent.v1.CommandResult.volume_create:type_name -> aethera.agent.v1.VolumeCreateResult
+	68, // 70: aethera.agent.v1.CommandResult.volume_list:type_name -> aethera.agent.v1.VolumeListResult
+	69, // 71: aethera.agent.v1.CommandResult.network_create:type_name -> aethera.agent.v1.NetworkCreateResult
+	70, // 72: aethera.agent.v1.CommandResult.network_list:type_name -> aethera.agent.v1.NetworkListResult
+	71, // 73: aethera.agent.v1.CommandResult.compose:type_name -> aethera.agent.v1.ComposeResult
+	72, // 74: aethera.agent.v1.CommandResult.compose_inspect:type_name -> aethera.agent.v1.ComposeInspectResult
+	73, // 75: aethera.agent.v1.CommandResult.build:type_name -> aethera.agent.v1.BuildResult
+	74, // 76: aethera.agent.v1.CommandResult.build_detect:type_name -> aethera.agent.v1.BuildDetectResult
+	4,  // 77: aethera.agent.v1.CommandResult.log_stream_start:type_name -> aethera.agent.v1.LogStreamStartResult
+	9,  // 78: aethera.agent.v1.CommandResult.health_probe:type_name -> aethera.agent.v1.HealthProbeResult
+	11, // 79: aethera.agent.v1.CommandResult.proxy_ensure:type_name -> aethera.agent.v1.ProxyEnsureResult
+	75, // 80: aethera.agent.v1.CommandResult.discovery:type_name -> aethera.agent.v1.DiscoveryReport
+	15, // 81: aethera.agent.v1.CommandResult.agent_self_update:type_name -> aethera.agent.v1.AgentSelfUpdateResult
+	76, // 82: aethera.agent.v1.CommandResult.container_exec:type_name -> aethera.agent.v1.ContainerExecResult
+	77, // 83: aethera.agent.v1.CommandResult.backup_run:type_name -> aethera.agent.v1.BackupRunResult
+	78, // 84: aethera.agent.v1.CommandResult.backup_restore:type_name -> aethera.agent.v1.BackupRestoreResult
+	79, // 85: aethera.agent.v1.CommandResult.mesh:type_name -> aethera.agent.v1.MeshState
+	86, // [86:86] is the sub-list for method output_type
+	86, // [86:86] is the sub-list for method input_type
+	86, // [86:86] is the sub-list for extension type_name
+	86, // [86:86] is the sub-list for extension extendee
+	0,  // [0:86] is the sub-list for field type_name
 }
 
 func init() { file_aethera_agent_v1_commands_proto_init() }
@@ -2891,6 +2971,7 @@ func file_aethera_agent_v1_commands_proto_init() {
 	file_aethera_agent_v1_common_proto_init()
 	file_aethera_agent_v1_discovery_proto_init()
 	file_aethera_agent_v1_docker_proto_init()
+	file_aethera_agent_v1_mesh_proto_init()
 	file_aethera_agent_v1_commands_proto_msgTypes[0].OneofWrappers = []any{
 		(*Command_ContainerCreate)(nil),
 		(*Command_ContainerStart)(nil),
@@ -2932,6 +3013,9 @@ func file_aethera_agent_v1_commands_proto_init() {
 		(*Command_BackupRun)(nil),
 		(*Command_BackupRestore)(nil),
 		(*Command_BackupDelete)(nil),
+		(*Command_MeshApply)(nil),
+		(*Command_MeshStatus)(nil),
+		(*Command_MeshRemove)(nil),
 	}
 	file_aethera_agent_v1_commands_proto_msgTypes[7].OneofWrappers = []any{
 		(*HealthProbe_Http)(nil),
@@ -2964,6 +3048,7 @@ func file_aethera_agent_v1_commands_proto_init() {
 		(*CommandResult_ContainerExec)(nil),
 		(*CommandResult_BackupRun)(nil),
 		(*CommandResult_BackupRestore)(nil),
+		(*CommandResult_Mesh)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

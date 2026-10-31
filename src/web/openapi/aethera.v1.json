@@ -2333,6 +2333,415 @@
         "x-required-scope": "read"
       }
     },
+    "/api/v1/placement/suggest": {
+      "get": {
+        "tags": [
+          "Placement"
+        ],
+        "summary": "Which server a new workload would be placed on, and why",
+        "description": "Ranks the organization's servers for a kind of workload (application, statefulService, statelessService, build) and the CPU and memory it reserves. Servers that are not active, whose agent is not connected, whose roles exclude the kind or that lack the unreserved memory are not eligible; the others are ranked by unreserved memory, then free disk, then fewer workloads. Every server comes with its reasons. Give workloadId instead of kind, cpu and memory to judge an existing workload (the server it is on does not count its own reservation).",
+        "operationId": "suggestPlacement",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cpu",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+              "type": [
+                "number",
+                "string"
+              ],
+              "format": "double"
+            }
+          },
+          {
+            "name": "memory",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "workloadId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementSuggestionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/servers/capacity": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Cores, memory and disk of every server, what is reserved on it and how much is left",
+        "operationId": "listServerCapacity",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServerCapacityResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/applications/{id}/move": {
+      "post": {
+        "tags": [
+          "Applications"
+        ],
+        "summary": "Move the application to another server",
+        "description": "Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).",
+        "operationId": "moveApplication",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveWorkloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveWorkloadResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveWorkloadResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/services/{id}/move": {
+      "post": {
+        "tags": [
+          "Services"
+        ],
+        "summary": "Move the service to another server",
+        "description": "Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).",
+        "operationId": "moveService",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveWorkloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveWorkloadResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveWorkloadResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -11331,6 +11740,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "previewId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -11808,6 +12225,14 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "previewId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -17937,6 +18362,882 @@
         ],
         "x-required-scope": "write"
       }
+    },
+    "/api/v1/system/mesh": {
+      "get": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "The private network between servers",
+        "operationId": "getMeshSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Turn the private network on or off and choose its range",
+        "description": "`wireGuard`: each agent creates the interface `aethera0` and every server gets an address from `cidr`. `tailscale`: the address of `tailscale0` is used; Aethera does not log in to Tailscale. `none` removes the interfaces Aethera created. Saving queues a reconcile of every server.",
+        "operationId": "updateMeshSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeshSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshSettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/system/mesh/reconcile": {
+      "post": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Apply the private network to every server again",
+        "operationId": "reconcileMesh",
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeshReconcileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/servers/{id}/mesh": {
+      "get": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "A server's address, key, endpoint and peers in the private network",
+        "operationId": "getServerMesh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMeshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Set the endpoint and port peers use to reach this server",
+        "operationId": "updateServerMesh",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateServerMeshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMeshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "servers:write"
+      }
+    },
+    "/api/v1/applications/{id}/previews": {
+      "get": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "listApplicationPreviews",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeRemoved",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageOfPreviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      }
+    },
+    "/api/v1/applications/{id}/previews/settings": {
+      "get": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "getPreviewSettings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewSettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "put": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "updatePreviewSettings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreviewSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewSettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "write"
+      }
+    },
+    "/api/v1/applications/{id}/previews/{number}": {
+      "get": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "getApplicationPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "read"
+      },
+      "delete": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "removeApplicationPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
+    },
+    "/api/v1/applications/{id}/previews/{number}/redeploy": {
+      "post": {
+        "tags": [
+          "Previews"
+        ],
+        "operationId": "redeployApplicationPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "deploy"
+      }
     }
   },
   "components": {
@@ -18266,6 +19567,31 @@
           "resolved"
         ]
       },
+      "AllocationResponse": {
+        "required": [
+          "cpuCores",
+          "memoryBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "cpuCores": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "ApiTokenResponse": {
         "required": [
           "id",
@@ -18428,6 +19754,22 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "buildServerId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "warnings": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -19480,6 +20822,67 @@
           }
         }
       },
+      "CapacityUsageResponse": {
+        "required": [
+          "cpuPercent",
+          "memoryUsedBytes",
+          "memoryTotalBytes",
+          "diskUsedBytes",
+          "diskTotalBytes",
+          "observedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "cpuPercent": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryUsedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "memoryTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskUsedBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskTotalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "observedAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "CertificateStatus": {
         "enum": [
           "none",
@@ -19882,6 +21285,13 @@
             ],
             "format": "uuid"
           },
+          "buildServerId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
           "sourceKind": {
             "type": [
               "null",
@@ -20221,6 +21631,12 @@
               "null",
               "boolean"
             ]
+          },
+          "isPreview": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -20402,6 +21818,12 @@
               "null",
               "string"
             ]
+          },
+          "namespace": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -20564,6 +21986,31 @@
               "string"
             ],
             "format": "int32"
+          },
+          "buildCpuLimit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "buildMemoryLimitBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "buildRegistryId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "sshCredentialSecretId": {
             "type": [
@@ -21038,6 +22485,13 @@
             "items": {
               "$ref": "#/components/schemas/DeploymentStepDto"
             }
+          },
+          "previewId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -21134,7 +22588,8 @@
           "redeploy",
           "rollback",
           "schedule",
-          "api"
+          "api",
+          "pullRequest"
         ]
       },
       "DesiredState": {
@@ -22192,6 +23647,10 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "isPreview": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -22263,6 +23722,43 @@
           }
         },
         "description": "One field-level problem. Exactly one of pointer (JSON Pointer into the body) or parameter (query/path) is set."
+      },
+      "FreeCapacityResponse": {
+        "required": [
+          "cpuCores",
+          "memoryBytes",
+          "diskBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "cpuCores": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
       },
       "GitCredentialKind": {
         "enum": [
@@ -23419,6 +24915,172 @@
           }
         }
       },
+      "MeshPeerResponse": {
+        "required": [
+          "serverId",
+          "name",
+          "publicKey",
+          "address",
+          "endpoint",
+          "lastHandshake",
+          "rxBytes",
+          "txBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastHandshake": {
+            "format": "date-time"
+          },
+          "rxBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "txBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "MeshProvider": {
+        "enum": [
+          "none",
+          "wireGuard",
+          "tailscale"
+        ]
+      },
+      "MeshReconcileResponse": {
+        "required": [
+          "queued"
+        ],
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MeshServerSummary": {
+        "required": [
+          "id",
+          "name",
+          "provider",
+          "status",
+          "address",
+          "error",
+          "handshakeAt",
+          "agentConnected"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MeshStatus"
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "handshakeAt": {
+            "format": "date-time"
+          },
+          "agentConnected": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MeshSettingsResponse": {
+        "required": [
+          "provider",
+          "cidr",
+          "listenPort",
+          "servers"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "cidr": {
+            "type": "string"
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeshServerSummary"
+            }
+          }
+        }
+      },
+      "MeshStatus": {
+        "enum": [
+          "disabled",
+          "pending",
+          "up",
+          "degraded",
+          "failed"
+        ]
+      },
       "MetricPointResponse": {
         "required": [
           "timestamp",
@@ -23594,6 +25256,84 @@
           "bind",
           "tmpfs"
         ]
+      },
+      "MoveWorkloadRequest": {
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "confirm": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "MoveWorkloadResponse": {
+        "required": [
+          "workloadId",
+          "fromServerId",
+          "toServerId",
+          "deploymentId",
+          "jobId",
+          "dataStaysBehind",
+          "volumes",
+          "warnings",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "workloadId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fromServerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "toServerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deploymentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "dataStaysBehind": {
+            "type": "boolean"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
       },
       "NetworkEndpointInfo": {
         "required": [
@@ -24087,6 +25827,27 @@
           }
         }
       },
+      "PageOfPreviewDto": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PageOfProjectResponse": {
         "required": [
           "items",
@@ -24295,6 +26056,111 @@
           }
         }
       },
+      "PlacementCandidateResponse": {
+        "required": [
+          "serverId",
+          "serverName",
+          "eligible",
+          "score",
+          "reasons",
+          "cpuFreeCores",
+          "memoryFreeBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cpuFreeCores": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "memoryFreeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "PlacementKind": {
+        "enum": [
+          "application",
+          "statefulService",
+          "statelessService",
+          "build"
+        ]
+      },
+      "PlacementSuggestionResponse": {
+        "required": [
+          "kind",
+          "suggestedServerId",
+          "candidates",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PlacementKind"
+          },
+          "suggestedServerId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlacementCandidateResponse"
+            }
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PortBindScope": {
+        "enum": [
+          "public",
+          "private",
+          "loopback"
+        ],
+        "default": "public"
+      },
       "PortMappingSpec": {
         "required": [
           "containerPort"
@@ -24370,6 +26236,12 @@
             ],
             "format": "int32"
           },
+          "bindScope": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "isHttp": {
             "type": [
               "null",
@@ -24420,8 +26292,301 @@
           },
           "isHttp": {
             "type": "boolean"
+          },
+          "bindScope": {
+            "$ref": "#/components/schemas/PortBindScope"
           }
         }
+      },
+      "PreviewDeploymentDto": {
+        "required": [
+          "id",
+          "number",
+          "status",
+          "failedStep",
+          "failureCode",
+          "commitSha",
+          "createdAt",
+          "finishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeploymentStatus"
+          },
+          "failedStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeploymentStep"
+              }
+            ]
+          },
+          "failureCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "commitSha": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PreviewDto": {
+        "required": [
+          "id",
+          "applicationId",
+          "number",
+          "title",
+          "authorLogin",
+          "sourceBranch",
+          "headSha",
+          "fromFork",
+          "provider",
+          "serverId",
+          "hostname",
+          "url",
+          "status",
+          "statusReason",
+          "statusChangedAt",
+          "lastEventAt",
+          "closedAt",
+          "removedAt",
+          "commentError",
+          "currentDeploymentId",
+          "lastDeployment",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "applicationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "authorLogin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceBranch": {
+            "type": "string"
+          },
+          "headSha": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fromFork": {
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/GitProvider"
+          },
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hostname": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PreviewStatus"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "statusChangedAt": {
+            "format": "date-time"
+          },
+          "lastEventAt": {
+            "format": "date-time"
+          },
+          "closedAt": {
+            "format": "date-time"
+          },
+          "removedAt": {
+            "format": "date-time"
+          },
+          "commentError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentDeploymentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "lastDeployment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PreviewDeploymentDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PreviewSettingsDto": {
+        "required": [
+          "enabled",
+          "allowForks",
+          "serverId",
+          "maxActive",
+          "defaultMaxActive",
+          "effectiveServerId",
+          "supported",
+          "unsupportedReason",
+          "webhookConfigured",
+          "webhookProvider",
+          "webhookPath",
+          "hostnamePattern"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowForks": {
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "maxActive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "defaultMaxActive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "effectiveServerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "unsupportedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "webhookConfigured": {
+            "type": "boolean"
+          },
+          "webhookProvider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GitProvider"
+              }
+            ]
+          },
+          "webhookPath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hostnamePattern": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PreviewStatus": {
+        "enum": [
+          "pending",
+          "deploying",
+          "running",
+          "failed",
+          "closing",
+          "removed"
+        ]
       },
       "ProblemDetails": {
         "required": [
@@ -25003,6 +27168,12 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "namespace": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -25398,6 +27569,12 @@
               }
             ]
           },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "healthCheck": {
             "oneOf": [
               {
@@ -25437,6 +27614,9 @@
           },
           "healthCheck": {
             "$ref": "#/components/schemas/HealthCheckResponse"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/WorkloadPriority"
           }
         }
       },
@@ -25886,6 +28066,114 @@
           "workload"
         ]
       },
+      "ServerCapacityResponse": {
+        "required": [
+          "serverId",
+          "name",
+          "lifecycle",
+          "roles",
+          "connected",
+          "cores",
+          "memoryBytes",
+          "diskBytes",
+          "usage",
+          "reservations",
+          "limits",
+          "committed",
+          "free",
+          "workloadCount",
+          "overCommitted",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/ServerLifecycle"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerRole"
+            }
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "cores": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "memoryBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "diskBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CapacityUsageResponse"
+              }
+            ]
+          },
+          "reservations": {
+            "$ref": "#/components/schemas/AllocationResponse"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/AllocationResponse"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/AllocationResponse"
+          },
+          "free": {
+            "$ref": "#/components/schemas/FreeCapacityResponse"
+          },
+          "workloadCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "overCommitted": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "ServerFactsResponse": {
         "required": [
           "os",
@@ -26030,6 +28318,107 @@
           "maintenance",
           "disabled"
         ]
+      },
+      "ServerMeshResponse": {
+        "required": [
+          "serverId",
+          "instanceProvider",
+          "provider",
+          "status",
+          "statusChangedAt",
+          "error",
+          "address",
+          "publicKey",
+          "endpoint",
+          "effectiveEndpoint",
+          "listenPort",
+          "effectiveListenPort",
+          "handshakeAt",
+          "agentConnected",
+          "peersLive",
+          "peers"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instanceProvider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/MeshProvider"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MeshStatus"
+          },
+          "statusChangedAt": {
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publicKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "effectiveEndpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "effectiveListenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "handshakeAt": {
+            "format": "date-time"
+          },
+          "agentConnected": {
+            "type": "boolean"
+          },
+          "peersLive": {
+            "type": "boolean"
+          },
+          "peers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeshPeerResponse"
+            }
+          }
+        }
       },
       "ServerResourcesRequest": {
         "type": "object",
@@ -26242,6 +28631,31 @@
               "null",
               "string"
             ]
+          },
+          "buildCpuLimit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "buildMemoryLimitBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "buildRegistryId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -26360,6 +28774,15 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "warnings": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -27044,6 +29467,13 @@
             ],
             "format": "uuid"
           },
+          "buildServerId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
           "gitSource": {
             "oneOf": [
               {
@@ -27412,6 +29842,12 @@
               "null",
               "boolean"
             ]
+          },
+          "isPreview": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -27444,6 +29880,32 @@
           }
         }
       },
+      "UpdateMeshSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cidr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateOrganizationRequest": {
         "type": "object",
         "properties": {
@@ -27458,6 +29920,37 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "UpdatePreviewSettingsRequest": {
+        "required": [
+          "enabled",
+          "allowForks"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowForks": {
+            "type": "boolean"
+          },
+          "serverId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "maxActive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -27529,6 +30022,12 @@
             ]
           },
           "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "namespace": {
             "type": [
               "null",
               "string"
@@ -27609,6 +30108,26 @@
           }
         }
       },
+      "UpdateServerMeshRequest": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "listenPort": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateServerRequest": {
         "type": "object",
         "properties": {
@@ -27674,6 +30193,31 @@
               "string"
             ],
             "format": "int32"
+          },
+          "buildCpuLimit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "buildMemoryLimitBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "buildRegistryId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "sshCredentialSecretId": {
             "type": [
@@ -28234,6 +30778,14 @@
           }
         }
       },
+      "WorkloadPriority": {
+        "enum": [
+          "normal",
+          "high",
+          "low"
+        ],
+        "default": "normal"
+      },
       "WorkloadStatus": {
         "enum": [
           "unknown",
@@ -28331,6 +30883,9 @@
       "name": "Notifications"
     },
     {
+      "name": "Placement"
+    },
+    {
       "name": "Applications"
     },
     {
@@ -28374,6 +30929,12 @@
     },
     {
       "name": "DNS providers"
+    },
+    {
+      "name": "Network"
+    },
+    {
+      "name": "Previews"
     }
   ]
 }

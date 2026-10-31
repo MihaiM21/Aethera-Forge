@@ -96,6 +96,11 @@ last used + IP, `revoked_at`), `user_sessions` (hashed cookie secret, expiry, re
 - `servers.wildcard_domain` (null = `<public ip>.sslip.io`) is the base of the domains generated for new workloads; `domains.is_automatic` marks such a row; `workloads.auto_domain_assigned` records that one was created (or skipped) once, so deleting it sticks. The migration sets the flag on every existing workload: an upgrade adds no routes.
 - `settings` keys `proxy` (`acmeEmail`, `staging`) and `dashboard` (`domain`, `https`, `serverId`) hold the proxy and control-plane domain settings edited in Settings > System; on first start they are seeded from `AETHERA_ACME_EMAIL` / `AETHERA_DOMAIN`.
 
+**Multi-server, mesh, previews** (`AddR2MultiServerMeshPreviews`, ADR 0012)
+- `servers` gained the build quota (`build_cpu_limit`, `build_memory_limit_bytes`), `build_registry_id` (where images built for another server are pushed) and the mesh columns (`mesh_provider`, `mesh_address` unique, `mesh_public_key`, `mesh_endpoint`, `mesh_listen_port`, `mesh_status`, `mesh_status_changed_at`, `mesh_error`, `mesh_handshake_at`); `registries.namespace` is the push path.
+- `workloads` gained `priority` (runtime), `build_server_id` and the preview settings `previews_enabled`, `preview_allow_forks`, `preview_server_id`, `preview_max_active` (applications only; null on service rows). `workload_ports.bind_scope` is `public`, `private` (mesh address) or `loopback`. `environment_variables.is_preview` marks preview-only variables; the unique key is now `(workload_id, key, is_preview)`.
+- `previews`: one row per (application, pull request number) with the head commit, host, status, the preview's own `current_deployment_id` and the provider comment id. `deployments.preview_id` marks a preview deployment, `deployments.build_server_id` the server that built the image when it is not the run server.
+
 ## Why a single `workloads` table (TPH) instead of TPT
 
 Application and Service share almost everything the engine cares about: server, environment, runtime config, ports, env vars, volumes,

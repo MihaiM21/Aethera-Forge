@@ -43,9 +43,10 @@ public sealed record VolumeMountSpec(MountKind Type, string Source, string Targe
 
 public sealed record NetworkAttachmentSpec(string Network, IReadOnlyList<string>? Aliases = null, string? Ipv4Address = null);
 
+/// <param name="OomScoreAdj">-1000..1000, 0 = Docker's default (workload priority, ADR 0012).</param>
 public sealed record ResourceLimitsSpec(
     double CpuLimitCores = 0, double CpuReservationCores = 0, long MemoryLimitBytes = 0, long MemoryReservationBytes = 0,
-    long MemorySwapLimitBytes = 0, long PidsLimit = 0, string? CpusetCpus = null);
+    long MemorySwapLimitBytes = 0, long PidsLimit = 0, string? CpusetCpus = null, int OomScoreAdj = 0);
 
 public enum RestartPolicyKind { No = 1, Always = 2, OnFailure = 3, UnlessStopped = 4 }
 
@@ -208,6 +209,12 @@ public sealed record BuildSpec(string BuildId, BuildEngineKind Engine, IReadOnly
     public IReadOnlyDictionary<string, string>? ImageLabels { get; init; }
     public bool Push { get; init; }
     public RegistryCredentials? PushAuth { get; init; }
+
+    /// <summary>
+    /// The server's build quota (ADR 0012): the build runs in the agent's BuildKit builder container with these limits. Null = the daemon's
+    /// builder. Only for agents that advertise <c>build.quota</c>.
+    /// </summary>
+    public ResourceLimitsSpec? BuilderLimits { get; init; }
 }
 
 public sealed record BuildOutcome(
@@ -285,3 +292,19 @@ public sealed record BackupEncryptionSpec(SecretValue Key, string KeyId);
 public sealed record BackupRunOutcome(string BackupId, long RawSizeBytes, long StoredSizeBytes, string StoredSha256, TimeSpan Duration);
 
 public sealed record BackupRestoreOutcome(long RestoredBytes, TimeSpan Duration);
+
+// ---- mesh (ADR 0012) ------------------------------------------------------------------------------------------------------------------
+
+public enum MeshProviderKind { WireGuard = 1, Tailscale = 2 }
+
+/// <param name="Endpoint">"host:port"; null = the peer dials in.</param>
+/// <param name="AllowedIps">The peer's mesh address as a /32.</param>
+/// <param name="Name">The peer's server id, for logs.</param>
+public sealed record MeshPeerSpec(string PublicKey, string? Endpoint, IReadOnlyList<string> AllowedIps, int PersistentKeepaliveSeconds = 25, string? Name = null);
+
+public sealed record MeshPeerStateInfo(string PublicKey, string? Endpoint, DateTimeOffset? LastHandshake, long RxBytes, long TxBytes);
+
+/// <summary>What the agent reports about its mesh interface. <see cref="PublicKey"/> is empty for Tailscale.</summary>
+public sealed record MeshStateInfo(
+    MeshProviderKind Provider, string InterfaceName, bool Up, string PublicKey, IReadOnlyList<string> Addresses, int ListenPort,
+    IReadOnlyList<MeshPeerStateInfo> Peers, string? Error);

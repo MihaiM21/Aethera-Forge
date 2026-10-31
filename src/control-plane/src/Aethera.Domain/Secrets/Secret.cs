@@ -107,4 +107,10 @@ public class Registry : SoftDeletableEntity
     public string? Username { get; set; }
     public Guid? PasswordSecretId { get; set; }
     public Secret? PasswordSecret { get; set; }
+
+    /// <summary>
+    /// Path under the registry host that images built for another server are pushed to (ADR 0012), e.g. <c>mihaim21</c> on <c>ghcr.io</c>
+    /// gives <c>ghcr.io/mihaim21/&lt;slug&gt;:&lt;deployment id&gt;</c>. Null = the username.
+    /// </summary>
+    public string? Namespace { get; set; }
 }

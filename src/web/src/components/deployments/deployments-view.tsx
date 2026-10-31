@@ -49,6 +49,7 @@ export function DeploymentRowView({ row, now, showApp }: { row: DeploymentRow; n
           )}
           <DeploymentStatusPill status={d.status} />
           {d.isRollbackPoint && <Badge tone="outline">rollback point</Badge>}
+          {d.previewId && <Badge tone="brand">preview</Badge>}
         </div>
         <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
           {TRIGGER_LABEL[d.trigger] ?? d.trigger} · {d.strategy}

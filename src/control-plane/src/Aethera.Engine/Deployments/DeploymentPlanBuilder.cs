@@ -50,11 +50,72 @@ public sealed class PlanContext
     /// network and the runtime variables on every service and a domain's service is checked; without it only the routed services are named.
     /// </summary>
     public IReadOnlyList<ComposeServiceDefinition>? ComposeServices { get; init; }
+
+    /// <summary>The run server's address in the private mesh (ADR 0012); ports with <see cref="PortBindScope.Private"/> bind to it.</summary>
+    public string? MeshAddress { get; init; }
+
+    // ---- build elsewhere and build quota (ADR 0012) -----------------------------------------------------------------------------------
+
+    /// <summary>Names of the build server (the snapshot's <see cref="BuildSnapshot.BuildServerId"/>) and the run server, for the log.</summary>
+    public string? BuildServerName { get; init; }
+
+    public string? RunServerName { get; init; }
+
+    /// <summary>
+    /// <c>&lt;registry host&gt;/&lt;namespace&gt;</c> the build server pushes to; null when it has no build registry, which fails a build elsewhere
+    /// with <see cref="FailureCodes.BuildRegistryMissing"/> before anything is built. Credentials are in <see cref="BuildRegistry"/> (push) and
+    /// <see cref="Registry"/> (pull) and are the same ones.
+    /// </summary>
+    public string? BuildRegistryPrefix { get; init; }
+
+    public RegistryCredentials? BuildRegistry { get; init; }
+
+    /// <summary>The build server's quota, set only when its agent can enforce it; null = the daemon's builder.</summary>
+    public ResourceLimitsSpec? BuilderLimits { get; init; }
+
+    /// <inheritdoc cref="DeploymentPlan.AcquireBuildSlot"/>
+    public Func<CancellationToken, Task<IAsyncDisposable>>? AcquireBuildSlot { get; init; }
+
+    /// <summary>
+    /// <see cref="ExistingImage"/> is a registry reference (the rollback target was built elsewhere): it is pulled with <see cref="Registry"/> when
+    /// the run server does not have it, instead of being expected locally.
+    /// </summary>
+    public bool ExistingImageIsRemote { get; init; }
 }
 
 /// <summary>Turns a <see cref="DeploymentSnapshot"/> into the <see cref="DeploymentPlan"/> the runner executes. Pure: no I/O.</summary>
 public static class DeploymentPlanBuilder
 {
+    /// <summary>
+    /// The host address a published port binds to (ADR 0012): every interface, the server's mesh address, or loopback. A private port on a server
+    /// without a mesh address fails the Network step instead of quietly listening on the internet.
+    /// </summary>
+    public static string? BindAddress(PortEntry port, PlanContext c) => port.BindScope switch
+    {
+        PortBindScope.Loopback => "127.0.0.1",
+        PortBindScope.Private => c.MeshAddress is { Length: > 0 } mesh
+            ? mesh
+            : throw new DeploymentFailure(DeploymentStep.Network, FailureCodes.NoMeshAddress,
+                $"Port {port.PublishedPort} is published on the private network, but this server has no mesh address. Turn on the private network in Settings > Network or publish the port publicly."),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The container's limits with its priority applied (ADR 0012): High doubles the CPU shares that come from the reservation (one core's worth
+    /// without one) and shields it from the OOM killer, Low halves them and offers it first.
+    /// </summary>
+    public static ResourceLimitsSpec Resources(RuntimeSnapshot r)
+    {
+        var reservation = r.CpuReservation ?? 0;
+        var (cpuReservation, oom) = r.Priority switch
+        {
+            WorkloadPriority.High => ((reservation > 0 ? reservation : 1) * 2, -500),
+            WorkloadPriority.Low => ((reservation > 0 ? reservation : 1) / 2, 500),
+            _ => (reservation, 0),
+        };
+        return new ResourceLimitsSpec(r.CpuLimit ?? 0, cpuReservation, r.MemoryLimitBytes ?? 0, r.MemoryReservationBytes ?? 0, 0, r.PidsLimit ?? 0, OomScoreAdj: oom);
+    }
+
     /// <summary>Stable container name of a workload on its server.</summary>
     public static string ContainerName(DeploymentSnapshot s) => $"{s.Slug}-{s.WorkloadId.ToString("N")[..8]}";
 
@@ -91,6 +152,7 @@ public static class DeploymentPlanBuilder
             ["aethera.environment"] = s.EnvironmentId.ToString(),
             ["aethera.deployment"] = c.DeploymentId.ToString(),
         };
+        if (s.Preview is { } preview) labels["aethera.preview"] = preview.PreviewId.ToString();
 
         if (s.Compose is { } compose)
             return ComposePlan(s, c, compose, routes);
@@ -110,15 +172,15 @@ public static class DeploymentPlanBuilder
             Labels = labels,
             Env = env,
             Ports = s.Ports.Where(p => p.PublishedPort is > 0)
-                .Select(p => new PortMappingSpec(p.ContainerPort, p.PublishedPort!.Value, null, p.Protocol == PortProtocol.Udp ? PortProtocolKind.Udp : PortProtocolKind.Tcp)).ToList(),
+                .Select(p => new PortMappingSpec(p.ContainerPort, p.PublishedPort!.Value, BindAddress(p, c), p.Protocol == PortProtocol.Udp ? PortProtocolKind.Udp : PortProtocolKind.Tcp))
+                .ToList(),
             // Named volumes live in the workload's own namespace (VolumeNames): prod and dev never share a Docker volume.
             Mounts = s.Volumes.Select(v => v.HostPath is { Length: > 0 }
                 ? new VolumeMountSpec(MountKind.Bind, v.HostPath, v.MountPath, v.ReadOnly)
                 : new VolumeMountSpec(MountKind.Volume, VolumeNames.DockerName(s.Slug, s.WorkloadId, v.Name), v.MountPath, v.ReadOnly)).ToList(),
             StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
             Networks = networks,
-            Resources = new ResourceLimitsSpec(
-                s.Runtime.CpuLimit ?? 0, s.Runtime.CpuReservation ?? 0, s.Runtime.MemoryLimitBytes ?? 0, s.Runtime.MemoryReservationBytes ?? 0, 0, s.Runtime.PidsLimit ?? 0),
+            Resources = Resources(s.Runtime),
             RestartPolicy = new RestartPolicySpec(s.Runtime.RestartPolicy switch
             {
                 RestartPolicy.No => RestartPolicyKind.No,
@@ -147,10 +209,16 @@ public static class DeploymentPlanBuilder
             StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
             DetectedPort = detected, WriteLog = c.WriteLog, Narrate = c.Narrate,
             WithImage = facts is null ? f => Build(originalSnapshot, c, f) : null,
+            // Only a plan that builds uses these: a rollback or an image source has nothing to build.
+            BuildServerId = c.ExistingImage is null && s.Image is null && BuildsElsewhere(s, c) ? s.Build!.BuildServerId : null,
+            BuildServerName = c.BuildServerName, RunServerName = c.RunServerName, AcquireBuildSlot = c.AcquireBuildSlot,
         };
 
         if (c.ExistingImage is { Length: > 0 } existing)
-            return Copy(common, imageReference: existing, local: true);
+            // A rollback to an image that came through a registry pulls it when the server no longer has it (ADR 0012); others expect it locally.
+            return c.ExistingImageIsRemote
+                ? Copy(common, imageReference: existing, pullAuth: c.Registry, pullPolicy: ImagePullPolicy.IfNotPresent)
+                : Copy(common, imageReference: existing, local: true);
 
         if (s.Image is { } image)
         {
@@ -158,14 +226,19 @@ public static class DeploymentPlanBuilder
             return Copy(common, imageReference: reference, pullAuth: c.Registry, pullPolicy: image.PullPolicy);
         }
 
-        return Copy(common, build: BuildSpec(s, c));
+        // Built elsewhere: the run server pulls what the build server pushed, with the same registry credentials.
+        return Copy(common, build: BuildSpec(s, c), pullAuth: BuildsElsewhere(s, c) ? c.Registry : null);
     }
+
+    /// <summary>True when the snapshot names a build server other than the run server (ADR 0012).</summary>
+    public static bool BuildsElsewhere(DeploymentSnapshot s, PlanContext c) => s.Build?.BuildServerId is { } id && id != c.ServerId;
 
     private static DeploymentPlan Copy(
         DeploymentPlan p, string? imageReference = null, bool local = false, RegistryCredentials? pullAuth = null, BuildSpec? build = null,
         ImagePullPolicy pullPolicy = ImagePullPolicy.Always) =>
         new()
         {
+            BuildServerId = p.BuildServerId, BuildServerName = p.BuildServerName, RunServerName = p.RunServerName, AcquireBuildSlot = p.AcquireBuildSlot,
             ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, InternalNetworks = p.InternalNetworks, JobId = p.JobId,
             OrganizationId = p.OrganizationId, OnLog = p.OnLog, HealthFor = p.HealthFor, HealthTimeout = p.HealthTimeout, HealthInterval = p.HealthInterval,
             HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod, HealthSuccessThreshold = p.HealthSuccessThreshold, StopTimeout = p.StopTimeout,
@@ -191,8 +264,20 @@ public static class DeploymentPlanBuilder
             .OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => EnvVarSpec.OfPlain(kv.Key, kv.Value));
         var buildArgs = configured.Concat(buildVars).ToList();
-        return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [ImagePolicy.Tag(s.Slug, c.DeploymentId)])
+
+        // Built for another server (ADR 0012): tagged for the build server's registry and pushed; without one nothing is built.
+        var elsewhere = BuildsElsewhere(s, c);
+        if (elsewhere && c.BuildRegistryPrefix is not { Length: > 0 })
+            throw new DeploymentFailure(DeploymentStep.Build, FailureCodes.BuildRegistryMissing,
+                $"The application is built on {c.BuildServerName ?? "another server"} but runs on {c.RunServerName ?? "this one"}, and the image has to travel through a registry. " +
+                "Choose a build registry in the build server's settings (Servers > the build server > Settings), or build on the run server.");
+        var tag = elsewhere ? ImagePolicy.RegistryTag(c.BuildRegistryPrefix!, s.Slug, c.DeploymentId) : ImagePolicy.Tag(s.Slug, c.DeploymentId);
+
+        return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [tag])
         {
+            Push = elsewhere, PushAuth = elsewhere ? c.BuildRegistry : null,
+            // The quota applies to the engines that build with `docker build`; Nixpacks drives Docker itself and stays on the daemon's builder.
+            BuilderLimits = engine == BuildEngineKind.Nixpacks ? null : c.BuilderLimits,
             Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: git.CommitPin is null ? 1 : 0, Credentials: c.GitCredential),
             ContextPath = b.Context,
             DockerfilePath = b.DockerfilePath,
@@ -203,7 +288,8 @@ public static class DeploymentPlanBuilder
             StartCommand = b.StartCommand,
             OutputDir = b.OutputDirectory,
             SpaFallback = engine == BuildEngineKind.Static,
-            Cache = new BuildCacheSpec(b.CacheEnabled, 1, CacheKey: $"{s.WorkloadId:N}"),
+            // A preview builds code from a pull request: its layers never feed the application's own cache (ADR 0012).
+            Cache = new BuildCacheSpec(b.CacheEnabled, 1, CacheKey: s.Preview is { } preview ? $"{s.WorkloadId:N}-pr-{preview.Number}" : $"{s.WorkloadId:N}"),
             TargetPlatforms = b.TargetPlatform is { Length: > 0 } ? [b.TargetPlatform] : null,
             ImageLabels = new Dictionary<string, string>
             {
@@ -370,6 +456,7 @@ public static class DeploymentPlanBuilder
                 {
                     ["aethera.managed"] = "true", ["aethera.workload"] = s.WorkloadId.ToString(), ["aethera.environment"] = s.EnvironmentId.ToString(),
                 };
+                if (s.Preview is { } preview) labels["aethera.preview"] = preview.PreviewId.ToString();
                 if (routed.TryGetValue(service, out var serviceRoutes))
                     foreach (var route in serviceRoutes)
                         foreach (var (k, v) in c.Proxy.RouteLabels(route)) labels[k] = v;
@@ -401,7 +488,8 @@ public static class DeploymentPlanBuilder
                     var aliases = new List<string>();
                     if (n.DockerName == envNetwork)
                     {
-                        aliases.Add(service);
+                        // A preview answers to its own name only: the plain service name belongs to the application it previews.
+                        if (s.Preview is null) aliases.Add(service);
                         aliases.Add($"{s.Slug}-{service}");
                     }
                     if (service == primary) aliases.AddRange(n.Aliases);

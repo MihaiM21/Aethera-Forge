@@ -145,7 +145,6 @@ public sealed class ServiceTests(ResourcesFixture fixture)
         var empty = await (await tenant.Developer.PostAsync("/api/v1/services", new { })).ValidationErrorsAsync();
         Assert.Contains(("/name", "required"), empty);
         Assert.Contains(("/environmentId", "required"), empty);
-        Assert.Contains(("/serverId", "required"), empty);
         Assert.Contains(("/templateKey", "required"), empty);
 
         var bad = await (await tenant.Developer.PostAsync("/api/v1/services", new

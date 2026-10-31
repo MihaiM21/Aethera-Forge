@@ -135,6 +135,10 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
         }
     }
 
+    /// <summary>The Build step's log line for a build elsewhere: both servers and where the image travels. Contains no credential.</summary>
+    private static string BuildElsewhereNarration(DeploymentPlan plan, BuildSpec spec) =>
+        $"Building on {plan.BuildServerName ?? "the build server"} and running on {plan.RunServerName ?? "the run server"}; the image travels through the registry as {spec.ImageTags[0]}.";
+
     private async Task<string> PrepareImageAsync(Deployment d, DeploymentPlan plan, Func<CancellationToken, Task> save, CancellationToken ct)
     {
         var run = new DeploymentRun(d, plan, "", transport, clock, save);
@@ -152,18 +156,42 @@ public sealed class DeploymentRunner(IServerTransport transport, IEnumerable<IDe
             d.BeginStep(DeploymentStep.Source, clock.UtcNow);
             d.CompleteStep(DeploymentStep.Source, clock.UtcNow);
 
-            d.BeginStep(DeploymentStep.Build, clock.UtcNow);
-            await save(ct);
-            var built = await run.ExecuteAsync<BuildImageCommand, BuildOutcome>(
-                new BuildImageCommand(spec), "build", DeploymentStep.Build, FailureCodes.BuildFailed, ct);
-            plan.BuildResult = built;
-            d.CommitSha = built.CommitSha;
-            d.ImageDigest = built.Digest;
-            d.CompleteStep(DeploymentStep.Build, clock.UtcNow);
+            BuildOutcome built;
+            // The build server's MaxConcurrentBuilds: wait for a slot (ADR 0004), hold it for the build only.
+            await using (plan.AcquireBuildSlot is { } acquire ? await acquire(ct) : null)
+            {
+                d.BeginStep(DeploymentStep.Build, clock.UtcNow);
+                if (plan.BuildServerId is { } buildServer)
+                {
+                    d.BuildServerId = buildServer;
+                    await run.NarrateAsync(BuildElsewhereNarration(plan, spec));
+                }
+
+                await save(ct);
+                built = await run.ExecuteAsync<BuildImageCommand, BuildOutcome>(
+                    new BuildImageCommand(spec), "build", DeploymentStep.Build, FailureCodes.BuildFailed, ct, plan.BuildServerId);
+                plan.BuildResult = built;
+                d.CommitSha = built.CommitSha;
+                d.ImageDigest = built.Digest;
+                d.CompleteStep(DeploymentStep.Build, clock.UtcNow);
+            }
 
             d.BeginStep(DeploymentStep.Image, clock.UtcNow);
             var tag = built.Tags.FirstOrDefault() ?? spec.ImageTags[0];
-            d.CompleteStep(DeploymentStep.Image, clock.UtcNow, JsonSerializer.Serialize(new { image = tag }));
+            if (plan.BuildServerId is not null)
+            {
+                // Built elsewhere: the image is in the registry now, the run server pulls it with the same credentials (ADR 0012).
+                await run.NarrateAsync($"Pulling {tag} on {plan.RunServerName ?? "the run server"}.");
+                var fetched = await run.ExecuteAsync<ImagePullCommand, ImagePulled>(
+                    new ImagePullCommand(tag, plan.PullAuth), "image.pull", DeploymentStep.Image, FailureCodes.ImagePullFailed, ct);
+                if (fetched.Digest.Length > 0) d.ImageDigest = fetched.Digest;
+                d.CompleteStep(DeploymentStep.Image, clock.UtcNow, JsonSerializer.Serialize(new { image = tag, builtOn = plan.BuildServerName, pulled = true }));
+            }
+            else
+            {
+                d.CompleteStep(DeploymentStep.Image, clock.UtcNow, JsonSerializer.Serialize(new { image = tag }));
+            }
+
             await save(ct);
             return tag;
         }

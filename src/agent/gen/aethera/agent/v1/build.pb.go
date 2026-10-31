@@ -664,8 +664,13 @@ type BuildRequest struct {
 	ImageTags   []string          `protobuf:"bytes,20,rep,name=image_tags,json=imageTags,proto3" json:"image_tags,omitempty"`
 	ImageLabels map[string]string `protobuf:"bytes,21,rep,name=image_labels,json=imageLabels,proto3" json:"image_labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Push all tags after a successful build.
-	Push          bool         `protobuf:"varint,22,opt,name=push,proto3" json:"push,omitempty"`
-	PushOptions   *PushOptions `protobuf:"bytes,23,opt,name=push_options,json=pushOptions,proto3" json:"push_options,omitempty"`
+	Push        bool         `protobuf:"varint,22,opt,name=push,proto3" json:"push,omitempty"`
+	PushOptions *PushOptions `protobuf:"bytes,23,opt,name=push_options,json=pushOptions,proto3" json:"push_options,omitempty"`
+	// The server's build quota (ADR 0012). When set (any non-zero CPU or memory
+	// limit) the build runs through the agent's BuildKit builder container
+	// `aethera-buildkit`, started (or recreated) with these limits; unset = the
+	// Docker daemon's built-in builder. Requires the "build.quota" capability.
+	BuilderLimits *ResourceLimits `protobuf:"bytes,24,opt,name=builder_limits,json=builderLimits,proto3" json:"builder_limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -857,6 +862,13 @@ func (x *BuildRequest) GetPush() bool {
 func (x *BuildRequest) GetPushOptions() *PushOptions {
 	if x != nil {
 		return x.PushOptions
+	}
+	return nil
+}
+
+func (x *BuildRequest) GetBuilderLimits() *ResourceLimits {
+	if x != nil {
+		return x.BuilderLimits
 	}
 	return nil
 }
@@ -1273,7 +1285,7 @@ const file_aethera_agent_v1_build_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x123\n" +
 	"\x05value\x18\x02 \x01(\v2\x1d.aethera.agent.v1.SecretValueR\x05value\"A\n" +
 	"\vPushOptions\x122\n" +
-	"\x04auth\x18\x01 \x01(\v2\x1e.aethera.agent.v1.RegistryAuthR\x04auth\"\xd3\b\n" +
+	"\x04auth\x18\x01 \x01(\v2\x1e.aethera.agent.v1.RegistryAuthR\x04auth\"\x9c\t\n" +
 	"\fBuildRequest\x12\x19\n" +
 	"\bbuild_id\x18\x01 \x01(\tR\abuildId\x125\n" +
 	"\x06engine\x18\x02 \x01(\x0e2\x1d.aethera.agent.v1.BuildEngineR\x06engine\x12\x1f\n" +
@@ -1302,7 +1314,8 @@ const file_aethera_agent_v1_build_proto_rawDesc = "" +
 	"image_tags\x18\x14 \x03(\tR\timageTags\x12R\n" +
 	"\fimage_labels\x18\x15 \x03(\v2/.aethera.agent.v1.BuildRequest.ImageLabelsEntryR\vimageLabels\x12\x12\n" +
 	"\x04push\x18\x16 \x01(\bR\x04push\x12@\n" +
-	"\fpush_options\x18\x17 \x01(\v2\x1d.aethera.agent.v1.PushOptionsR\vpushOptions\x1a>\n" +
+	"\fpush_options\x18\x17 \x01(\v2\x1d.aethera.agent.v1.PushOptionsR\vpushOptions\x12G\n" +
+	"\x0ebuilder_limits\x18\x18 \x01(\v2 .aethera.agent.v1.ResourceLimitsR\rbuilderLimits\x1a>\n" +
 	"\x10ImageLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf9\x02\n" +
@@ -1396,7 +1409,8 @@ var file_aethera_agent_v1_build_proto_goTypes = []any{
 	(*SecretValue)(nil),          // 15: aethera.agent.v1.SecretValue
 	(*RegistryAuth)(nil),         // 16: aethera.agent.v1.RegistryAuth
 	(*EnvVar)(nil),               // 17: aethera.agent.v1.EnvVar
-	(*durationpb.Duration)(nil),  // 18: google.protobuf.Duration
+	(*ResourceLimits)(nil),       // 18: aethera.agent.v1.ResourceLimits
+	(*durationpb.Duration)(nil),  // 19: google.protobuf.Duration
 }
 var file_aethera_agent_v1_build_proto_depIdxs = []int32{
 	3,  // 0: aethera.agent.v1.GitCredentials.https_token:type_name -> aethera.agent.v1.HttpsTokenCredential
@@ -1416,15 +1430,16 @@ var file_aethera_agent_v1_build_proto_depIdxs = []int32{
 	6,  // 14: aethera.agent.v1.BuildRequest.cache:type_name -> aethera.agent.v1.BuildCacheSettings
 	14, // 15: aethera.agent.v1.BuildRequest.image_labels:type_name -> aethera.agent.v1.BuildRequest.ImageLabelsEntry
 	8,  // 16: aethera.agent.v1.BuildRequest.push_options:type_name -> aethera.agent.v1.PushOptions
-	18, // 17: aethera.agent.v1.BuildResult.duration:type_name -> google.protobuf.Duration
-	5,  // 18: aethera.agent.v1.BuildDetect.git:type_name -> aethera.agent.v1.GitSource
-	0,  // 19: aethera.agent.v1.BuildCandidate.engine:type_name -> aethera.agent.v1.BuildEngine
-	12, // 20: aethera.agent.v1.BuildDetectResult.candidates:type_name -> aethera.agent.v1.BuildCandidate
-	21, // [21:21] is the sub-list for method output_type
-	21, // [21:21] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	18, // 17: aethera.agent.v1.BuildRequest.builder_limits:type_name -> aethera.agent.v1.ResourceLimits
+	19, // 18: aethera.agent.v1.BuildResult.duration:type_name -> google.protobuf.Duration
+	5,  // 19: aethera.agent.v1.BuildDetect.git:type_name -> aethera.agent.v1.GitSource
+	0,  // 20: aethera.agent.v1.BuildCandidate.engine:type_name -> aethera.agent.v1.BuildEngine
+	12, // 21: aethera.agent.v1.BuildDetectResult.candidates:type_name -> aethera.agent.v1.BuildCandidate
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_aethera_agent_v1_build_proto_init() }

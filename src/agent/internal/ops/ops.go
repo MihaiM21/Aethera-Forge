@@ -21,6 +21,7 @@ import (
 	"github.com/mihaim21/aethera-forge/agent/internal/dispatch"
 	"github.com/mihaim21/aethera-forge/agent/internal/docker"
 	"github.com/mihaim21/aethera-forge/agent/internal/logstream"
+	"github.com/mihaim21/aethera-forge/agent/internal/mesh"
 	"github.com/mihaim21/aethera-forge/agent/internal/policy"
 	"github.com/mihaim21/aethera-forge/agent/internal/proxy"
 	"github.com/mihaim21/aethera-forge/agent/internal/selfupdate"
@@ -58,6 +59,8 @@ type Deps struct {
 	// Exec (container.exec) and Backup (backup.v1) are the R1 subsystems (ADR 0010); nil is not registered.
 	Exec   *backup.Executor
 	Backup *backup.Service
+	// Mesh (mesh.wireguard, mesh.tailscale) is the R2 private network (ADR 0012); nil is not registered.
+	Mesh *mesh.Manager
 	// LookPath finds host tools (nixpacks); exec.LookPath when nil.
 	LookPath func(file string) (string, error)
 
@@ -71,7 +74,8 @@ func (d *Deps) Capabilities() []string {
 		caps = append(caps, CapSelfUpdate)
 	}
 	caps = append(caps, d.phase3Capabilities()...)
-	return append(caps, d.r1Capabilities()...)
+	caps = append(caps, d.r1Capabilities()...)
+	return append(caps, d.meshCapabilities()...)
 }
 
 func (d *Deps) now() time.Time {
@@ -121,6 +125,7 @@ func Register(disp *dispatch.Dispatcher, d *Deps) {
 	d.registerPhase3(r)
 	d.registerExec(r)
 	d.registerBackup(r)
+	d.registerMesh(r)
 	if d.Updater != nil {
 		r("agent_self_update", CapSelfUpdate, d.agentSelfUpdate)
 	}

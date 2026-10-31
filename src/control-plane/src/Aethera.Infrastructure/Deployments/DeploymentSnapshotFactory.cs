@@ -81,9 +81,9 @@ public static class DeploymentSnapshotFactory
         {
             WorkloadId = w.Id, EnvironmentId = w.EnvironmentId, Slug = w.Slug, SourceKind = kind,
             Runtime = Runtime(w.Runtime) with { StopTimeoutSeconds = StopTimeoutSeconds(w) },
-            Env = w.EnvironmentVariables.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => new EnvEntry(
-                e.Key, e.SecretId is null ? e.Value : null, e.SecretId, e.Secret?.CurrentVersion, e.IsBuildTime, e.IsRuntime)).ToList(),
-            Ports = w.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp)).ToList(),
+            // Variables marked "preview only" (ADR 0012) belong to pull request previews: a regular deployment never sees them.
+            Env = EnvEntries(w.EnvironmentVariables.Where(e => !e.IsPreview)),
+            Ports = w.Ports.OrderBy(p => p.ContainerPort).Select(p => new PortEntry(p.ContainerPort, p.Protocol, p.PublishedPort, p.IsHttp, p.BindScope)).ToList(),
             Volumes = w.Volumes.OrderBy(v => v.Name, StringComparer.Ordinal).Select(v => new VolumeEntry(v.Name, v.MountPath, v.HostPath, v.ReadOnly)).ToList(),
             Domains = w.Domains.Where(d => !d.IsDeleted).OrderBy(d => d.Hostname, StringComparer.Ordinal)
                 .Select(d => new DomainEntry(d.Hostname, d.PathPrefix, d.HttpsEnabled, d.TargetPort, d.ComposeService, d.RedirectTo, d.StripPathPrefix,
@@ -92,6 +92,11 @@ public static class DeploymentSnapshotFactory
             CustomLabels = w.CustomLabels.Count > 0 ? new Dictionary<string, string>(w.CustomLabels) : null,
         };
     }
+
+    /// <summary>The snapshot entries of environment variables, ordered by key. They hold secret ids and versions, never values.</summary>
+    internal static List<EnvEntry> EnvEntries(IEnumerable<EnvironmentVariable> variables) =>
+        variables.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => new EnvEntry(
+            e.Key, e.SecretId is null ? e.Value : null, e.SecretId, e.Secret?.CurrentVersion, e.IsBuildTime, e.IsRuntime)).ToList();
 
     public static DeploymentSnapshot Create(Application app)
     {
@@ -138,7 +143,7 @@ public static class DeploymentSnapshotFactory
                     Build = new BuildSnapshot(
                         engine, build?.Context ?? ".", build?.DockerfilePath, build?.InstallCommand, build?.BuildCommand, build?.StartCommand,
                         build?.OutputDirectory, build?.CacheEnabled ?? true, build?.TargetPlatform,
-                        build?.BuildArgs is { Count: > 0 } args ? new Dictionary<string, string>(args) : null),
+                        build?.BuildArgs is { Count: > 0 } args ? new Dictionary<string, string>(args) : null, app.BuildServerId),
                 };
         }
     }
@@ -150,12 +155,12 @@ public static class DeploymentSnapshotFactory
         w is Service service && DatabaseTemplates.Contains(service.TemplateKey) ? RuntimeSnapshot.DatabaseStopTimeoutSeconds : RuntimeSnapshot.DefaultStopTimeoutSeconds;
 
     /// <summary>A branch name that is safe to hand to git (the agent validates it again).</summary>
-    private static bool IsSafeBranch(string branch) =>
+    internal static bool IsSafeBranch(string branch) =>
         branch.Length is > 0 and <= 255 && branch[0] != '-' && branch[^1] != '/' && !branch.Contains("..", StringComparison.Ordinal)
         && !branch.Contains("//", StringComparison.Ordinal) && !branch.EndsWith(".lock", StringComparison.Ordinal)
         && branch.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '/' or '-' or '+' or '@');
 
-    private static bool IsCommitSha(string? sha) =>
+    internal static bool IsCommitSha(string? sha) =>
         sha is { Length: >= 7 and <= 64 } && sha.All(char.IsAsciiHexDigit);
 
     /// <summary>
@@ -176,7 +181,7 @@ public static class DeploymentSnapshotFactory
     private static RuntimeSnapshot Runtime(RuntimeConfig r) => new()
     {
         Strategy = r.DeploymentStrategy, RestartPolicy = r.RestartPolicy, CpuLimit = r.CpuLimit, CpuReservation = r.CpuReservation,
-        MemoryLimitBytes = r.MemoryLimitBytes, MemoryReservationBytes = r.MemoryReservationBytes, PidsLimit = r.PidsLimit,
+        MemoryLimitBytes = r.MemoryLimitBytes, MemoryReservationBytes = r.MemoryReservationBytes, PidsLimit = r.PidsLimit, Priority = r.Priority,
         HealthType = r.HealthCheck.Type, HealthPath = r.HealthCheck.Path, HealthPort = r.HealthCheck.Port,
         HealthIntervalSeconds = r.HealthCheck.IntervalSeconds, HealthTimeoutSeconds = r.HealthCheck.TimeoutSeconds,
         HealthRetries = r.HealthCheck.Retries, HealthStartPeriodSeconds = r.HealthCheck.StartPeriodSeconds,

@@ -27,4 +27,16 @@ describe("registries", () => {
     expect(await within(rows[1]).findByRole("status")).toHaveTextContent("unreachable: registry.lan:5000 refused the connection.");
     expect(test).toHaveBeenCalledWith("r2");
   });
+
+  it("deletes a registry with its name as the confirmation the API requires", async () => {
+    const list = vi.fn().mockResolvedValue({ items: [registry({})], nextCursor: null });
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<RegistriesView api={fakeResources({ registries: { list, remove } })} />);
+
+    await user.click(await screen.findByRole("button", { name: "Delete GitHub" }));
+    expect(remove).toHaveBeenCalledWith("r1", "GitHub");
+    confirm.mockRestore();
+  });
 });

@@ -12,6 +12,7 @@ import { describeHealth, isAxisKey, AXIS_TITLE, type AxisView } from "@/lib/serv
 import type { Discovery, Job, Server, ServerHealth } from "@/lib/servers/types";
 import { usePolled } from "@/lib/servers/use-polled";
 import { cn } from "@/lib/utils";
+import { ServerCapacityCard } from "./capacity-view";
 import { ErrorPanel, Facts, SectionTitle } from "./common";
 import { JobProgress } from "./job-progress";
 
@@ -234,6 +235,8 @@ export function OverviewTab({
       ) : (
         <Skeleton className="h-40 w-full" />
       )}
+
+      <ServerCapacityCard serverId={server.id} api={api} />
 
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-3">

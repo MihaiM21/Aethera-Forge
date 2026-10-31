@@ -2,6 +2,19 @@ using System.Text.RegularExpressions;
 
 namespace Aethera.Domain;
 
+/// <summary>Where a published port listens on the server (ADR 0012).</summary>
+public enum PortBindScope
+{
+    /// <summary>Every interface (the only behaviour before R2).</summary>
+    Public = 0,
+
+    /// <summary>The server's mesh address only: reachable from the other servers, never from the internet.</summary>
+    Private = 1,
+
+    /// <summary>127.0.0.1 only.</summary>
+    Loopback = 2,
+}
+
 public class WorkloadPort : MutableEntity
 {
     public Guid WorkloadId { get; set; }
@@ -11,6 +24,9 @@ public class WorkloadPort : MutableEntity
 
     /// <summary>Port published on the server (host); null = internal only.</summary>
     public int? PublishedPort { get; set; }
+
+    /// <summary>Interface <see cref="PublishedPort"/> binds to; meaningless without one.</summary>
+    public PortBindScope BindScope { get; set; } = PortBindScope.Public;
 
     /// <summary>True when the port speaks HTTP(S) and may be routed by the reverse proxy.</summary>
     public bool IsHttp { get; set; }
@@ -32,6 +48,9 @@ public partial class EnvironmentVariable : MutableEntity
 
     /// <summary>Injected into the running container.</summary>
     public bool IsRuntime { get; set; } = true;
+
+    /// <summary>Only in pull request previews (ADR 0012), where it overrides a regular variable with the same key.</summary>
+    public bool IsPreview { get; set; }
 
     [GeneratedRegex(@"\A[A-Za-z_][A-Za-z0-9_]*\z")]
     private static partial Regex KeyPattern();

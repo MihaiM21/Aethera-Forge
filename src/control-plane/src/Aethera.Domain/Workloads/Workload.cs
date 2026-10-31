@@ -63,6 +63,17 @@ public class HealthCheckConfig
     public int StartPeriodSeconds { get; set; } = 30;
 }
 
+/// <summary>
+/// How a workload fares when the server is short of CPU or memory (ADR 0012): High doubles its CPU shares and protects it from the OOM killer
+/// (<c>oom_score_adj</c> -500), Low halves them and makes it the first to go (500).
+/// </summary>
+public enum WorkloadPriority
+{
+    Normal = 0,
+    High = 1,
+    Low = 2,
+}
+
 /// <summary>Runtime settings shared by applications and services (stored as columns of the workload row).</summary>
 public class RuntimeConfig
 {
@@ -76,8 +87,26 @@ public class RuntimeConfig
     public long? MemoryLimitBytes { get; set; }
     public long? MemoryReservationBytes { get; set; }
     public int? PidsLimit { get; set; }
+    public WorkloadPriority Priority { get; set; } = WorkloadPriority.Normal;
 
     public HealthCheckConfig HealthCheck { get; set; } = new();
+}
+
+/// <summary>Pull request preview deployments of an application (ADR 0012); stored as columns of the workload row.</summary>
+public class PreviewConfig
+{
+    public const int DefaultMaxActive = 10;
+
+    public bool Enabled { get; set; }
+
+    /// <summary>Preview pull requests opened from forks. Off by default: their code would run with the application's secrets.</summary>
+    public bool AllowForks { get; set; }
+
+    /// <summary>Server the previews run on; null = the application's server.</summary>
+    public Guid? ServerId { get; set; }
+
+    /// <summary>Previews running at once; further pull requests are recorded but not deployed. Null = <see cref="DefaultMaxActive"/>.</summary>
+    public int? MaxActive { get; set; }
 }
 
 /// <summary>
@@ -153,6 +182,15 @@ public class Application : Workload
     public BuildConfig? BuildConfig { get; set; }
     public ImageSource? ImageSource { get; set; }
     public ComposeSource? ComposeSource { get; set; }
+
+    /// <summary>
+    /// Server that builds the image (ADR 0012); null = the server it runs on. When it differs, the image travels through the build server's
+    /// <see cref="Server.BuildRegistryId"/>.
+    /// </summary>
+    public Guid? BuildServerId { get; set; }
+    public Server? BuildServer { get; set; }
+
+    public PreviewConfig Previews { get; set; } = new();
 }
 
 /// <summary>Infrastructure from a template (PostgreSQL, Redis, Grafana, ...), runnable like an application.</summary>

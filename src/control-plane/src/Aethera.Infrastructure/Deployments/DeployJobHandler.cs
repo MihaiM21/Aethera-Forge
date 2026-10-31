@@ -6,6 +6,7 @@ using Aethera.Engine.Deployments;
 using Aethera.Engine.Proxy;
 using Aethera.Infrastructure.Jobs;
 using Aethera.Infrastructure.Persistence;
+using Aethera.Infrastructure.Previews;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -34,6 +35,10 @@ public sealed class DeployJobHandler : IJobHandler
         {
             // Notifications (ADR 0010): reads the stored outcome, publishes deployment.succeeded / deployment.failed, never throws.
             await Notifications.DeploymentNotifications.PublishOutcomeAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
+            // A move (ADR 0012): removes the old server's containers when the deployment runs, puts the workload back when it failed. Never throws.
+            await WorkloadMoves.FollowUpAsync(context, context.GetPayload<DeployPayload>());
+            // A pull request preview also says how it went on the pull request (ADR 0012); a no-op for every other deployment. Never throws.
+            await PreviewComments.PostForDeploymentAsync(context.Services, context.GetPayload<DeployPayload>().DeploymentId);
         }
     }
 
@@ -45,7 +50,16 @@ public sealed class DeployJobHandler : IJobHandler
     {
         public Workload? App { get; set; }
         public Deployment? Previous { get; set; }
+
+        /// <summary>Set for a pull request preview (ADR 0012): its status is written in place of the workload's.</summary>
+        public PreviewEnvironment? Preview { get; set; }
     }
+
+    /// <summary>Gives the workload, or the preview of a preview deployment, its status back after a deployment that did not become the live one.</summary>
+    private static Task RestoreAsync(AetheraDbContext db, IClock clock, RunState state, Deployment? previous, string reason, bool failed) =>
+        state.Preview is { } preview
+            ? PreviewDeployments.RestoreAsync(db, clock, preview, previous, reason, failed)
+            : RestoreStatusAsync(db, clock, state.App!, previous, reason, failed);
 
     private async Task ExecuteDeploymentAsync(JobContext context, CancellationToken cancellationToken)
     {
@@ -85,7 +99,7 @@ public sealed class DeployJobHandler : IJobHandler
             // The server could not be reached outside a pipeline step (reading the compose file): the same as a transient step failure.
             if (!finalAttempt)
             {
-                await NoteRetryAsync(db, clock, state.App, context.Secrets.Redact(ex.Message));
+                await NoteRetryAsync(db, clock, state, context.Secrets.Redact(ex.Message));
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", context.Secrets.Redact(ex.Message), inner: ex);
             }
 
@@ -129,11 +143,11 @@ public sealed class DeployJobHandler : IJobHandler
                 }
             }
 
-            if (ended && state.App is { } app)
+            if (ended && state.App is not null)
             {
                 // A Recreate deployment that got as far as the container step has removed the old container: nothing is serving any more.
                 var oldGone = deployment.Strategy == DeploymentStrategies.Recreate && deployment.CurrentStep is { } step && step >= DeploymentStep.Container;
-                await RestoreStatusAsync(db, clock, app, oldGone ? null : state.Previous,
+                await RestoreAsync(db, clock, state, oldGone ? null : state.Previous,
                     cancelled ? "Deployment cancelled." : deployment.FailureReason ?? message, failed: !cancelled);
             }
         }
@@ -144,13 +158,21 @@ public sealed class DeployJobHandler : IJobHandler
     }
 
     /// <summary>The workload stays "Deploying" while the job waits for its next attempt, and says why.</summary>
-    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, Workload? app, string reason)
+    private static async Task NoteRetryAsync(AetheraDbContext db, IClock clock, RunState state, string reason)
     {
-        if (app is null) return;
+        if (state.App is not { } app) return;
         try
         {
             await ConcurrencySupport.SaveWithRetryAsync(db, () =>
             {
+                if (state.Preview is { } preview)
+                {
+                    preview.Status = PreviewStatus.Deploying;
+                    preview.StatusChangedAt = clock.UtcNow;
+                    preview.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
+                    return;
+                }
+
                 app.Status = WorkloadStatus.Deploying;
                 app.StatusChangedAt = clock.UtcNow;
                 app.StatusReason = $"The server could not be reached; the deployment will be retried. {reason}";
@@ -169,7 +191,16 @@ public sealed class DeployJobHandler : IJobHandler
 
         var app = state.App = await LoadWorkloadAsync(db, deployment.WorkloadId, cancellationToken)
                   ?? throw JobFailedException.Permanent("application.not_found", "The application no longer exists", failedStep: "start");
-        var previous = state.Previous = app.CurrentDeploymentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
+        // A pull request preview (ADR 0012) is the live deployment of its own row, not of the workload.
+        var preview = state.Preview = deployment.PreviewId is { } previewId
+            ? await db.Previews.FirstOrDefaultAsync(p => p.Id == previewId, cancellationToken)
+              ?? throw JobFailedException.Permanent("preview.not_found", "The preview no longer exists", failedStep: "start")
+            : null;
+        if (preview is not null && await PreviewDeployments.CancelIfClosedAsync(db, clock, deployment, preview, context)) return;
+        // A move switches the workload to the target server first (ADR 0012); a no-op for every other deployment.
+        await WorkloadMoves.BeginAsync(db, app, deployment, context.GetPayload<DeployPayload>(), context, cancellationToken);
+        var currentId = preview is not null ? preview.CurrentDeploymentId : app.CurrentDeploymentId;
+        var previous = state.Previous = currentId is { } cur ? await db.Deployments.FirstOrDefaultAsync(d => d.Id == cur, cancellationToken) : null;
 
         Deployment? rollbackTarget = deployment.RollbackOfDeploymentId is { } rb
             ? await db.Deployments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == rb, cancellationToken) : null;
@@ -177,13 +208,16 @@ public sealed class DeployJobHandler : IJobHandler
         DeploymentSnapshot snapshot;
         try
         {
-            snapshot = await FreezeAsync(db, clock, deployment, app, rollbackTarget, cancellationToken);
+            snapshot = preview is not null
+                ? await PreviewDeployments.FreezeAsync(sp, db, clock, deployment, app, preview, context, cancellationToken)
+                : await FreezeAsync(db, clock, deployment, app, rollbackTarget, cancellationToken);
         }
         catch (UnsupportedSourceException ex)
         {
             deployment.Start("{}", clock.UtcNow);
             deployment.MarkFailed(DeploymentStep.Source, ex.Code, ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
+            if (preview is not null) await PreviewDeployments.RestoreAsync(db, clock, preview, previous, ex.Message, failed: true);
             throw JobFailedException.Permanent(ex.Code, "The application cannot be deployed", ex.Message, "source");
         }
 
@@ -191,12 +225,20 @@ public sealed class DeployJobHandler : IJobHandler
         var registry = await ResolveRegistryAsync(sp, snapshot, context, cancellationToken);
         var gitCredential = await ResolveGitCredentialAsync(sp, snapshot, context, cancellationToken);
 
-        await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+        if (preview is not null)
         {
-            app.Status = WorkloadStatus.Deploying;
-            app.StatusChangedAt = clock.UtcNow;
-            app.StatusReason = $"Deployment #{deployment.Number} in progress";
-        }, cancellationToken);
+            await PreviewDeployments.BeginAsync(db, clock, preview, deployment, cancellationToken);
+            await PreviewComments.PostForDeploymentAsync(sp, deployment.Id); // "building"; the outcome is posted when the job ends
+        }
+        else
+        {
+            await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+            {
+                app.Status = WorkloadStatus.Deploying;
+                app.StatusChangedAt = clock.UtcNow;
+                app.StatusReason = $"Deployment #{deployment.Number} in progress";
+            }, cancellationToken);
+        }
 
         var buildRecord = await PrepareBuildRecordAsync(db, clock, deployment, snapshot, context, cancellationToken);
         var resolver = sp.GetRequiredService<IServerTransportResolver>();
@@ -210,12 +252,19 @@ public sealed class DeployJobHandler : IJobHandler
             try
             {
                 composeServices = await DiscoverComposeServicesAsync(snapshot, composeSnapshot, secrets, gitCredential, resolver, deployment, context, cancellationToken);
+                if (preview is not null)
+                {
+                    // The service a preview routes to is only known now; the amended snapshot is what the deployment ran with.
+                    snapshot = PreviewSnapshotFactory.CompleteComposeRoute(snapshot, composeServices);
+                    deployment.AmendSnapshot(snapshot.ToJson());
+                    await db.SaveChangesAsync(cancellationToken);
+                }
             }
             catch (ComposeDiscoveryException ex)
             {
                 deployment.MarkFailed(DeploymentStep.Source, ex.Code, ex.Message, clock.UtcNow);
                 await db.SaveChangesAsync(CancellationToken.None);
-                await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+                await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
                 throw JobFailedException.Permanent(ex.Code, "The compose file cannot be deployed", ex.Message, "Source");
             }
         }
@@ -227,38 +276,59 @@ public sealed class DeployJobHandler : IJobHandler
             if (proxyFailure.Retry)
             {
                 // Not marked failed: the job runs again and resumes this deployment.
-                await NoteRetryAsync(db, clock, app, proxyFailure.Message);
+                await NoteRetryAsync(db, clock, state, proxyFailure.Message);
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
             }
 
-            await RestoreStatusAsync(db, clock, app, previous, proxyFailure.Message, failed: true);
+            await RestoreAsync(db, clock, state, previous, proxyFailure.Message, failed: true);
             if (deployment.FailureCode == FailureCodes.ServerUnavailable)
                 throw JobFailedException.Transient(FailureCodes.ServerUnavailable, "The server could not be reached", proxyFailure.Message, "Domain");
             throw JobFailedException.Permanent("proxy.failed", "The reverse proxy could not be set up", proxyFailure.Message, "Domain");
         }
 
         var runner = new DeploymentRunner(new ResolvingServerTransport(resolver), sp.GetServices<IDeploymentStrategy>(), clock);
+        var meshAddress = await db.Servers.AsNoTracking().Where(s => s.Id == deployment.ServerId).Select(s => s.MeshAddress).FirstOrDefaultAsync(cancellationToken);
         DeploymentPlan plan;
         try
         {
+            // Build elsewhere and build quota (ADR 0012): the build server, its registry and quota, and the registry of a rollback target that
+            // came through one. A deployment that builds nothing resolves none of it.
+            var buildServer = snapshot.Build is not null && snapshot.Git is not null && snapshot.Image is null && snapshot.Compose is null && rollbackTarget is null
+                ? await BuildServerContextResolver.ResolveAsync(sp, snapshot, deployment.ServerId, context, cancellationToken)
+                : null;
+            var remoteRollback = rollbackTarget is { BuildServerId: not null, ImageRef.Length: > 0 };
+            var rollbackRegistry = remoteRollback ? await BuildServerContextResolver.RegistryForReferenceAsync(sp, rollbackTarget!, context, cancellationToken) : null;
             plan = DeploymentPlanBuilder.Build(snapshot, new PlanContext
             {
                 ServerId = deployment.ServerId, DeploymentId = deployment.Id, DeploymentNumber = deployment.Number, JobId = context.JobId, BuildId = buildRecord?.Id,
                 OrganizationId = context.Job.OrganizationId,
-                PreviousContainer = previous?.ContainerIds.FirstOrDefault(),
+                // The live deployment may be on another server (a move): there is no container of it here to replace.
+                PreviousContainer = previous is not null && previous.ServerId == deployment.ServerId ? previous.ContainerIds.FirstOrDefault() : null,
                 ResolveSecret = (id, version) => secrets.TryGetValue((id, version), out var v) ? v : throw new InvalidOperationException("A pinned secret version is missing."),
-                GitCredential = gitCredential, Registry = registry, ExistingImage = rollbackTarget?.ImageRef,
+                GitCredential = gitCredential, Registry = buildServer?.Registry ?? rollbackRegistry ?? registry, ExistingImage = rollbackTarget?.ImageRef,
+                ExistingImageIsRemote = remoteRollback,
                 Proxy = proxy, ProxyNetwork = proxyOptions.Network, OnLog = null,
                 WriteLog = (stream, line, ct) => context.Log.WriteAsync(stream, line, ct),
                 Narrate = (line, ct) => context.Log.WriteSystemAsync(line, ct),
                 AcmeAvailable = await ProxyConfigurator.AcmeAvailableAsync(db, proxyOptions, cancellationToken), ComposeServices = composeServices,
+                MeshAddress = meshAddress,
+                BuildServerName = buildServer?.BuildServerName, RunServerName = buildServer?.RunServerName, BuildRegistryPrefix = buildServer?.RegistryPrefix,
+                BuildRegistry = buildServer?.Registry, BuilderLimits = buildServer?.BuilderLimits, AcquireBuildSlot = buildServer?.AcquireBuildSlot,
             });
+        }
+        catch (DeploymentFailure ex)
+        {
+            // A configuration the server cannot run (a private port without a mesh address): nothing was started.
+            deployment.MarkFailed(ex.Step, ex.Code, ex.Message, clock.UtcNow);
+            await db.SaveChangesAsync(CancellationToken.None);
+            await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
+            throw JobFailedException.Permanent(ex.Code, "The deployment cannot be run as configured", ex.Message, ex.Step.ToString());
         }
         catch (ProxyRoutingException ex)
         {
             deployment.MarkFailed(DeploymentStep.Domain, "proxy.failed", ex.Message, clock.UtcNow);
             await db.SaveChangesAsync(CancellationToken.None);
-            await RestoreStatusAsync(db, clock, app, previous, ex.Message, failed: true);
+            await RestoreAsync(db, clock, state, previous, ex.Message, failed: true);
             throw JobFailedException.Permanent("proxy.failed", "The domains cannot be routed", ex.Message, "Domain");
         }
 
@@ -273,18 +343,25 @@ public sealed class DeployJobHandler : IJobHandler
             case DeploymentRunResult.Retry:
                 var transient = runner.TransientFailure!;
                 await context.Log.WriteSystemAsync($"The server could not be reached ({transient.Message}); the deployment will be retried.", CancellationToken.None);
-                await NoteRetryAsync(db, clock, app, transient.Message);
+                await NoteRetryAsync(db, clock, state, transient.Message);
                 throw JobFailedException.Transient(transient.Code, "The server could not be reached", transient.Message, transient.Step.ToString());
 
             case DeploymentRunResult.Running:
-                await RememberDetectedPortAsync(db, app, plan.RanWithDetectedPort, cancellationToken);
-                await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
+                if (preview is not null)
+                {
+                    await PreviewDeployments.PromoteAsync(db, sp, clock, preview, deployment, previous, cancellationToken);
+                }
+                else
+                {
+                    await RememberDetectedPortAsync(db, app, plan.RanWithDetectedPort, cancellationToken);
+                    await PromoteAsync(db, sp, clock, app, deployment, previous, cancellationToken);
+                }
                 await context.Log.WriteSystemAsync($"Deployment #{deployment.Number} is running.", cancellationToken);
                 context.SetResult(new { deploymentId = deployment.Id, number = deployment.Number, image = deployment.ImageRef });
                 return;
 
             case DeploymentRunResult.Cancelled:
-                await RestoreStatusAsync(db, clock, app, previous, "Deployment cancelled.", failed: false);
+                await RestoreAsync(db, clock, state, previous, "Deployment cancelled.", failed: false);
                 await context.Log.WriteSystemAsync("The deployment was cancelled.", CancellationToken.None);
                 return;
 
@@ -292,7 +369,7 @@ public sealed class DeployJobHandler : IJobHandler
                 // Recreate brings the old container back when the new one fails (PreviousRestored); only when that did not work is nothing serving.
                 var failedAfterOldRemoved = previous is not null && effectiveStrategy == DeploymentStrategies.Recreate && !plan.PreviousRestored
                                             && deployment.FailedStep is { } step && step >= DeploymentStep.Container;
-                await RestoreStatusAsync(db, clock, app, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
+                await RestoreAsync(db, clock, state, failedAfterOldRemoved ? null : previous, deployment.FailureReason ?? "Deployment failed.", failed: true);
                 var code = deployment.FailureCode ?? "deployment.failed";
                 var message = deployment.FailureReason ?? "The deployment failed.";
                 throw code == FailureCodes.ServerUnavailable
@@ -351,11 +428,6 @@ public sealed class DeployJobHandler : IJobHandler
         }, CancellationToken.None);
     }
 
-    /// <summary>Ports a web server usually listens on: the service of a compose file that gets the automatic domain is the first one exposing one.</summary>
-    private static readonly int[] WebPorts = [80, 8080, 3000, 8000, 5000, 4000, 8888, 443];
-
-    private static readonly string[] WebServiceNames = ["web", "app", "frontend", "nginx", "server", "site", "ui", "api"];
-
     /// <summary>
     /// Gives a workload that has no domain its automatic one (ADR 0011) on its first deployment when it did not get it on creation (a compose
     /// application, whose services are only known now; or a server whose address was unknown then). The domain joins the frozen snapshot.
@@ -370,13 +442,8 @@ public sealed class DeployJobHandler : IJobHandler
         int? port = null;
         if (snapshot.Compose is not null)
         {
-            var routable = (composeServices ?? []).Where(s => s.Ports.Count > 0 && s.NetworkMode is null or "bridge" or "default").ToList();
-            var pick = routable.Select(s => (Service: s, Port: WebPorts.Cast<int?>().FirstOrDefault(p => s.Ports.Contains(p!.Value))))
-                .FirstOrDefault(x => x.Port is not null);
-            if (pick.Service is null && routable.FirstOrDefault(s => WebServiceNames.Contains(s.Name)) is { } named)
-                pick = (named, named.Ports[0]);
-            if (pick.Service is null) return snapshot; // no service that looks like a web server: nothing is guessed
-            (service, port) = (pick.Service.Name, pick.Port);
+            if (ComposeRoutePicker.Pick(composeServices) is not { } pick) return snapshot; // no service that looks like a web server: nothing is guessed
+            (service, port) = (pick.Service, pick.Port);
         }
         else if (app is Service && !app.Ports.Any(p => p.IsHttp))
         {
@@ -547,6 +614,7 @@ public sealed class DeployJobHandler : IJobHandler
             app.StatusReason = null;
         }, ct);
         await CleanupImagesAsync(db, sp, app, deployment, ct);
+        await BuildServerContextResolver.CleanUpBuildServerAsync(db, sp, app, deployment);
     }
 
     internal static async Task RestoreStatusAsync(AetheraDbContext db, IClock clock, Workload app, Deployment? previous, string reason, bool failed)
@@ -574,7 +642,7 @@ public sealed class DeployJobHandler : IJobHandler
         try
         {
             var candidates = await db.Images
-                .Where(i => i.WorkloadId == app.Id && i.RemovedAt == null && i.DeploymentId != null && i.Deployment!.ImageRef != null)
+                .Where(i => i.WorkloadId == app.Id && i.ServerId == app.ServerId && i.RemovedAt == null && i.DeploymentId != null && i.Deployment!.ImageRef != null)
                 .Select(i => new { i.Id, Image = i.Deployment!.ImageRef!, DeploymentId = i.DeploymentId!.Value, i.CreatedAt, i.Deployment.IsRollbackPoint })
                 .ToListAsync(ct);
             var toRemove = ImagePolicy.ImagesToRemove(
@@ -639,7 +707,7 @@ public sealed class DeployJobHandler : IJobHandler
         return new RegistryCredentials(RegistryHost(registry.Url), registry.Username ?? "", password is null ? null : new SecretValue(password));
     }
 
-    private static string RegistryHost(string url) =>
+    internal static string RegistryHost(string url) =>
         Uri.TryCreate(url.Contains("://") ? url : "https://" + url, UriKind.Absolute, out var uri) ? uri.Authority : url;
 
     private static async Task<GitCredentialSpec?> ResolveGitCredentialAsync(IServiceProvider sp, DeploymentSnapshot snapshot, JobContext context, CancellationToken ct)
@@ -654,7 +722,7 @@ public sealed class DeployJobHandler : IJobHandler
             : new GitCredentialSpec(credential.Id.ToString(), credential.Username, new SecretValue(secret));
     }
 
-    private static async Task<string> ReadSecretAsync(IServiceProvider sp, Guid secretId, int? version, JobContext context, CancellationToken ct)
+    internal static async Task<string> ReadSecretAsync(IServiceProvider sp, Guid secretId, int? version, JobContext context, CancellationToken ct)
     {
         var db = sp.GetRequiredService<AetheraDbContext>();
         var protector = sp.GetRequiredService<ISecretProtector>();

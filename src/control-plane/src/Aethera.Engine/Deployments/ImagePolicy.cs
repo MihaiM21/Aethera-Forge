@@ -6,6 +6,9 @@ public static class ImagePolicy
     /// <summary>Spec section 15: <c>aethera/&lt;app&gt;:&lt;deploymentId&gt;</c>.</summary>
     public static string Tag(string applicationSlug, Guid deploymentId) => $"aethera/{applicationSlug}:{deploymentId:D}";
 
+    /// <summary>ADR 0012: <c>&lt;registry host&gt;/&lt;namespace&gt;/&lt;slug&gt;:&lt;deployment id&gt;</c> for an image built for another server; <paramref name="prefix"/> is <c>host/namespace</c>.</summary>
+    public static string RegistryTag(string prefix, string applicationSlug, Guid deploymentId) => $"{prefix.TrimEnd('/')}/{applicationSlug}:{deploymentId:D}";
+
     /// <summary>One image held for an application, newest first by <see cref="CreatedAt"/>.</summary>
     public sealed record Candidate(string Image, Guid DeploymentId, DateTimeOffset CreatedAt, bool IsRollbackPoint);
 

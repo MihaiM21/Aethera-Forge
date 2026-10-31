@@ -145,6 +145,12 @@ message BuildRequest {
   // Push all tags after a successful build.
   bool push = 22;
   PushOptions push_options = 23;
+
+  // The server's build quota (ADR 0012). When set (any non-zero CPU or memory
+  // limit) the build runs through the agent's BuildKit builder container
+  // `aethera-buildkit`, started (or recreated) with these limits; unset = the
+  // Docker daemon's built-in builder. Requires the "build.quota" capability.
+  ResourceLimits builder_limits = 24;
 }
 
 message BuildResult {

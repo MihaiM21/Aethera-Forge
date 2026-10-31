@@ -138,6 +138,10 @@ RestartSec=3
 KillMode=process
 TimeoutStopSec=30
 NoNewPrivileges=true
+# The private mesh (docs/networking.md): the agent creates one WireGuard interface (aethera0), which needs CAP_NET_ADMIN, and nothing
+# else. The agent still runs as an ordinary user; it offers the mesh only when the kernel has WireGuard.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
 ProtectSystem=strict
 ReadWritePaths=$STATE_DIR
 ProtectHome=true

@@ -12,9 +12,12 @@ import type {
   LatestMetrics,
   MetricResolution,
   MetricSeries,
+  PlacementKind,
+  PlacementSuggestion,
   PruneRequest,
   ResourceEvent,
   Server,
+  ServerCapacity,
   ServerHealth,
   ServerPage,
   UpdateServerRequest,
@@ -81,6 +84,15 @@ export function createServersApi(client: ApiClient) {
     refreshDiscovery: (id: string) => client.post<Job>(`${base(id)}/maintenance/refresh-discovery`),
     /** Replaces the agent binary with the newest release's (a job; the agent rolls back by itself if the new one does not reconnect). */
     updateAgent: (id: string) => client.post<Job>(`${base(id)}/agent/update`),
+
+    /** Cores, memory and disk of every server, what is reserved on it and how much is left. */
+    capacity: (o: Signal = {}) => client.get<ServerCapacity[]>("/servers/capacity", o),
+    /**
+     * Which server a new workload would be placed on, and why. Give `workloadId` instead of `kind` to judge an existing workload (the
+     * server it is on does not count its own reservation).
+     */
+    suggest: (q: { kind?: PlacementKind; cpu?: number; memory?: number; workloadId?: string }, o: Signal = {}) =>
+      client.get<PlacementSuggestion>("/placement/suggest", { query: { kind: q.kind, cpu: q.cpu, memory: q.memory, workloadId: q.workloadId }, signal: o.signal }),
 
     job: (jobId: string, o: Signal = {}) => client.get<Job>(`/jobs/${encodeURIComponent(jobId)}`, o),
   };

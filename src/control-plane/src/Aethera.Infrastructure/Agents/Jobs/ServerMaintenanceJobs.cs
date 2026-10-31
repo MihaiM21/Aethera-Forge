@@ -98,7 +98,7 @@ public sealed class ServerPruneJobHandler : IJobHandler
     {
         var db = context.Services.GetRequiredService<AetheraDbContext>();
         return await db.Deployments.AsNoTracking()
-            .Where(d => d.ServerId == serverId && d.IsRollbackPoint && d.ImageRef != null)
+            .Where(d => d.ServerId == serverId && d.IsRollbackPoint && d.PreviewId == null && d.ImageRef != null)
             .Select(d => d.ImageRef!).Distinct().ToListAsync(cancellationToken);
     }
 }

@@ -6,7 +6,10 @@ using Aethera.Api.Features.Backups;
 using Aethera.Api.Features.Deployments;
 using Aethera.Api.Features.DnsProviders;
 using Aethera.Api.Features.Jobs;
+using Aethera.Api.Features.Mesh;
 using Aethera.Api.Features.Notifications;
+using Aethera.Api.Features.Placement;
+using Aethera.Api.Features.Previews;
 using Aethera.Api.Features.Resources;
 using Aethera.Api.Features.ScheduledTasks;
 using Aethera.Api.Features.SystemOps;
@@ -36,6 +39,9 @@ builder.Services.AddNotifications(builder.Configuration);  // R1.2: email, chann
 builder.Services.AddBackups(builder.Configuration);        // R1.1: destinations, policies, runs, restores
 builder.Services.AddScheduledTasks(builder.Configuration); // R1.3: tasks run inside workload containers
 builder.Services.AddDns(builder.Configuration);            // R1.5: DNS providers (Cloudflare) and the DNS check
+builder.Services.AddPlacement(builder.Configuration);      // R2.1: placement, capacity, build elsewhere
+builder.Services.AddMesh(builder.Configuration);           // R2.2: WireGuard / Tailscale mesh
+builder.Services.AddPreviews(builder.Configuration);       // R2.3: pull request previews
 
 var app = builder.Build();
 
@@ -60,6 +66,9 @@ api.MapNotifications();        // R1.2
 api.MapBackups();              // R1.1
 api.MapScheduledTasks();       // R1.3
 api.MapDns();                  // R1.5: DNS providers
+api.MapPlacement();            // R2.1
+api.MapMesh();                 // R2.2
+api.MapPreviews();             // R2.3
 api.MapContributors();         // test/extension seam
 app.MapGitWebhooks();          // WP3.4: POST /webhooks/git/{endpointId} (anonymous, signature-verified)
 app.MapJobsHubs();             // WP1.3: /hubs/* (SignalR) at the root

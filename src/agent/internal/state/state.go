@@ -22,6 +22,9 @@ func (d Dir) StatePath() string    { return filepath.Join(string(d), "state") }
 func (d Dir) ProjectsPath() string { return filepath.Join(string(d), "projects") }
 func (d Dir) BinPath() string      { return filepath.Join(string(d), "bin") }
 
+// MeshKeyPath is the WireGuard private key of the private mesh (ADR 0012): mode 0600, never sent or logged.
+func (d Dir) MeshKeyPath() string { return filepath.Join(string(d), "mesh.key") }
+
 // Identity is what enrollment leaves behind besides the key and certificates.
 type Identity struct {
 	ServerID      string        `json:"server_id"`

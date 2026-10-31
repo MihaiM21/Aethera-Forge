@@ -26,8 +26,11 @@ public enum TransportCapabilities
     HealthProbe = 256,
     SelfUpdate = 512,
 
+    /// <summary>The private mesh between servers (ADR 0012).</summary>
+    Mesh = 1024,
+
     /// <summary>Everything the agent transport supports.</summary>
-    AllAgent = ContainerOps | ImageOps | VolumeNetworkOps | Compose | Builds | LogFollow | PushEvents | PushMetrics | HealthProbe | SelfUpdate,
+    AllAgent = ContainerOps | ImageOps | VolumeNetworkOps | Compose | Builds | LogFollow | PushEvents | PushMetrics | HealthProbe | SelfUpdate | Mesh,
 }
 
 /// <summary>Whether a transport can currently carry commands for a server, and why not.</summary>

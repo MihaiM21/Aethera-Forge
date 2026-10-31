@@ -83,6 +83,9 @@ public sealed class AetheraDbContext(DbContextOptions<AetheraDbContext> options,
     public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
     public DbSet<DnsProvider> DnsProviders => Set<DnsProvider>();
 
+    // R2 (ADR 0012)
+    public DbSet<PreviewEnvironment> Previews => Set<PreviewEnvironment>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // timestamptz only accepts offset 0; normalise whatever offset callers supply.

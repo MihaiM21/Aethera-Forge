@@ -321,6 +321,9 @@ func contains(list []string, s string) bool {
 // CheckCommand validates the policy-relevant parts of a command. It must be
 // cheap: it runs before the command is acked.
 func (p *Policy) CheckCommand(ctx context.Context, cmd *agentv1.Command) error {
+	if handled, err := checkMesh(cmd); handled {
+		return err
+	}
 	if handled, err := p.checkExecCommands(ctx, cmd); handled {
 		return err
 	}

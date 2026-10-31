@@ -17,6 +17,7 @@ import { SystemTab } from "./system-tab";
 import { BackupsSettingsTab } from "@/components/backups/backups-settings-tab";
 import { DnsProvidersSettingsTab } from "@/components/dns/dns-providers-settings-tab";
 import { NotificationsSettingsTab } from "@/components/notifications/notifications-settings-tab";
+import { MeshSettingsTab } from "@/components/mesh/mesh-settings-tab";
 import { useAuth } from "@/lib/auth/auth-context";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { ApiToken, AuditEvent, GitCredential, OrganizationRole, User } from "@/lib/resources/types";
@@ -546,7 +547,7 @@ function AuditTab({ api }: { api: ResourcesApi }) {
 
 // ------------------------------------------------------------------------------------------------ Page
 
-export const SETTINGS_TABS = ["account", "members", "tokens", "git", "notifications", "backups", "dns", "audit", "system"] as const;
+export const SETTINGS_TABS = ["account", "members", "tokens", "git", "notifications", "backups", "dns", "network", "audit", "system"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 export function settingsTabFromHash(hash: string, admin: boolean): SettingsTab {
@@ -592,6 +593,7 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           {admin && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
           {admin && <TabsTrigger value="backups">Backups</TabsTrigger>}
           {admin && <TabsTrigger value="dns">DNS</TabsTrigger>}
+          {admin && <TabsTrigger value="network">Network</TabsTrigger>}
           {admin && <TabsTrigger value="audit">Audit log</TabsTrigger>}
           {admin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
@@ -604,6 +606,7 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
         {admin && <TabsContent value="notifications">{tab === "notifications" && <NotificationsSettingsTab />}</TabsContent>}
         {admin && <TabsContent value="backups">{tab === "backups" && <BackupsSettingsTab />}</TabsContent>}
         {admin && <TabsContent value="dns">{tab === "dns" && <DnsProvidersSettingsTab />}</TabsContent>}
+        {admin && <TabsContent value="network">{tab === "network" && <MeshSettingsTab />}</TabsContent>}
         {admin && <TabsContent value="audit">{tab === "audit" && <AuditTab api={api} />}</TabsContent>}
         {admin && <TabsContent value="system">{tab === "system" && <SystemTab api={api} />}</TabsContent>}
       </Tabs>

@@ -202,7 +202,30 @@ public sealed class CommandMapper
                 c.BackupDelete = new P.BackupDelete();
                 c.BackupDelete.Locations.Add(m.Locations.Select(l => l.ToProto()));
             }, ReadUnit, _ => "backup.v1");
+
+        // mesh (ADR 0012)
+        Add<MeshApplyCommand, MeshStateInfo>((c, m) =>
+            {
+                c.MeshApply = new P.MeshApply
+                {
+                    Provider = m.Provider.ToProto(), InterfaceName = m.InterfaceName, Address = m.Address, Cidr = m.Cidr, ListenPort = (uint)m.ListenPort,
+                    Mtu = (uint)Math.Max(0, m.Mtu),
+                };
+                c.MeshApply.Peers.Add(m.Peers.Select(p =>
+                {
+                    var peer = new P.MeshPeer
+                        { PublicKey = p.PublicKey, Endpoint = p.Endpoint ?? "", PersistentKeepaliveSeconds = (uint)Math.Max(0, p.PersistentKeepaliveSeconds), Name = p.Name ?? "" };
+                    peer.AllowedIps.Add(p.AllowedIps);
+                    return peer;
+                }));
+            },
+            r => Expect(r, P.CommandResult.ResultOneofCase.Mesh, x => x.Mesh.ToDomain()), MeshCapability);
+        Add<MeshStatusCommand, MeshStateInfo>((c, m) => c.MeshStatus = new P.MeshStatus { Provider = m.Provider.ToProto(), InterfaceName = m.InterfaceName },
+            r => Expect(r, P.CommandResult.ResultOneofCase.Mesh, x => x.Mesh.ToDomain()), m => m.Provider == MeshProviderKind.Tailscale ? "mesh.tailscale" : "mesh.wireguard");
+        Add<MeshRemoveCommand, Unit>((c, m) => c.MeshRemove = new P.MeshRemove { InterfaceName = m.InterfaceName }, ReadUnit, _ => "mesh.wireguard");
     }
+
+    private static string MeshCapability(MeshApplyCommand m) => m.Provider == MeshProviderKind.Tailscale ? "mesh.tailscale" : "mesh.wireguard";
 
     /// <summary>The mapping of a command type. Throws for a type outside the allowlist (including any test double).</summary>
     public Entry For(Type commandType) =>

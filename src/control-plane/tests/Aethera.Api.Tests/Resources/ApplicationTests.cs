@@ -119,7 +119,6 @@ public sealed class ApplicationTests(ResourcesFixture fixture)
         var empty = await Errors(new { });
         Assert.Contains(("/name", "required"), empty);
         Assert.Contains(("/environmentId", "required"), empty);
-        Assert.Contains(("/serverId", "required"), empty);
         Assert.Contains(("/sourceKind", "required"), empty);
 
         Assert.Contains(("/sourceKind", "invalid_enum"), await Errors(new { name = "a", environmentId = env, serverId = server.Id(), sourceKind = "svn" }));
