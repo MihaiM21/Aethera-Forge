@@ -53,9 +53,9 @@ Live checklist derived from [`docs/plan.md`](plan.md). Tick a work package when 
 
 ## R2 — v0.2.0 (two servers; plan: [`release-0.2.md`](release-0.2.md))
 - [x] R2.0 Contracts (mesh proto, build quota, priority, migration, seams, ADR 0012)
-- [ ] R2.1 Multi-server roles & resources (placement, limits and priorities, build quota, capacity view, build → registry → run elsewhere, move) — Phase 6
-- [ ] R2.2 Secure networking (WireGuard mesh, Tailscale option, private-network deploys) — Phase 7
-- [ ] R2.3 PR preview deployments (GitHub + GitLab, wildcard domains, PR comments, cleanup on close)
+- [x] R2.1 Multi-server roles & resources (placement, limits and priorities, build quota, capacity view, build → registry → run elsewhere, move) — Phase 6
+- [x] R2.2 Secure networking (WireGuard mesh, Tailscale option, private-network deploys) — Phase 7
+- [x] R2.3 PR preview deployments (GitHub + GitLab, wildcard domains, PR comments, cleanup on close)
 - [ ] R2 verification, PR, `v0.2.0-rc.1`, owner test with the second server, `v0.2.0`
 
 ## R3 — v0.3+

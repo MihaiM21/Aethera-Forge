@@ -143,7 +143,7 @@ export function RegistriesView({ api = resourcesApi }: { api?: ResourcesApi }) {
                   aria-label={`Delete ${r.name}`}
                   onClick={async () => {
                     if (!window.confirm(`Delete the registry ${r.name}?`)) return;
-                    if (await act.runOk(() => api.registries.remove(r.id), "Registry deleted")) await list.refresh();
+                    if (await act.runOk(() => api.registries.remove(r.id, r.name), "Registry deleted")) await list.refresh();
                   }}
                 >
                   <Trash2Icon aria-hidden="true" />

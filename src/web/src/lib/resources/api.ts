@@ -213,7 +213,8 @@ export function createResourcesApi(client: ApiClient) {
       list: (q: ListQuery = {}, o: Signal = {}) => client.get<Page<Registry>>("/registries", { query: paged(q), signal: o.signal }),
       create: (body: CreateRegistryRequest) => client.post<Registry>("/registries", body),
       update: (id: string, body: Partial<CreateRegistryRequest>) => client.patch<Registry>(`/registries/${enc(id)}`, body),
-      remove: (id: string) => client.delete<void>(`/registries/${enc(id)}`),
+      /** Needs the registry name as `?confirm=`; 409 `registry.in_use` while it is a server's build registry. */
+      remove: (id: string, confirm: string) => client.delete<void>(`/registries/${enc(id)}`, { query: { confirm } }),
       /** The control plane calls the registry's v2 API with the stored credentials: result is ok, unauthorized or unreachable. */
       test: (id: string) => client.post<RegistryTestResult>(`/registries/${enc(id)}/test`),
     },
