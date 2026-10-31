@@ -11,11 +11,11 @@
 #      (also: it reconnects within a minute after `docker restart` of the control plane, and a template PostgreSQL service deploys
 #      healthy, i.e. the agent's TCP probe reaches containers on environment networks)
 #   3. maintenance: "Run now" writes a real pg_dump backup (the client in the image matches the server)
-#   4. update through the UI endpoint: backup, pull, restart on the new version, agent follows, data intact
-#   5. an update whose images cannot be pulled changes nothing
-#   6. an update whose new version does not start is rolled back, database restored from the pre-update backup
+#   4. update through the UI endpoint: backup, the new release's compose file, pull, restart on the new version, agent follows, data intact
+#   5. an update whose images cannot be pulled changes nothing (and one whose compose file cannot be downloaded keeps the current file)
+#   6. an update whose new version does not start is rolled back, database and compose file restored
 #
-# Needs Docker. Builds the images when they are missing (a few minutes the first time). Environment:
+# Needs Docker. Builds the images from this checkout (a few minutes the first time, quick afterwards). Environment:
 #   E2E_V1 / E2E_V2 / E2E_V3 / E2E_V4   versions used for the images (default 0.1.0 0.2.0 0.3.0 0.4.0); 0.3.0 is never built
 #   E2E_KEEP=1                          leave the Docker-in-Docker container running afterwards
 set -euo pipefail
@@ -53,16 +53,15 @@ trap cleanup EXIT
 
 # ---------------------------------------------------------------------------------------------------------------- images
 build() { # build <component> <version>
+  # Always built: an image left from an earlier run would test old code (and, once older than the maintenance prune's threshold, would be
+  # pruned on the test host before the update needs it). Docker's layer cache makes an unchanged build quick.
   local dockerfile="$WROOT/deploy/docker/Dockerfile.$1"; local image="aethera-local/$1:$2"
-  if docker image inspect "$image" >/dev/null 2>&1; then return; fi
   info "building $image"
   docker build -q -f "$dockerfile" --build-arg "VERSION=$2" -t "$image" "$WROOT" >/dev/null
 }
 for v in "$V1" "$V2"; do for c in control-plane agent updater; do build "$c" "$v"; done; done
 # 0.4.0 is a release whose control plane does not start: the same image with a failing entrypoint.
-if ! docker image inspect "aethera-local/control-plane:$V4" >/dev/null 2>&1; then
-  printf 'FROM aethera-local/control-plane:%s\nENTRYPOINT ["sh","-c","echo this release is broken; exit 1"]\n' "$V2" | docker build -q -t "aethera-local/control-plane:$V4" - >/dev/null
-fi
+printf 'FROM aethera-local/control-plane:%s\nENTRYPOINT ["sh","-c","echo this release is broken; exit 1"]\n' "$V2" | docker build -q -t "aethera-local/control-plane:$V4" - >/dev/null
 docker tag "aethera-local/agent:$V2" "aethera-local/agent:$V4"
 docker tag "aethera-local/updater:$V2" "aethera-local/updater:$V4"
 ok "images: control-plane, agent and updater at $V1 and $V2 (and a broken $V4)"
@@ -88,12 +87,21 @@ release() { # release <version>
 {\"tag_name\":\"v$1\",\"html_url\":\"https://example.test/r/$1\",\"body\":\"Release notes for $1\",\"prerelease\":false,\"draft\":false,\"assets\":[]}
 EOF"
 }
+# The files of a release (<base>/v<version>/docker-compose.prod.yml) are served there too: the repository's compose file with a marker
+# line, so the checks can tell which version's file the installation runs with.
+release_files() { # release_files <version>
+  dsh "mkdir -p /www/download/v$1 && { cat /deploy/docker-compose.prod.yml; echo '# e2e release file $1'; } > /www/download/v$1/docker-compose.prod.yml"
+}
+compose_is() { # compose_is <version>
+  dsh "grep -qx '# e2e release file $1' /opt/aethera/docker-compose.yml"
+}
 release "$V2"
+release_files "$V2"
 
 info "running install.sh"
 INSTALL_OUT="$(docker exec \
   -e AETHERA_IMAGE=aethera-local/control-plane -e AETHERA_AGENT_IMAGE=aethera-local/agent -e AETHERA_UPDATER_IMAGE=aethera-local/updater \
-  -e AETHERA_UPDATE_API_URL=http://releases -e AETHERA_HEALTH_TIMEOUT=25 \
+  -e AETHERA_UPDATE_API_URL=http://releases -e AETHERA_RELEASE_URL=http://releases/download -e AETHERA_HEALTH_TIMEOUT=25 \
   -e AETHERA_TRUSTED_PROXIES=172.16.0.0/12 \
   "$DIND" bash /deploy/install.sh --compose-file /deploy/docker-compose.prod.yml --dir /opt/aethera --version "$V1" --host 127.0.0.1 \
   --admin-email "$EMAIL" --http-port 8080 --grpc-port 9443 2>&1)" || { echo "$INSTALL_OUT"; fail "install.sh failed"; }
@@ -238,7 +246,7 @@ wait_state() { # wait_state <state> <timeout>
     [ "$got" = "$want" ] && return 0
     sleep 3; n=$((n + 3))
   done
-  fail "the updater never reached '$want' (last state: $got)"
+  fail "the updater never reached '$want' (last state: $got: $(api GET /system/version 2>/dev/null | jq -r '.updater.message // ""'))"
 }
 
 api POST /system/version/check | jq -e --arg v "$V2" '.updateAvailable == true and .latest.version == $v' >/dev/null || fail "the update to $V2 is not offered"
@@ -254,6 +262,8 @@ wait_for "the control plane on $V2" 120 bash -c "[ \"\$(docker exec $DIND curl -
 ok "the control plane now runs $V2"
 dsh "grep -q '^AETHERA_VERSION=$V2\$' /opt/aethera/.env" || fail "the .env still names the old version"
 dsh 'ls /opt/aethera/.env.before-* >/dev/null' || fail "the previous .env was not kept"
+compose_is "$V2" || fail "the update did not install the compose file of $V2"
+dsh 'ls /opt/aethera/docker-compose.yml.before-* >/dev/null' || fail "the previous compose file was not kept"
 dsh 'docker exec aethera-aethera-1 ls /data/backups | grep -q "^aethera-pre-update-"' || fail "no pre-update backup was written"
 api GET "/projects/$project" | jq -e '.name == "survives the update"' >/dev/null || fail "the data did not survive the update"
 wait_for "the local agent to reconnect on the new version" 120 agent_connected
@@ -272,10 +282,12 @@ msg="$(api GET /system/version | jq -r .updater.message)"
 echo "$msg" | grep -q "could not be pulled" || fail "unexpected failure message: $msg"
 [ "$(api GET /system/version | jq -r .current)" = "$V2" ] || fail "a failed pull changed the running version"
 dsh "grep -q '^AETHERA_VERSION=$V2\$' /opt/aethera/.env" || fail "a failed pull left the .env on the wrong version"
+compose_is "$V2" || fail "a failed update (no compose file published, images missing) changed the compose file"
 ok "an update whose images cannot be pulled changes nothing ($msg)"
 
 # ---------------------------------------------------------------------------------------------------------------- 6. rollback
 release "$V4"
+release_files "$V4"
 api POST /system/version/check | jq -e --arg v "$V4" '.latest.version == $v' >/dev/null || fail "release $V4 is not seen"
 api POST /projects '{"name":"made just before the broken update"}' >/dev/null
 api POST /system/update '{}' >/dev/null
@@ -288,6 +300,7 @@ msg="$(api GET /system/version | jq -r .updater.message)"
 echo "$msg" | grep -q "rolled back to $V2" || fail "unexpected rollback message: $msg"
 [ "$(api GET /system/version | jq -r .current)" = "$V2" ] || fail "after the rollback the version is not $V2"
 dsh "grep -q '^AETHERA_VERSION=$V2\$' /opt/aethera/.env" || fail "the rollback left the .env on the broken version"
+compose_is "$V2" || fail "the rollback left the compose file of the broken version"
 api GET "/projects/$project" | jq -e '.name == "survives the update"' >/dev/null || fail "the data is gone after the rollback"
 api GET "/projects?limit=100" | jq -e '[.items[].name] | index("made just before the broken update") != null' >/dev/null || fail "the pre-update data is gone after the rollback"
 wait_for "the local agent after the rollback" 120 agent_connected

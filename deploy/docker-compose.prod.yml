@@ -129,6 +129,8 @@ services:
     environment:
       AETHERA_DIR: ${AETHERA_DIR:-/opt/aethera}
       AETHERA_HEALTH_TIMEOUT: ${AETHERA_HEALTH_TIMEOUT:-180}
+      # Where an update downloads the new release's compose file (GitHub by default; a mirror for installs that cannot reach it).
+      AETHERA_RELEASE_URL: ${AETHERA_RELEASE_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside: `docker compose` resolves the project's files and bind mounts on the host.

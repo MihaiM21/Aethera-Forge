@@ -4,6 +4,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+- Updates (`aethera update` and *Update to X*) install the new release's compose file instead of keeping the old one, so a release that changes the stack itself (the agent's `NET_ADMIN` for the private network, the control plane's proxy alias) takes effect without re-running `install.sh`. The old file is kept and comes back on a rollback; an installation that cannot download it keeps its current file. `AETHERA_RELEASE_URL` points it at a mirror. Installations from before this fix must update once with `install.sh --version <new version>`.
+
 ## [0.1.0] - unreleased
 
 First release, **beta**: the API and the configuration may still change between 0.x releases, and you should back up before every update. Everything below is new. Release candidates are published as `v0.1.0-rc.N` pre-releases and installed with `install.sh --version 0.1.0-rc.N`.
