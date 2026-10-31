@@ -55,7 +55,18 @@ public sealed record CreateApplicationRequest
     public string? Slug { get; init; }
     public string? Description { get; init; }
     public Guid? EnvironmentId { get; init; }
+
+    /// <summary>
+    /// The server it runs on. Absent = Aethera chooses (ADR 0012): the best eligible server for an application by role and unreserved memory, or a
+    /// 422 <c>placement.no_eligible_server</c> when none accepts it. A server against its roles is accepted, with a warning in the response.
+    /// </summary>
     public Guid? ServerId { get; init; }
+
+    /// <summary>
+    /// The server that builds the image (an active server of the organization); absent = the server it runs on. When it differs, the image travels
+    /// through the build server's registry. Only for source kinds that build.
+    /// </summary>
+    public Guid? BuildServerId { get; init; }
 
     /// <summary><c>git</c>, <c>dockerImage</c>, <c>dockerfile</c>, <c>compose</c>, <c>static</c> or <c>nixpacks</c>.</summary>
     public string? SourceKind { get; init; }
@@ -79,6 +90,10 @@ public sealed record UpdateApplicationRequest
     [NotClearable] public string? Name { get; init; }
     public string? Description { get; init; }
     [NotClearable] public Guid? ServerId { get; init; }
+
+    /// <summary>See <see cref="CreateApplicationRequest.BuildServerId"/>; null = build on the server it runs on.</summary>
+    public Guid? BuildServerId { get; init; }
+
     [NotClearable] public GitSourceRequest? GitSource { get; init; }
     [NotClearable] public ImageSourceRequest? Image { get; init; }
     [NotClearable] public ComposeSourceRequest? Compose { get; init; }
@@ -113,7 +128,8 @@ public sealed record WorkloadStatusResponse(
 public sealed record ApplicationResponse(
     Guid Id, string Name, string Slug, string? Description, Guid ProjectId, Guid EnvironmentId, Guid ServerId, ApplicationSourceKind SourceKind,
     WorkloadStatusResponse State, GitSourceResponse? GitSource, ImageSourceResponse? Image, ComposeSourceResponse? Compose,
-    BuildConfigResponse? Build, RuntimeResponse Runtime, System.Text.Json.Nodes.JsonObject CustomLabels, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    BuildConfigResponse? Build, RuntimeResponse Runtime, System.Text.Json.Nodes.JsonObject CustomLabels, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    Guid? BuildServerId = null, IReadOnlyList<string>? Warnings = null);
 
 /// <summary>Lighter list shape (no build/runtime blobs).</summary>
 public sealed record ApplicationSummary(
@@ -246,7 +262,6 @@ public sealed class CreateApplicationValidator : AbstractValidator<CreateApplica
             .WithMessage("Use lowercase letters, digits and single hyphens (1-63 characters).").When(x => x.Slug is not null);
         RuleFor(x => x.Description).MaximumLength(2000);
         RuleFor(x => x.EnvironmentId).NotNull();
-        RuleFor(x => x.ServerId).NotNull();
         RuleFor(x => x.SourceKind).NotEmpty().MustBeEnum<CreateApplicationRequest, ApplicationSourceKind>();
 
         RuleFor(x => x.GitSource).SetValidator(new GitSourceCreateValidator()!);
@@ -281,6 +296,7 @@ public sealed class CreateApplicationValidator : AbstractValidator<CreateApplica
                 if (kind != ApplicationSourceKind.DockerImage && x.Image is not null) NotApplicable("Image");
                 if (kind != ApplicationSourceKind.Compose && x.Compose is not null) NotApplicable("Compose");
                 if (!ApplicationRules.UsesBuild(kind) && x.Build is not null) NotApplicable("Build");
+                if (!ApplicationRules.UsesBuild(kind) && x.BuildServerId is not null) NotApplicable("BuildServerId");
 
                 if (x.Build?.Engine is { } engine && ApplicationRules.EngineOf(kind) is { } implied && engine != implied)
                     Fail("Build.Engine", $"Source kind '{x.SourceKind}' builds with '{implied}'.", ResourceProblemCodes.Mismatch);

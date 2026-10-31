@@ -14,6 +14,23 @@ public sealed class DeploymentPlan
     /// <summary>Source build. Null = the image in <see cref="ImageReference"/> is pulled instead (image sources, redeploys, rollbacks).</summary>
     public BuildSpec? Build { get; init; }
 
+    /// <summary>
+    /// The server that runs <see cref="Build"/> when it is not <see cref="ServerId"/> (ADR 0012): the image is pushed to the registry reference in
+    /// the build's tag and pulled by the run server. Null = the run server builds.
+    /// </summary>
+    public Guid? BuildServerId { get; init; }
+
+    /// <summary>Names of the build and run servers, for the deployment log of a build elsewhere.</summary>
+    public string? BuildServerName { get; init; }
+
+    public string? RunServerName { get; init; }
+
+    /// <summary>
+    /// Waits for a free build slot on the build server (its <c>MaxConcurrentBuilds</c>) and returns the slot, released when disposed. The runner
+    /// holds it for the Build step only. Null = no limit is enforced (tests, plans without a build).
+    /// </summary>
+    public Func<CancellationToken, Task<IAsyncDisposable>>? AcquireBuildSlot { get; init; }
+
     /// <summary>Image to pull when <see cref="Build"/> is null.</summary>
     public string? ImageReference { get; init; }
 

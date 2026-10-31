@@ -173,6 +173,7 @@ describe("services", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create and deploy" }));
 
     await waitFor(() => expect(deploy).toHaveBeenCalledWith("svc-1"));
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ templateKey: "postgres", version: "1", environmentId: "env-1", serverId: "srv-1", name: "postgres" }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ templateKey: "postgres", version: "1", environmentId: "env-1", name: "postgres" }));
+    expect(create.mock.calls[0][0].serverId).toBeUndefined(); // Automatic: the API chooses a server by role and room
   });
 });

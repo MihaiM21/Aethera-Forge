@@ -39,6 +39,12 @@ export type DockerImage = S["DockerImage"];
 export type DockerVolume = S["DockerVolume"];
 export type DockerNetwork = S["DockerNetwork"];
 
+/** Capacity, reservations and live usage of one server (`GET /servers/capacity`, ADR 0012). */
+export type ServerCapacity = S["ServerCapacityResponse"];
+export type PlacementSuggestion = S["PlacementSuggestionResponse"];
+export type PlacementCandidate = S["PlacementCandidateResponse"];
+export type PlacementKind = S["PlacementKind"];
+
 export type ResourceEvent = S["ResourceEventResponse"];
 export type PruneRequest = S["PruneRequest"];
 export type Job = S["JobDto"];

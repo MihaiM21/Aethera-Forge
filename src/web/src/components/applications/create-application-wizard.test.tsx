@@ -10,7 +10,7 @@ vi.mock("@/lib/navigate", () => ({ navigateTo: (p: string) => navigateTo(p) }));
 
 import { CreateApplicationWizard } from "./create-application-wizard";
 
-function setup(over: { create?: ReturnType<typeof vi.fn>; deploy?: ReturnType<typeof vi.fn>; buildDetect?: ReturnType<typeof vi.fn> } = {}) {
+function setup(over: { create?: ReturnType<typeof vi.fn>; deploy?: ReturnType<typeof vi.fn>; buildDetect?: ReturnType<typeof vi.fn>; suggest?: ReturnType<typeof vi.fn> } = {}) {
   const create = over.create ?? vi.fn().mockResolvedValue({ id: "app-9" });
   const deploy = over.deploy ?? vi.fn().mockResolvedValue(makeDeployment({ id: "dep-9" }));
   const envCreate = vi.fn().mockResolvedValue({});
@@ -27,7 +27,10 @@ function setup(over: { create?: ReturnType<typeof vi.fn>; deploy?: ReturnType<ty
     domains: { create: domainCreate },
     servers: { buildDetect },
   });
-  const servers = fakeApi({ list: vi.fn().mockResolvedValue({ items: [makeServer({ id: "srv-1", name: "edge-1" })], nextCursor: null }) });
+  const servers = fakeApi({
+    list: vi.fn().mockResolvedValue({ items: [makeServer({ id: "srv-1", name: "edge-1" })], nextCursor: null }),
+    ...(over.suggest ? { suggest: over.suggest } : {}),
+  });
   render(<CreateApplicationWizard api={api} servers={servers} />);
   return { create, deploy, envCreate, secretCreate, domainCreate, buildDetect };
 }
@@ -37,7 +40,7 @@ const next = () => userEvent.click(screen.getByRole("button", { name: "Continue"
 describe("CreateApplicationWizard", () => {
   beforeEach(() => navigateTo.mockReset());
 
-  it("walks repo -> build -> env -> server -> domain -> deploy and creates everything in order", async () => {
+  it("walks repo -> build -> env -> server -> domain -> deploy and creates everything in order", { timeout: 30_000 }, async () => {
     const m = setup();
     await screen.findByDisplayValue("Staging");
 
@@ -54,7 +57,7 @@ describe("CreateApplicationWizard", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /secret/i }));
     await next();
 
-    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue("srv-1"));
+    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue(""));
     const port = screen.getByLabelText("Container port");
     await userEvent.clear(port);
     await userEvent.type(port, "8080");
@@ -73,12 +76,13 @@ describe("CreateApplicationWizard", () => {
         name: "shop",
         slug: "shop",
         environmentId: "env-1",
-        serverId: "srv-1",
         sourceKind: "dockerfile",
         gitSource: expect.objectContaining({ repositoryUrl: "https://github.com/acme/shop.git", provider: "gitHub" }),
         runtime: expect.objectContaining({ ports: [{ containerPort: 8080, isHttp: true }] }),
       }),
     );
+    // The server step was left on "Automatic": no server is named and the API chooses.
+    expect(m.create.mock.calls[0][0].serverId).toBeUndefined();
     // A secret variable is stored as a secret of the application and linked, never sent as a plain value.
     expect(m.secretCreate).toHaveBeenCalledWith({ name: "shop_DATABASE_URL", value: "postgres://x", workloadId: "app-9" });
     expect(m.envCreate).toHaveBeenCalledWith("applications", "app-9", expect.objectContaining({ key: "DATABASE_URL", secretId: "sec-1" }));
@@ -109,13 +113,45 @@ describe("CreateApplicationWizard", () => {
     expect(screen.getByText(/needs no build/i)).toBeInTheDocument();
     await next();
     await next();
-    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue("srv-1"));
+    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue(""));
     await next();
     await next();
     await userEvent.click(screen.getByRole("button", { name: "Create and deploy" }));
     await waitFor(() => expect(m.create).toHaveBeenCalled());
     expect(m.create.mock.calls[0][0]).toMatchObject({ sourceKind: "dockerImage", image: { image: "nginx", tag: "latest" } });
     expect(m.create.mock.calls[0][0].gitSource).toBeUndefined();
+  });
+
+  it("defaults the server to Automatic, explains the suggestion and sends the server only when one is picked", async () => {
+    const suggest = vi.fn().mockResolvedValue({
+      kind: "application",
+      suggestedServerId: "srv-1",
+      message: null,
+      candidates: [
+        { serverId: "srv-1", serverName: "edge-1", eligible: true, score: 1, reasons: ["It has the worker role.", "6.0 GiB of 8.0 GiB memory is unreserved."], cpuFreeCores: 2, memoryFreeBytes: 6 },
+      ],
+    });
+    const m = setup({ suggest });
+    await screen.findByDisplayValue("Staging");
+    await userEvent.click(screen.getByRole("radio", { name: /Docker image/ }));
+    await userEvent.type(screen.getByLabelText("Image"), "nginx");
+    await next();
+    await next();
+    await next();
+
+    expect(await screen.findByRole("option", { name: "Automatic (edge-1)" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Server")).toHaveValue("");
+    expect(await screen.findByText("Suggested: edge-1")).toBeInTheDocument();
+    expect(screen.getByText("It has the worker role.")).toBeInTheDocument();
+    expect(suggest).toHaveBeenCalledWith({ kind: "application" });
+
+    await userEvent.selectOptions(screen.getByLabelText("Server"), "srv-1");
+    expect(screen.getByText("edge-1")).toBeInTheDocument();
+    await next();
+    await next();
+    await userEvent.click(screen.getByRole("button", { name: "Create and deploy" }));
+    await waitFor(() => expect(m.create).toHaveBeenCalled());
+    expect(m.create.mock.calls[0][0].serverId).toBe("srv-1");
   });
 
   it("offers the compose file from the repository next to pasting one, and creates the application from it", { timeout: 30_000 }, async () => {
@@ -143,7 +179,7 @@ describe("CreateApplicationWizard", () => {
     expect(screen.getByText(/read from the repository on the server/)).toBeInTheDocument();
     await next();
     await next();
-    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue("srv-1"));
+    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue(""));
     expect(screen.queryByLabelText("Container port")).not.toBeInTheDocument();
     await next();
     expect(screen.getByText(/Each service of a compose application has its own domains/)).toBeInTheDocument();
@@ -198,7 +234,7 @@ describe("CreateApplicationWizard", () => {
     await next();
     await next();
     await next();
-    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue("srv-1"));
+    await waitFor(() => expect(screen.getByLabelText("Server")).toHaveValue(""));
     await next();
     await next();
     await userEvent.click(screen.getByRole("button", { name: "Create and deploy" }));

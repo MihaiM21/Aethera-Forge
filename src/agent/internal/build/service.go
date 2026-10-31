@@ -37,6 +37,8 @@ type Service struct {
 	Engines Engines
 	WorkDir string
 	Now     func() time.Time
+	// Builders runs builds with a quota in the BuildKit builder container (ADR 0012). Nil = the agent does not advertise build.quota.
+	Builders Builders
 }
 
 func (s *Service) now() time.Time {
@@ -126,6 +128,23 @@ func (s *Service) Run(ctx context.Context, req *agentv1.BuildRequest, out, errw 
 		if job.Dir, err = ContextDir(co.Dir, req.GetContextPath()); err != nil {
 			return nil, fail(agentv1.ErrorCode_ERROR_CODE_INVALID_ARGUMENT, "%v", err)
 		}
+	}
+
+	// The build quota: build through the BuildKit builder container that has the limits (created or recreated when they changed).
+	if lim := req.GetBuilderLimits(); QuotaRequested(lim) {
+		if s.Builders == nil {
+			return nil, fail(agentv1.ErrorCode_ERROR_CODE_UNSUPPORTED, "this agent cannot apply a build quota")
+		}
+		if len(req.GetTargetPlatforms()) > 1 {
+			return nil, fail(agentv1.ErrorCode_ERROR_CODE_INVALID_ARGUMENT, "multi-platform builds are not supported together with a build quota")
+		}
+		progress("builder", "preparing the BuildKit builder "+BuilderName, 10)
+		name, err := s.Builders.Ensure(ctx, lim)
+		if err != nil {
+			return nil, classify(ctx, agentv1.ErrorCode_ERROR_CODE_BUILD_FAILED, err)
+		}
+		job.Builder = name
+		fmt.Fprintf(out, "building in %s (cpu %g, memory %d bytes)\n", name, lim.GetCpuLimitCores(), lim.GetMemoryLimitBytes())
 	}
 
 	progress("build", "building with "+eng.Name(), 20)

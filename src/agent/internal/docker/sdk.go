@@ -465,17 +465,7 @@ func (s *SDK) ContainerCreate(ctx context.Context, spec *agentv1.ContainerSpec) 
 		}
 		host.Mounts = append(host.Mounts, mm)
 	}
-	if r := spec.GetResources(); r != nil {
-		host.Resources.NanoCPUs = int64(r.GetCpuLimitCores() * 1e9)
-		host.Resources.CPUShares = int64(r.GetCpuReservationCores() * 1024)
-		host.Resources.Memory = r.GetMemoryLimitBytes()
-		host.Resources.MemoryReservation = r.GetMemoryReservationBytes()
-		host.Resources.MemorySwap = r.GetMemorySwapLimitBytes()
-		host.Resources.CpusetCpus = r.GetCpusetCpus()
-		if pl := r.GetPidsLimit(); pl != 0 {
-			host.Resources.PidsLimit = &pl
-		}
-	}
+	applyResources(host, spec.GetResources())
 	if rp := spec.GetRestartPolicy(); rp != nil {
 		host.RestartPolicy = container.RestartPolicy{MaximumRetryCount: int(rp.GetMaximumRetryCount())}
 		switch rp.GetName() {

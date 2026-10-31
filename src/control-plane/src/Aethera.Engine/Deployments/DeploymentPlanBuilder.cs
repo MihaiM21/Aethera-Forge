@@ -53,6 +53,34 @@ public sealed class PlanContext
 
     /// <summary>The run server's address in the private mesh (ADR 0012); ports with <see cref="PortBindScope.Private"/> bind to it.</summary>
     public string? MeshAddress { get; init; }
+
+    // ---- build elsewhere and build quota (ADR 0012) -----------------------------------------------------------------------------------
+
+    /// <summary>Names of the build server (the snapshot's <see cref="BuildSnapshot.BuildServerId"/>) and the run server, for the log.</summary>
+    public string? BuildServerName { get; init; }
+
+    public string? RunServerName { get; init; }
+
+    /// <summary>
+    /// <c>&lt;registry host&gt;/&lt;namespace&gt;</c> the build server pushes to; null when it has no build registry, which fails a build elsewhere
+    /// with <see cref="FailureCodes.BuildRegistryMissing"/> before anything is built. Credentials are in <see cref="BuildRegistry"/> (push) and
+    /// <see cref="Registry"/> (pull) and are the same ones.
+    /// </summary>
+    public string? BuildRegistryPrefix { get; init; }
+
+    public RegistryCredentials? BuildRegistry { get; init; }
+
+    /// <summary>The build server's quota, set only when its agent can enforce it; null = the daemon's builder.</summary>
+    public ResourceLimitsSpec? BuilderLimits { get; init; }
+
+    /// <inheritdoc cref="DeploymentPlan.AcquireBuildSlot"/>
+    public Func<CancellationToken, Task<IAsyncDisposable>>? AcquireBuildSlot { get; init; }
+
+    /// <summary>
+    /// <see cref="ExistingImage"/> is a registry reference (the rollback target was built elsewhere): it is pulled with <see cref="Registry"/> when
+    /// the run server does not have it, instead of being expected locally.
+    /// </summary>
+    public bool ExistingImageIsRemote { get; init; }
 }
 
 /// <summary>Turns a <see cref="DeploymentSnapshot"/> into the <see cref="DeploymentPlan"/> the runner executes. Pure: no I/O.</summary>
@@ -181,10 +209,16 @@ public static class DeploymentPlanBuilder
             StopTimeout = TimeSpan.FromSeconds(Math.Max(1, s.Runtime.StopTimeoutSeconds)),
             DetectedPort = detected, WriteLog = c.WriteLog, Narrate = c.Narrate,
             WithImage = facts is null ? f => Build(originalSnapshot, c, f) : null,
+            // Only a plan that builds uses these: a rollback or an image source has nothing to build.
+            BuildServerId = c.ExistingImage is null && s.Image is null && BuildsElsewhere(s, c) ? s.Build!.BuildServerId : null,
+            BuildServerName = c.BuildServerName, RunServerName = c.RunServerName, AcquireBuildSlot = c.AcquireBuildSlot,
         };
 
         if (c.ExistingImage is { Length: > 0 } existing)
-            return Copy(common, imageReference: existing, local: true);
+            // A rollback to an image that came through a registry pulls it when the server no longer has it (ADR 0012); others expect it locally.
+            return c.ExistingImageIsRemote
+                ? Copy(common, imageReference: existing, pullAuth: c.Registry, pullPolicy: ImagePullPolicy.IfNotPresent)
+                : Copy(common, imageReference: existing, local: true);
 
         if (s.Image is { } image)
         {
@@ -192,14 +226,19 @@ public static class DeploymentPlanBuilder
             return Copy(common, imageReference: reference, pullAuth: c.Registry, pullPolicy: image.PullPolicy);
         }
 
-        return Copy(common, build: BuildSpec(s, c));
+        // Built elsewhere: the run server pulls what the build server pushed, with the same registry credentials.
+        return Copy(common, build: BuildSpec(s, c), pullAuth: BuildsElsewhere(s, c) ? c.Registry : null);
     }
+
+    /// <summary>True when the snapshot names a build server other than the run server (ADR 0012).</summary>
+    public static bool BuildsElsewhere(DeploymentSnapshot s, PlanContext c) => s.Build?.BuildServerId is { } id && id != c.ServerId;
 
     private static DeploymentPlan Copy(
         DeploymentPlan p, string? imageReference = null, bool local = false, RegistryCredentials? pullAuth = null, BuildSpec? build = null,
         ImagePullPolicy pullPolicy = ImagePullPolicy.Always) =>
         new()
         {
+            BuildServerId = p.BuildServerId, BuildServerName = p.BuildServerName, RunServerName = p.RunServerName, AcquireBuildSlot = p.AcquireBuildSlot,
             ServerId = p.ServerId, Container = p.Container, PreviousContainer = p.PreviousContainer, Networks = p.Networks, InternalNetworks = p.InternalNetworks, JobId = p.JobId,
             OrganizationId = p.OrganizationId, OnLog = p.OnLog, HealthFor = p.HealthFor, HealthTimeout = p.HealthTimeout, HealthInterval = p.HealthInterval,
             HealthRetries = p.HealthRetries, HealthStartPeriod = p.HealthStartPeriod, HealthSuccessThreshold = p.HealthSuccessThreshold, StopTimeout = p.StopTimeout,
@@ -225,8 +264,20 @@ public static class DeploymentPlanBuilder
             .OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => EnvVarSpec.OfPlain(kv.Key, kv.Value));
         var buildArgs = configured.Concat(buildVars).ToList();
-        return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [ImagePolicy.Tag(s.Slug, c.DeploymentId)])
+
+        // Built for another server (ADR 0012): tagged for the build server's registry and pushed; without one nothing is built.
+        var elsewhere = BuildsElsewhere(s, c);
+        if (elsewhere && c.BuildRegistryPrefix is not { Length: > 0 })
+            throw new DeploymentFailure(DeploymentStep.Build, FailureCodes.BuildRegistryMissing,
+                $"The application is built on {c.BuildServerName ?? "another server"} but runs on {c.RunServerName ?? "this one"}, and the image has to travel through a registry. " +
+                "Choose a build registry in the build server's settings (Servers > the build server > Settings), or build on the run server.");
+        var tag = elsewhere ? ImagePolicy.RegistryTag(c.BuildRegistryPrefix!, s.Slug, c.DeploymentId) : ImagePolicy.Tag(s.Slug, c.DeploymentId);
+
+        return new BuildSpec((c.BuildId ?? c.DeploymentId).ToString(), engine, [tag])
         {
+            Push = elsewhere, PushAuth = elsewhere ? c.BuildRegistry : null,
+            // The quota applies to the engines that build with `docker build`; Nixpacks drives Docker itself and stays on the daemon's builder.
+            BuilderLimits = engine == BuildEngineKind.Nixpacks ? null : c.BuilderLimits,
             Git = new GitSourceSpec(git.Url, git.Branch, git.CommitPin, Depth: git.CommitPin is null ? 1 : 0, Credentials: c.GitCredential),
             ContextPath = b.Context,
             DockerfilePath = b.DockerfilePath,

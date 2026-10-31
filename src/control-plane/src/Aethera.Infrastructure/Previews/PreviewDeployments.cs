@@ -121,7 +121,12 @@ public static class PreviewDeployments
                 .OrderByDescending(d => d.Number).Take(ImageCleanupWindow).Select(d => d.ImageRef!).Distinct().ToListAsync(ct);
             var resolver = sp.GetRequiredService<IServerTransportResolver>();
             foreach (var image in images)
+            {
                 await resolver.ExecuteAsync<ImageRemoveCommand, Unit>(preview.ServerId, new ImageRemoveCommand(image, Force: false), CommandOptions.For($"preview-cleanup:{current.Id}:{image}"), ct);
+                // Built on another server (ADR 0012): its local copy goes too; nothing is deleted from the registry.
+                if (current.BuildServerId is { } buildServerId && buildServerId != preview.ServerId)
+                    await resolver.ExecuteAsync<ImageRemoveCommand, Unit>(buildServerId, new ImageRemoveCommand(image, Force: false), CommandOptions.For($"preview-cleanup-build:{current.Id}:{image}"), ct);
+            }
         }
         catch (Exception)
         {

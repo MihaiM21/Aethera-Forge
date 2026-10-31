@@ -86,11 +86,12 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
       return { ...p, projectId: project.id, environmentId: env?.id ?? "" };
     });
   }, [projects.data]);
-  React.useEffect(() => {
-    const items = serverList.data?.items;
-    if (!items?.length) return;
-    setS((p) => (p.serverId ? p : { ...p, serverId: (items.find((x) => x.status.agent.status === "connected") ?? items[0]).id }));
-  }, [serverList.data]);
+  // The server stays "Automatic" (empty) until the user picks one: the API places the application by role and room (ADR 0012), and this is
+  // the same ranking, asked for in advance so the choice can be explained.
+  const suggestion = useLoaded(() => servers.suggest({ kind: "application" }).catch(() => null), []).data ?? null;
+  const suggestedServer = suggestion?.suggestedServerId ? serverList.data?.items.find((x) => x.id === suggestion.suggestedServerId) : undefined;
+  // Build detection needs a server to run on: the one picked, else the one that would be chosen.
+  const effectiveServerId = s.serverId || suggestion?.suggestedServerId || serverList.data?.items[0]?.id || "";
 
   const project: Project | undefined = projects.data?.items.find((p) => p.id === s.projectId);
   const key = WIZARD_STEPS[step].key;
@@ -109,7 +110,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
     setDetectError(null);
     setCandidates(null);
     try {
-      const res = await api.servers.buildDetect(s.serverId, {
+      const res = await api.servers.buildDetect(effectiveServerId, {
         repositoryUrl: s.repoUrl.trim(),
         branch: s.branch.trim() || undefined,
         gitCredentialId: s.credentialId || undefined,
@@ -357,7 +358,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3 border border-dashed border-border px-3 py-2.5 text-sm">
                   <p className="text-muted-foreground">Let the server look at the repository and suggest a build method, commands and a port.</p>
-                  <Button variant="outline" onClick={() => void detect()} disabled={detecting || !s.serverId}>
+                  <Button variant="outline" onClick={() => void detect()} disabled={detecting || !effectiveServerId}>
                     {detecting ? <Loader2Icon className="animate-spin" aria-hidden="true" /> : <SearchCodeIcon aria-hidden="true" />} Detect
                   </Button>
                 </div>
@@ -471,10 +472,10 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
 
         {key === "server" && (
           <>
-            <Field label="Server" error={err("serverId")} hint="The machine that builds and runs this application.">
+            <Field label="Server" error={err("serverId")} hint="The machine that runs this application. Automatic lets Aethera choose by role and free memory.">
               {(c) => (
                 <NativeSelect {...c} value={s.serverId} onChange={(e) => set({ serverId: e.target.value })}>
-                  <option value="">Select a server…</option>
+                  <option value="">{suggestedServer ? `Automatic (${suggestedServer.name})` : "Automatic"}</option>
                   {(serverList.data?.items ?? []).map((x: Server) => (
                     <option key={x.id} value={x.id}>
                       {x.name} · {x.host} ({x.status.agent.status})
@@ -483,6 +484,29 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                 </NativeSelect>
               )}
             </Field>
+            {suggestion && (
+              <div className="grid gap-1 border border-border bg-card px-3 py-2 text-xs" aria-label="Why this server">
+                {(() => {
+                  const shown = s.serverId ? suggestion.candidates.find((x) => x.serverId === s.serverId) : suggestion.candidates.find((x) => x.eligible);
+                  if (!shown) return <p className="text-warning">{suggestion.message ?? "No server accepts this application right now."}</p>;
+                  return (
+                    <>
+                      <p className="mono-label text-muted-foreground">
+                        {s.serverId ? shown.serverName : `Suggested: ${shown.serverName}`}
+                        {!shown.eligible && " · not recommended"}
+                      </p>
+                      <ul className="grid gap-0.5 text-muted-foreground">
+                        {shown.reasons.map((r, i) => (
+                          <li key={r} className={!shown.eligible && i === 0 ? "text-warning" : undefined}>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
             {serverList.data && serverList.data.items.length === 0 && (
               <p role="status" className="border border-dashed border-warning/70 bg-warning-soft px-3 py-2 text-xs">
                 No servers yet.{" "}
@@ -542,7 +566,7 @@ export function CreateApplicationWizard({ api = resourcesApi, servers = serversA
                       ? `${s.image}:${s.tag}`
                       : "pasted compose file",
                 ],
-                ["Server", serverList.data?.items.find((x) => x.id === s.serverId)?.name],
+                ["Server", s.serverId ? serverList.data?.items.find((x) => x.id === s.serverId)?.name : suggestedServer ? `automatic (${suggestedServer.name})` : "automatic"],
                 ["Port", s.method === "compose" ? "from compose" : s.port.trim() || "auto (from the image)"],
                 ["Variables", String(envToCreate(s).length)],
                 ["Domain", s.method !== "compose" && s.hostname.trim() ? `${s.https ? "https" : "http"}://${s.hostname.trim()}` : "automatic"],

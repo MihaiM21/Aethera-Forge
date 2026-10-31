@@ -13,6 +13,9 @@ public static class FailureCodes
 {
     public const string SourceFailed = "source.failed";
     public const string BuildFailed = "build.failed";
+
+    /// <summary>The application builds on another server than it runs on, but the build server has no registry to push to (ADR 0012).</summary>
+    public const string BuildRegistryMissing = "build.registry_missing";
     public const string ImagePullFailed = "image.pull_failed";
     public const string ServerUnavailable = "server.unavailable";
     public const string ContainerFailed = "container.failed";

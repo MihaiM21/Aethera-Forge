@@ -23,6 +23,7 @@ function RegistryDialog({ registry, api, onClose, onSaved }: { registry: Registr
   const [url, setUrl] = React.useState(registry?.url ?? "");
   const [username, setUsername] = React.useState(registry?.username ?? "");
   const [password, setPassword] = React.useState("");
+  const [namespace, setNamespace] = React.useState(registry?.namespace ?? "");
   const act = useAction();
   return (
     <Dialog open onOpenChange={(o) => !o && !act.pending && onClose()}>
@@ -31,7 +32,8 @@ function RegistryDialog({ registry, api, onClose, onSaved }: { registry: Registr
           className="grid gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            const body = { name: name.trim(), url: url.trim(), username: username.trim() || undefined, ...(password ? { password } : {}) };
+            // An empty namespace is sent as null so that clearing the field clears it on the server too.
+            const body = { name: name.trim(), url: url.trim(), username: username.trim() || undefined, namespace: namespace.trim() || null, ...(password ? { password } : {}) };
             const ok = await act.runOk(() => (registry ? api.registries.update(registry.id, body) : api.registries.create(body)), registry ? "Registry updated" : "Registry added");
             if (ok) {
               onSaved();
@@ -53,6 +55,13 @@ function RegistryDialog({ registry, api, onClose, onSaved }: { registry: Registr
               {(c) => <Input {...c} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
             </Field>
           </div>
+          <Field
+            label="Namespace"
+            error={fieldError(act.fields, "namespace")}
+            hint="Where images built for another server are pushed: your user or organization (for ghcr.io, your GitHub name). Used as <registry>/<namespace>/<app>:<deployment>. Empty uses the username."
+          >
+            {(c) => <Input {...c} className="font-mono" placeholder="mihaim21" autoComplete="off" value={namespace} onChange={(e) => setNamespace(e.target.value)} />}
+          </Field>
           <FormError message={act.error} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={act.pending}>
@@ -116,6 +125,7 @@ export function RegistriesView({ api = resourcesApi }: { api?: ResourcesApi }) {
                 <p className="truncate font-mono text-xs text-muted-foreground">
                   {r.url}
                   {r.username ? ` · ${r.username}` : ""}
+                  {r.namespace ? ` · pushes to ${r.namespace}/` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">

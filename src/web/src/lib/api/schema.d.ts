@@ -441,6 +441,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/placement/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which server a new workload would be placed on, and why
+         * @description Ranks the organization's servers for a kind of workload (application, statefulService, statelessService, build) and the CPU and memory it reserves. Servers that are not active, whose agent is not connected, whose roles exclude the kind or that lack the unreserved memory are not eligible; the others are ranked by unreserved memory, then free disk, then fewer workloads. Every server comes with its reasons. Give workloadId instead of kind, cpu and memory to judge an existing workload (the server it is on does not count its own reservation).
+         */
+        get: operations["suggestPlacement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cores, memory and disk of every server, what is reserved on it and how much is left */
+        get: operations["listServerCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the application to another server
+         * @description Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).
+         */
+        post: operations["moveApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move the service to another server
+         * @description Queues a deployment of the current configuration on the target server (202 with the deployment and its job). The workload belongs to the target from the moment the deployment starts, the old server keeps serving until the new deployment runs, and then its containers and images are removed. If the deployment fails, the workload stays on (or goes back to) the old server. Named volumes and host paths stay behind: a workload with volumes needs confirm: true, and the response lists them (back them up and restore them on the new server). A workload that never ran just changes server (200).
+         */
+        post: operations["moveService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -2651,6 +2728,12 @@ export interface components {
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {unknown} */
         AlertState: "open" | "resolved";
+        AllocationResponse: {
+            /** Format: double */
+            cpuCores: number | string;
+            /** Format: int64 */
+            memoryBytes: number | string;
+        };
         ApiTokenResponse: {
             /** Format: uuid */
             id: string;
@@ -2693,6 +2776,9 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** Format: uuid */
+            buildServerId?: null | string;
+            warnings?: null | string[];
         };
         /** @enum {unknown} */
         ApplicationSourceKind: "git" | "dockerImage" | "dockerfile" | "compose" | "static" | "nixpacks" | null;
@@ -2942,6 +3028,20 @@ export interface components {
             candidates: components["schemas"]["BuildCandidateDto"][];
             commitSha: string;
         };
+        CapacityUsageResponse: {
+            /** Format: double */
+            cpuPercent: null | number | string;
+            /** Format: int64 */
+            memoryUsedBytes: null | number | string;
+            /** Format: int64 */
+            memoryTotalBytes: null | number | string;
+            /** Format: int64 */
+            diskUsedBytes: null | number | string;
+            /** Format: int64 */
+            diskTotalBytes: null | number | string;
+            /** Format: date-time */
+            observedAt: unknown;
+        };
         /** @enum {unknown} */
         CertificateStatus: "none" | "pending" | "issued" | "failed" | "expired";
         ChangePasswordRequest: {
@@ -3036,6 +3136,8 @@ export interface components {
             environmentId?: null | string;
             /** Format: uuid */
             serverId?: null | string;
+            /** Format: uuid */
+            buildServerId?: null | string;
             sourceKind?: null | string;
             gitSource?: null | components["schemas"]["GitSourceRequest"];
             image?: null | components["schemas"]["ImageSourceRequest"];
@@ -3136,6 +3238,7 @@ export interface components {
             url?: null | string;
             username?: null | string;
             password?: null | string;
+            namespace?: null | string;
         };
         CreateScheduledTaskRequest: {
             name?: null | string;
@@ -3170,6 +3273,12 @@ export interface components {
             wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
             /** Format: uuid */
             sshCredentialSecretId?: null | string;
             resources?: null | components["schemas"]["ServerResourcesRequest"];
@@ -3604,6 +3713,14 @@ export interface components {
             code: string;
             message: string;
         };
+        FreeCapacityResponse: {
+            /** Format: double */
+            cpuCores: null | number | string;
+            /** Format: int64 */
+            memoryBytes: null | number | string;
+            /** Format: int64 */
+            diskBytes: null | number | string;
+        };
         /** @enum {unknown} */
         GitCredentialKind: "token" | "deployKey" | "basicAuth";
         GitCredentialResponse: {
@@ -3971,6 +4088,27 @@ export interface components {
         };
         /** @enum {unknown} */
         MountKind: "volume" | "bind" | "tmpfs";
+        MoveWorkloadRequest: {
+            /** Format: uuid */
+            serverId?: null | string;
+            confirm?: null | boolean;
+        };
+        MoveWorkloadResponse: {
+            /** Format: uuid */
+            workloadId: string;
+            /** Format: uuid */
+            fromServerId: string;
+            /** Format: uuid */
+            toServerId: string;
+            /** Format: uuid */
+            deploymentId: null | string;
+            /** Format: uuid */
+            jobId: null | string;
+            dataStaysBehind: boolean;
+            volumes: string[];
+            warnings: string[];
+            message: string;
+        };
         NetworkEndpointInfo: {
             containerId: string;
             containerName: string;
@@ -4119,6 +4257,28 @@ export interface components {
             fingerprint: string;
             /** Format: date-time */
             seenAt: unknown;
+        };
+        PlacementCandidateResponse: {
+            /** Format: uuid */
+            serverId: string;
+            serverName: string;
+            eligible: boolean;
+            /** Format: double */
+            score: number | string;
+            reasons: string[];
+            /** Format: double */
+            cpuFreeCores: null | number | string;
+            /** Format: int64 */
+            memoryFreeBytes: null | number | string;
+        };
+        /** @enum {unknown} */
+        PlacementKind: "application" | "statefulService" | "statelessService" | "build";
+        PlacementSuggestionResponse: {
+            kind: components["schemas"]["PlacementKind"];
+            /** Format: uuid */
+            suggestedServerId: null | string;
+            candidates: components["schemas"]["PlacementCandidateResponse"][];
+            message: null | string;
         };
         /**
          * @default public
@@ -4373,6 +4533,7 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            namespace?: null | string;
         };
         RegistryTestResponse: {
             result: string;
@@ -4465,6 +4626,7 @@ export interface components {
             strategy?: null | string;
             ports?: null | components["schemas"]["PortRequest"][];
             resources?: null | components["schemas"]["ResourceLimitsRequest"];
+            priority?: null | string;
             healthCheck?: null | components["schemas"]["HealthCheckRequest"];
         };
         RuntimeResponse: {
@@ -4473,6 +4635,7 @@ export interface components {
             ports: components["schemas"]["PortResponse"][];
             resources: components["schemas"]["ResourceLimitsResponse"];
             healthCheck: components["schemas"]["HealthCheckResponse"];
+            priority?: components["schemas"]["WorkloadPriority"];
         };
         ScanHostKeyRequest: {
             host?: null | string;
@@ -4595,6 +4758,29 @@ export interface components {
         };
         /** @enum {unknown} */
         SecretScope: "organization" | "project" | "environment" | "workload";
+        ServerCapacityResponse: {
+            /** Format: uuid */
+            serverId: string;
+            name: string;
+            lifecycle: components["schemas"]["ServerLifecycle"];
+            roles: components["schemas"]["ServerRole"][];
+            connected: boolean;
+            /** Format: int32 */
+            cores: null | number | string;
+            /** Format: int64 */
+            memoryBytes: null | number | string;
+            /** Format: int64 */
+            diskBytes: null | number | string;
+            usage: null | components["schemas"]["CapacityUsageResponse"];
+            reservations: components["schemas"]["AllocationResponse"];
+            limits: components["schemas"]["AllocationResponse"];
+            committed: components["schemas"]["AllocationResponse"];
+            free: components["schemas"]["FreeCapacityResponse"];
+            /** Format: int32 */
+            workloadCount: number | string;
+            overCommitted: boolean;
+            warnings: string[];
+        };
         ServerFactsResponse: {
             os: null | string;
             osVersion: null | string;
@@ -4696,6 +4882,12 @@ export interface components {
             updatedAt: unknown;
             wildcardDomain?: null | string;
             automaticDomainBase?: null | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
         };
         /** @enum {unknown} */
         ServerRole: "master" | "build" | "storage" | "ci" | "worker";
@@ -4728,6 +4920,7 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            warnings?: null | string[];
         };
         ServiceSummary: {
             /** Format: uuid */
@@ -4893,6 +5086,8 @@ export interface components {
             description?: null | string;
             /** Format: uuid */
             serverId?: null | string;
+            /** Format: uuid */
+            buildServerId?: null | string;
             gitSource?: null | components["schemas"]["GitSourceRequest"];
             image?: null | components["schemas"]["ImageSourceRequest"];
             compose?: null | components["schemas"]["ComposeSourceRequest"];
@@ -5004,6 +5199,7 @@ export interface components {
             name?: null | string;
             url?: null | string;
             username?: null | string;
+            namespace?: null | string;
             password?: null | string;
         };
         UpdateScheduledTaskRequest: {
@@ -5037,6 +5233,12 @@ export interface components {
             wildcardDomain?: null | string;
             /** Format: int32 */
             maxConcurrentBuilds?: null | number | string;
+            /** Format: double */
+            buildCpuLimit?: null | number | string;
+            /** Format: int64 */
+            buildMemoryLimitBytes?: null | number | string;
+            /** Format: uuid */
+            buildRegistryId?: null | string;
             /** Format: uuid */
             sshCredentialSecretId?: null | string;
             lifecycle?: null | string;
@@ -5180,6 +5382,11 @@ export interface components {
             jobId: string;
             volumesKept: string[];
         };
+        /**
+         * @default normal
+         * @enum {unknown}
+         */
+        WorkloadPriority: "normal" | "high" | "low";
         /** @enum {unknown} */
         WorkloadStatus: "unknown" | "notDeployed" | "deploying" | "running" | "unhealthy" | "stopped" | "failed";
         WorkloadStatusResponse: {
@@ -6806,6 +7013,283 @@ export interface operations {
             };
             /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    suggestPlacement: {
+        parameters: {
+            query?: {
+                kind?: string;
+                cpu?: number | string;
+                memory?: number | string;
+                workloadId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementSuggestionResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    listServerCapacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerCapacityResponse"][];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    moveApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveWorkloadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    moveService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveWorkloadRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveWorkloadResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation failed (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Precondition Required */
+            428: {
                 headers: {
                     [name: string]: unknown;
                 };

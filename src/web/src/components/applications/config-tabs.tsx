@@ -25,6 +25,8 @@ import { navigateTo } from "@/lib/navigate";
 import { useAuth } from "@/lib/auth/auth-context";
 import { isAdminRole } from "@/components/ops/settings-view";
 import { isRelativePath, providerOf } from "@/lib/resources/wizard";
+import { describeFree, overCommitWarning } from "@/lib/servers/capacity";
+import { MovePanel } from "./move-panel";
 
 type Props = { app: Application; api?: ResourcesApi; onSaved: () => void };
 
@@ -107,8 +109,38 @@ export function NetworkingTab({ app, api = resourcesApi, onSaved }: Props) {
 
 const MIB = 1024 * 1024;
 
-export function ResourcesTab({ app, api = resourcesApi, onSaved }: Props) {
+/** What is left on the server the application is on, and a warning when the numbers typed would over-commit it (the application's own reservation does not count against it). */
+function ServerRoom({ app, servers, cpu, cpuRes, mem, memRes }: { app: Application; servers: ServersApi; cpu: string; cpuRes: string; mem: string; memRes: string }) {
+  const capacity = usePolled((signal) => servers.capacity({ signal }), "resources-capacity", { intervalMs: 30_000 });
+  const here = capacity.data?.find((c) => c.serverId === app.serverId);
+  if (!here) return null;
   const r = app.runtime.resources;
+  const own = {
+    cpuCores: Number(r.cpuReservationCores ?? r.cpuLimitCores ?? 0),
+    memoryBytes: Number(r.memoryReservationBytes ?? r.memoryLimitBytes ?? 0),
+  };
+  const asked = (res: string, limit: string, unit = 1) => {
+    const v = numOrUndef(res) ?? numOrUndef(limit);
+    return v === undefined ? null : v * unit;
+  };
+  const warning = overCommitWarning(here, { cpuCores: asked(cpuRes, cpu), memoryBytes: asked(memRes, mem, MIB) }, own);
+  return (
+    <div className="grid gap-1 border border-border bg-card px-3 py-2 text-xs" aria-label="Room on the server">
+      <p>
+        <span className="mono-label text-muted-foreground">{here.name}</span> · {describeFree(here)} (this application&apos;s own reservation counts as free)
+      </p>
+      {warning && (
+        <p role="status" className="text-warning">
+          {warning}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function ResourcesTab({ app, api = resourcesApi, servers = serversApi, onSaved }: Props & { servers?: ServersApi }) {
+  const r = app.runtime.resources;
+  const [priority, setPriority] = React.useState<string>(app.runtime.priority ?? "normal");
   const [cpu, setCpu] = React.useState(str(r.cpuLimitCores));
   const [cpuRes, setCpuRes] = React.useState(str(r.cpuReservationCores));
   const [mem, setMem] = React.useState(r.memoryLimitBytes != null ? String(Math.round(Number(r.memoryLimitBytes) / MIB)) : "");
@@ -127,6 +159,7 @@ export function ResourcesTab({ app, api = resourcesApi, onSaved }: Props) {
           runtime: {
             strategy,
             restartPolicy: restart,
+            priority,
             resources: { cpuLimitCores: numOrUndef(cpu) ?? null, cpuReservationCores: numOrUndef(cpuRes) ?? null, memoryLimitBytes: mb(mem), memoryReservationBytes: mb(memRes), pidsLimit: numOrUndef(pids) ?? null },
           } as RuntimeRequest,
         });
@@ -143,7 +176,25 @@ export function ResourcesTab({ app, api = resourcesApi, onSaved }: Props) {
         <Field label="Memory reservation (MiB)">{(c) => <Input {...c} inputMode="numeric" className="font-mono" value={memRes} onChange={(e) => setMemRes(e.target.value)} />}</Field>
         <Field label="Process limit">{(c) => <Input {...c} inputMode="numeric" className="font-mono" value={pids} onChange={(e) => setPids(e.target.value)} />}</Field>
       </div>
-      <SectionTitle index="02">Deployment behaviour</SectionTitle>
+      <p className="text-xs text-muted-foreground">
+        A reservation is what the application is promised: Aethera counts it when it places other things on the server. Without one, the limit counts.
+      </p>
+      <ServerRoom app={app} servers={servers} cpu={cpu} cpuRes={cpuRes} mem={mem} memRes={memRes} />
+      <SectionTitle index="02">Priority</SectionTitle>
+      <Field
+        label="When the server is short of CPU or memory"
+        hint="High doubles the CPU shares (from the reservation, or one core's worth without one) and protects the application from the OOM killer; low halves them and makes it the first to be stopped. Applies on the next deployment."
+        error={fieldError(act.fields, "priority")}
+      >
+        {(c) => (
+          <NativeSelect {...c} value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option value="high">High: keep it running first</option>
+            <option value="normal">Normal</option>
+            <option value="low">Low: give way to others</option>
+          </NativeSelect>
+        )}
+      </Field>
+      <SectionTitle index="03">Deployment behaviour</SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Strategy" hint="Low downtime starts the new container next to the old one and switches after it is healthy.">
           {(c) => (
@@ -439,7 +490,7 @@ function ComposeSourceForm(
   );
 }
 
-export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
+export function BuildTab({ app, api = resourcesApi, servers = serversApi, onSaved }: Props & { servers?: ServersApi }) {
   const b = app.build;
   const g = app.gitSource;
   const [branch, setBranch] = React.useState(g?.branch ?? "");
@@ -547,8 +598,74 @@ export function BuildTab({ app, api = resourcesApi, onSaved }: Props) {
         <FormError message={act.error} />
         <div><SaveButton pending={act.pending} /></div>
       </form>
+      <BuildServerForm app={app} api={api} servers={servers} onSaved={onSaved} />
       <WebhookPanel app={app} api={api} />
     </div>
+  );
+}
+
+/**
+ * The server that builds the image (ADR 0012). "The server it runs on" builds locally; another server builds, pushes the image to its build registry
+ * and the run server pulls it. The API answers with warnings (no build role, no registry yet) and they are shown as they come.
+ */
+function BuildServerForm({ app, api, servers, onSaved }: { app: Application; api: ResourcesApi; servers: ServersApi; onSaved: () => void }) {
+  const list = usePolled((signal) => servers.list({ limit: 100, sort: "name" }, { signal }), "build-servers", { intervalMs: null });
+  const [buildServerId, setBuildServerId] = React.useState(app.buildServerId ?? "");
+  const [warnings, setWarnings] = React.useState<string[]>([]);
+  const act = useAction();
+  const items = list.data?.items ?? [];
+  const chosen = items.find((s) => s.id === buildServerId);
+  const elsewhere = chosen !== undefined && chosen.id !== app.serverId;
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const updated = await act.run(() => api.applications.update(app.id, { buildServerId: buildServerId || null }), "Build server saved");
+        if (updated) {
+          setWarnings(updated.warnings ?? []);
+          onSaved();
+        }
+      }}
+    >
+      <SectionTitle index="03">Build server</SectionTitle>
+      <p className="text-xs text-muted-foreground">
+        By default the server the application runs on builds it. A build server keeps builds off a small or busy production server: it builds and pushes the image
+        to its registry, and the run server pulls it. Rollbacks pull the same image, so they work on any server.
+      </p>
+      <div className="max-w-md">
+        <Field label="Builds on" error={fieldError(act.fields, "buildServerId")}>
+          {(c) => (
+            <NativeSelect {...c} value={buildServerId} onChange={(e) => setBuildServerId(e.target.value)}>
+              <option value="">The server it runs on</option>
+              {items.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.roles.includes("build") ? " · build" : ""}
+                  {s.id === app.serverId ? " (the run server)" : ""}
+                </option>
+              ))}
+            </NativeSelect>
+          )}
+        </Field>
+      </div>
+      {elsewhere && !chosen.buildRegistryId && (
+        <p role="status" className="text-xs text-warning">
+          {chosen.name} has no build registry yet, so deployments will fail with build.registry_missing. Choose one in the server&apos;s settings (Servers · {chosen.name} · Settings · Builds).
+        </p>
+      )}
+      {warnings.map((w) => (
+        <p key={w} role="status" className="text-xs text-warning">
+          {w}
+        </p>
+      ))}
+      <FormError message={act.error} />
+      <div>
+        <SaveButton pending={act.pending} disabled={buildServerId === (app.buildServerId ?? "")}>
+          Save build server
+        </SaveButton>
+      </div>
+    </form>
   );
 }
 
@@ -608,39 +725,26 @@ export function SettingsTab({ app, api = resourcesApi, servers = serversApi, onS
   const { me } = useAuth();
   const [name, setName] = React.useState(app.name);
   const [description, setDescription] = React.useState(app.description ?? "");
-  const [serverId, setServerId] = React.useState(app.serverId);
   const [confirming, setConfirming] = React.useState(false);
-  const list = usePolled((signal) => servers.list({ limit: 100, sort: "name" }, { signal }), "settings-servers", { intervalMs: null });
   const { act, save } = usePatch(api, app, onSaved);
-  const dirty = name.trim() !== app.name || description !== (app.description ?? "") || serverId !== app.serverId;
+  const dirty = name.trim() !== app.name || description !== (app.description ?? "");
   return (
     <div className="grid max-w-3xl gap-8">
       <form
         className="grid gap-5"
         onSubmit={(e) => {
           e.preventDefault();
-          void save({ name: name.trim(), description: description.trim() || null, ...(serverId !== app.serverId ? { serverId } : {}) }, "Application updated");
+          void save({ name: name.trim(), description: description.trim() || null }, "Application updated");
         }}
       >
         <SectionTitle index="01">General</SectionTitle>
         <Field label="Name" error={fieldError(act.fields, "name")}>{(c) => <Input {...c} value={name} onChange={(e) => setName(e.target.value)} />}</Field>
         <Field label="Description">{(c) => <Textarea {...c} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />}</Field>
-        <Field label="Server" hint="Moving to another server takes effect on the next deployment; domains move with it.">
-          {(c) => (
-            <NativeSelect {...c} value={serverId} onChange={(e) => setServerId(e.target.value)}>
-              {(list.data?.items ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} · {s.host}
-                </option>
-              ))}
-              {!(list.data?.items ?? []).some((s) => s.id === app.serverId) && <option value={app.serverId}>Current server</option>}
-            </NativeSelect>
-          )}
-        </Field>
         <p className="font-mono text-2xs text-muted-foreground">slug: {app.slug} · id: {app.id}</p>
         <FormError message={act.error} />
         <div><SaveButton pending={act.pending} disabled={!dirty || !name.trim()} /></div>
       </form>
+      <MovePanel kind="applications" id={app.id} name={app.name} currentServerId={app.serverId} api={api} servers={servers} onMoved={onSaved} />
       {isAdminRole(me?.role) && <CustomLabelsEditor app={app} api={api} onSaved={onSaved} />}
       <section className="grid gap-3 border border-danger/50 p-4">
         <h3 className="text-base font-medium text-danger">Danger zone</h3>

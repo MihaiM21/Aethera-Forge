@@ -51,6 +51,15 @@ public sealed record CreateServerRequest
 
     public int? MaxConcurrentBuilds { get; init; }
 
+    /// <summary>Build quota (ADR 0012): CPU cores of the BuildKit builder container; absent = unlimited (the Docker daemon's own builder).</summary>
+    public double? BuildCpuLimit { get; init; }
+
+    /// <summary>Build quota (ADR 0012): memory of the builder container; absent = unlimited.</summary>
+    public long? BuildMemoryLimitBytes { get; init; }
+
+    /// <summary>The registry images built here for another server are pushed to (a registry of the organization). Absent = building for another server is refused.</summary>
+    public Guid? BuildRegistryId { get; init; }
+
     /// <summary>A secret holding the SSH private key or password.</summary>
     public Guid? SshCredentialSecretId { get; init; }
 
@@ -71,6 +80,16 @@ public sealed record UpdateServerRequest
     public string? WildcardDomain { get; init; }
 
     [NotClearable] public int? MaxConcurrentBuilds { get; init; }
+
+    /// <summary>See <see cref="CreateServerRequest.BuildCpuLimit"/>; null = unlimited.</summary>
+    public double? BuildCpuLimit { get; init; }
+
+    /// <summary>See <see cref="CreateServerRequest.BuildMemoryLimitBytes"/>; null = unlimited.</summary>
+    public long? BuildMemoryLimitBytes { get; init; }
+
+    /// <summary>See <see cref="CreateServerRequest.BuildRegistryId"/>; null = none.</summary>
+    public Guid? BuildRegistryId { get; init; }
+
     public Guid? SshCredentialSecretId { get; init; }
 
     /// <summary><c>pending</c>, <c>active</c>, <c>maintenance</c> or <c>disabled</c>.</summary>
@@ -94,7 +113,8 @@ public sealed record ServerResponse(
     Guid Id, string Name, string Host, int SshPort, string? SshUser, ServerTransport Transport, IReadOnlyList<ServerRole> Roles,
     ServerLifecycle Lifecycle, string? PublicIp, int MaxConcurrentBuilds, Guid? SshCredentialSecretId, ServerResourcesResponse Resources,
     ServerStatusResponse Status, string? AgentVersion, int WorkloadCount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    string? WildcardDomain = null, string? AutomaticDomainBase = null);
+    string? WildcardDomain = null, string? AutomaticDomainBase = null,
+    double? BuildCpuLimit = null, long? BuildMemoryLimitBytes = null, Guid? BuildRegistryId = null);
 
 public static partial class ServerRules
 {
@@ -108,6 +128,9 @@ public static partial class ServerRules
         host is not null && host.Length <= 253 && (IPAddress.TryParse(host, out _) || HostnameRules.TryNormalize(host, allowWildcard: false, out _, out _));
 
     public static bool IsValidIp(string? ip) => ip is not null && IPAddress.TryParse(ip, out _);
+
+    /// <summary>The smallest memory quota of the BuildKit builder container: below it BuildKit itself does not run reliably.</summary>
+    public const long MinBuildMemoryBytes = 128L * 1024 * 1024;
 
     /// <summary>A wildcard domain as stored: lower case, without a leading <c>*.</c>; null when it is not a hostname of at least two labels.</summary>
     public static string? NormalizeWildcard(string? input)
@@ -139,6 +162,9 @@ public sealed class CreateServerValidator : AbstractValidator<CreateServerReques
         RuleFor(x => x.PublicIp).Must(ServerRules.IsValidIp).WithErrorCode("pattern").WithMessage("Must be an IPv4 or IPv6 address.")
             .When(x => x.PublicIp is not null);
         RuleFor(x => x.MaxConcurrentBuilds).InclusiveBetween(1, 64).When(x => x.MaxConcurrentBuilds is not null);
+        RuleFor(x => x.BuildCpuLimit).GreaterThan(0).LessThanOrEqualTo(1024).When(x => x.BuildCpuLimit is not null);
+        RuleFor(x => x.BuildMemoryLimitBytes).GreaterThanOrEqualTo(ServerRules.MinBuildMemoryBytes).WithMessage("Must be at least 134217728 (128 MiB).")
+            .When(x => x.BuildMemoryLimitBytes is not null);
         RuleFor(x => x.WildcardDomain).Must(ServerRules.IsValidWildcard).WithErrorCode("pattern")
             .WithMessage("Must be a domain such as apps.example.com.").When(x => x.WildcardDomain is not null);
         RuleFor(x => x.Resources).SetValidator(new ServerResourcesValidator()!);
@@ -164,6 +190,9 @@ public sealed class UpdateServerValidator : AbstractValidator<UpdateServerReques
         RuleFor(x => x.PublicIp).Must(ServerRules.IsValidIp).WithErrorCode("pattern").WithMessage("Must be an IPv4 or IPv6 address.")
             .When(x => x.PublicIp is not null);
         RuleFor(x => x.MaxConcurrentBuilds).InclusiveBetween(1, 64).When(x => x.MaxConcurrentBuilds is not null);
+        RuleFor(x => x.BuildCpuLimit).GreaterThan(0).LessThanOrEqualTo(1024).When(x => x.BuildCpuLimit is not null);
+        RuleFor(x => x.BuildMemoryLimitBytes).GreaterThanOrEqualTo(ServerRules.MinBuildMemoryBytes).WithMessage("Must be at least 134217728 (128 MiB).")
+            .When(x => x.BuildMemoryLimitBytes is not null);
         RuleFor(x => x.WildcardDomain).Must(ServerRules.IsValidWildcard).WithErrorCode("pattern")
             .WithMessage("Must be a domain such as apps.example.com.").When(x => x.WildcardDomain is not null);
         RuleFor(x => x.Resources).SetValidator(new ServerResourcesValidator()!);
@@ -228,9 +257,11 @@ internal static class ServerEndpoints
         var name = request.Name!.Trim();
         await EnsureNameFreeAsync(db, org, name, null, ct);
         if (request.SshCredentialSecretId is { } secretId) await ManagedSecrets.ClaimForServerAsync(db, org, secretId, "/sshCredentialSecretId", ct);
+        if (request.BuildRegistryId is { } buildRegistryId) await db.RequireRegistryAsync(org, buildRegistryId, "/buildRegistryId", ct);
 
         var server = new Server
         {
+            BuildCpuLimit = request.BuildCpuLimit, BuildMemoryLimitBytes = request.BuildMemoryLimitBytes, BuildRegistryId = request.BuildRegistryId,
             OrganizationId = org, Name = name, Host = request.Host!.Trim().ToLowerInvariant(), SshPort = request.SshPort ?? 22, SshUser = request.SshUser,
             Transport = EnumText.Parse<ServerTransport>(request.Transport) ?? ServerTransport.Agent,
             Roles = (request.Roles ?? []).Select(r => EnumText.Parse<ServerRole>(r)!.Value).Distinct().ToList(),
@@ -291,6 +322,15 @@ internal static class ServerEndpoints
         if (patch.Has("publicIp")) { server.PublicIp = NormalizeIp(body.PublicIp); changed.Add("publicIp"); }
         if (patch.Has("wildcardDomain")) { server.WildcardDomain = ServerRules.NormalizeWildcard(body.WildcardDomain); changed.Add("wildcardDomain"); }
         if (patch.Has("maxConcurrentBuilds") && body.MaxConcurrentBuilds is { } builds) { server.MaxConcurrentBuilds = builds; changed.Add("maxConcurrentBuilds"); }
+        if (patch.Has("buildCpuLimit")) { server.BuildCpuLimit = body.BuildCpuLimit; changed.Add("buildCpuLimit"); }
+        if (patch.Has("buildMemoryLimitBytes")) { server.BuildMemoryLimitBytes = body.BuildMemoryLimitBytes; changed.Add("buildMemoryLimitBytes"); }
+        if (patch.Has("buildRegistryId"))
+        {
+            // The registry must be one of this organization (422 not_found otherwise); null takes it off.
+            if (body.BuildRegistryId is { } registryId) await db.RequireRegistryAsync(org, registryId, "/buildRegistryId", ct);
+            server.BuildRegistryId = body.BuildRegistryId;
+            changed.Add("buildRegistryId");
+        }
         if (patch.Has("lifecycle") && EnumText.Parse<ServerLifecycle>(body.Lifecycle) is { } lifecycle) { server.Lifecycle = lifecycle; changed.Add("lifecycle"); }
         if (patch.Has("sshCredentialSecretId"))
         {
@@ -360,5 +400,6 @@ internal static class ServerEndpoints
             new ReachabilityStatusResponse(s.ReachabilityStatus, s.ReachabilityCheckedAt, s.ReachabilityChangedAt, s.ReachabilityProbePort),
             new AgentStatusResponse(s.AgentStatus, s.LastHeartbeatAt, s.AgentStatusChangedAt),
             new DockerStatusResponse(s.DockerStatus, s.DockerStatusChangedAt)),
-        s.AgentVersion, workloadCount, s.CreatedAt, s.UpdatedAt, s.WildcardDomain, DefaultDomainService.KnownBaseDomain(s));
+        s.AgentVersion, workloadCount, s.CreatedAt, s.UpdatedAt, s.WildcardDomain, DefaultDomainService.KnownBaseDomain(s),
+        s.BuildCpuLimit, s.BuildMemoryLimitBytes, s.BuildRegistryId);
 }
