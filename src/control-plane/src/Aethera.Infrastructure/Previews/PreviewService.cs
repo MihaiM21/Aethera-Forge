@@ -49,9 +49,8 @@ public sealed class PreviewService(AetheraDbContext db, IJobQueue jobs, IClock c
             case PullRequestAction.Closed or PullRequestAction.Merged:
                 if (existing is null or { Status: PreviewStatus.Removed or PreviewStatus.Closing })
                     return PreviewEventResult.Ignored(existing is null ? "The pull request has no preview." : "The preview is already being removed.");
-                existing.ClosedAt = now;
-                existing.LastEventAt = now;
-                var job = await CloseAsync(app, existing, pr.Action == PullRequestAction.Merged ? "The pull request was merged." : "The pull request was closed.", ct);
+                var job = await CloseAsync(app, existing, pr.Action == PullRequestAction.Merged ? "The pull request was merged." : "The pull request was closed.", ct,
+                    closedByPullRequest: true);
                 PreviewAudit.Record(db, clock, await OrganizationOfAsync(app.Id, ct), "preview.teardown_requested", existing.Id,
                     new { applicationId = app.Id, number = existing.Number, merged = pr.Action == PullRequestAction.Merged });
                 await db.SaveChangesAsync(ct);
@@ -152,7 +151,11 @@ public sealed class PreviewService(AetheraDbContext db, IJobQueue jobs, IClock c
     /// Marks the preview Closing, cancels the deployments that did not start yet and queues <c>preview.teardown</c>. A pull request that was
     /// closed keeps <see cref="PreviewEnvironment.ClosedAt"/>; a preview removed by hand does not (a later push may bring it back).
     /// </summary>
-    private async Task<Job> CloseAsync(Application app, PreviewEnvironment preview, string reason, CancellationToken ct)
+    /// <remarks>
+    /// The preview's own deployment job writes the same row while it runs (status, the comment id), so every write here goes through
+    /// <see cref="ConcurrencySupport.SaveWithRetryAsync"/>: a close that lost the race must still close, not answer the webhook with a conflict.
+    /// </remarks>
+    private async Task<Job> CloseAsync(Application app, PreviewEnvironment preview, string reason, CancellationToken ct, bool closedByPullRequest = false)
     {
         var now = clock.UtcNow;
         await CancelQueuedAsync(preview.Id, now, ct);
@@ -161,6 +164,9 @@ public sealed class PreviewService(AetheraDbContext db, IJobQueue jobs, IClock c
             preview.Status = PreviewStatus.Closing;
             preview.StatusReason = reason;
             preview.StatusChangedAt = now;
+            if (!closedByPullRequest) return;
+            preview.ClosedAt = now;
+            preview.LastEventAt = now;
         }, ct);
 
         return await QueueTeardownAsync(app.Id, preview, ct);
@@ -179,8 +185,12 @@ public sealed class PreviewService(AetheraDbContext db, IJobQueue jobs, IClock c
     {
         // A queued deployment whose job starts later finds it finished and does nothing; one in progress is left to its job (teardown waits for the lock).
         var queued = await db.Deployments.Include(d => d.Steps).Where(d => d.PreviewId == previewId && d.Status == DeploymentStatus.Queued).ToListAsync(ct);
-        foreach (var deployment in queued) deployment.MarkCancelled(now);
-        if (queued.Count > 0) await db.SaveChangesAsync(ct);
+        if (queued.Count == 0) return;
+        // A job may pick one up meanwhile: after a conflict the row is reloaded, and one that started is no longer cancelled here.
+        await ConcurrencySupport.SaveWithRetryAsync(db, () =>
+        {
+            foreach (var deployment in queued.Where(d => d.Status == DeploymentStatus.Queued)) deployment.MarkCancelled(now);
+        }, ct);
     }
 
     // ---- deploying -------------------------------------------------------------------------------------------------------------------
