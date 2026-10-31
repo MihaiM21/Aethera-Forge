@@ -24,6 +24,9 @@ REPO="${AETHERA_REPO:-MihaiM21/aethera-forge}"
 MODE="cli"
 BACKUP_DIR="${AETHERA_BACKUP_DIR:-$DIR/backups}"
 HEALTH_TIMEOUT="${AETHERA_HEALTH_TIMEOUT:-180}"
+# Where a release's files (docker-compose.prod.yml, aethera-ctl.sh) are downloaded from: <base>/v<version>/<file>. A mirror or a test
+# server through AETHERA_RELEASE_URL (also read from the .env, where install.sh records it).
+RELEASE_URL="${AETHERA_RELEASE_URL:-}"
 
 say() { printf '==> %s\n' "$*"; }
 die() { printf 'aethera: %s\n' "$*" >&2; exit 1; }
@@ -88,6 +91,34 @@ pull_or_have() {
   done
 }
 
+# Downloads the files of release <version> into <dir>: its compose file (always) and its aethera script (when it can be had).
+# Fails when the compose file cannot be downloaded; an air-gapped installation has no release server and keeps its own.
+fetch_release() { # fetch_release <version> <dir>
+  command -v curl >/dev/null 2>&1 || return 1
+  base="${RELEASE_URL:-$(env_get AETHERA_RELEASE_URL)}"
+  base="${base:-https://github.com/$REPO/releases/download}"
+  mkdir -p "$2"
+  curl -fsSL --max-time 60 "$base/v$1/docker-compose.prod.yml" -o "$2/docker-compose.yml" 2>/dev/null && [ -s "$2/docker-compose.yml" ] || return 1
+  curl -fsSL --max-time 60 "$base/v$1/aethera-ctl.sh" -o "$2/aethera-ctl.sh" 2>/dev/null && [ -s "$2/aethera-ctl.sh" ] || rm -f "$2/aethera-ctl.sh"
+}
+
+# Replaces this command with the one of the new release once the update has succeeded. Only on the host: in the updater container the
+# new updater image brings its own copy.
+install_ctl() { # install_ctl <new script>
+  [ "$MODE" = cli ] && [ -s "$1" ] || return 0
+  head -n1 "$1" | grep -q '^#!/bin/sh' || return 0 # not a script (an error page): keep the current one
+  self="$(command -v "$0" 2>/dev/null || printf '%s' "$0")"
+  [ -f "$self" ] && [ -w "$self" ] || return 0
+  if cat "$1" > "$self.new" && chmod 0755 "$self.new"; then mv "$self.new" "$self"; else rm -f "$self.new"; fi
+}
+
+# Puts the .env and the compose file back as they were before the update started (written in place: either may be a bind mount).
+restore_files() { # restore_files <ts>
+  cat "$ENV_FILE.before-$1" > "$ENV_FILE"
+  [ -f "$COMPOSE_FILE.before-$1" ] && cat "$COMPOSE_FILE.before-$1" > "$COMPOSE_FILE"
+  return 0
+}
+
 do_update() { # do_update <version>
   target="$1"
   require_install
@@ -102,10 +133,29 @@ do_update() { # do_update <version>
   ls -1t "$BACKUP_DIR"/aethera-pre-update-*.dump 2>/dev/null | tail -n +6 | while read -r old; do rm -f "$old"; done
 
   cp "$ENV_FILE" "$ENV_FILE.before-$ts"
+  cp "$COMPOSE_FILE" "$COMPOSE_FILE.before-$ts"
+  ls -1t "$COMPOSE_FILE".before-* 2>/dev/null | tail -n +6 | while read -r old; do rm -f "$old"; done
   env_set AETHERA_VERSION "$target"
+
+  # A release can change the stack itself (a capability, a network alias, a new setting), not only its images: the new version runs with
+  # its own compose file. One that cannot be downloaded (no release server) leaves the current file, and the update says so.
+  files="$DIR/.update-$ts"
+  note=""
+  report pulling "$target" "Downloading the compose file of $target"
+  if fetch_release "$target" "$files"; then
+    if ! docker compose -p aethera --project-directory "$DIR" -f "$files/docker-compose.yml" --env-file "$ENV_FILE" config -q >/dev/null 2>&1; then
+      restore_files "$ts"; rm -rf "$files"
+      report failed "$target" "The compose file of $target is not valid for this installation; nothing was changed."
+      return 1
+    fi
+    cat "$files/docker-compose.yml" > "$COMPOSE_FILE"
+  else
+    note=" The compose file of $target could not be downloaded; the current one was kept."
+  fi
+
   report pulling "$target" "Pulling the images of $target"
   if ! pull_or_have; then
-    cp "$ENV_FILE.before-$ts" "$ENV_FILE"
+    restore_files "$ts"; rm -rf "$files"
     report failed "$target" "The images of $target could not be pulled and are not on this machine; nothing was changed."
     return 1
   fi
@@ -116,7 +166,9 @@ do_update() { # do_update <version>
   if [ -n "$(dc ps -q agent 2>/dev/null)" ]; then dc up -d --no-deps agent || true; fi
 
   if wait_healthy "$HEALTH_TIMEOUT"; then
-    report "done" "$target" "Aethera is running $target."
+    install_ctl "$files/aethera-ctl.sh"
+    rm -rf "$files"
+    report "done" "$target" "Aethera is running $target.$note"
     # The updater replaces itself last. `compose up` stops the container it runs in, which would kill it before the new one exists, so a
     # short-lived helper container (the same image) does it, a couple of seconds from now.
     if [ "$MODE" = daemon ]; then swap_updater; fi
@@ -125,7 +177,7 @@ do_update() { # do_update <version>
 
   report restarting "$target" "$target did not become healthy; restoring $current and the database backup"
   dc stop aethera >/dev/null 2>&1 || true
-  cp "$ENV_FILE.before-$ts" "$ENV_FILE"
+  restore_files "$ts"; rm -rf "$files"
   # The new version may have migrated the schema; the old one refuses to start on a newer schema, so the backup goes back first.
   restore_from "$dump" >/dev/null 2>&1 || say "warning: restoring the database backup reported errors (often harmless on a clean --clean run)"
   dc up -d --no-deps aethera || true
