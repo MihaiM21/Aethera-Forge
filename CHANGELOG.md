@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-31
+
+From 0.2.0, update with *Update to 0.2.1* in Settings or `aethera update`. From 0.1, follow "Upgrading from 0.1" under 0.2.0 with `--version 0.2.1`.
+
 ### Fixed
 - A deployment's log shows what the server printed: the output of `docker compose build` and `up` appears live in the Deploy log, and an image build's output in the Build log. The control plane dropped compose output (the agent sends it under a stream id it did not recognise) and filed build output where nothing read it, so a failed deployment said only "compose up: exit status 1". The same fix brings back the output of scheduled task runs.
 - A compose project that does not start names the service that stopped and why: the deployment log lists every service's state (exited with code 1, unhealthy, not started) with the last lines of the output of each one that stopped, and the failure message names them.
