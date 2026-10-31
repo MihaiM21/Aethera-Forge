@@ -240,12 +240,13 @@ public sealed class BackupRestoreJobHandler : IJobHandler
             ct.ThrowIfCancellationRequested();
             var status = await db.Deployments.AsNoTracking().Where(d => d.Id == queued.Deployment.Id)
                 .Select(d => new { d.Status, d.FailureReason }).FirstAsync(ct);
-            if (status.Status == DeploymentStatus.Running) break;
             if (status.Status is DeploymentStatus.Failed or DeploymentStatus.Cancelled)
                 throw JobFailedException.Permanent("backup.new_service_failed", "The new service did not start",
                     $"{status.FailureReason ?? status.Status.ToString()} The service {name} was created and can be deleted.", "deploy");
             // The deploy job can die without finishing the deployment row: do not wait for a deployment nobody is running.
             var deployJob = await db.Jobs.AsNoTracking().Where(j => j.Id == queued.JobId).Select(j => new { j.Status, j.ErrorJson }).FirstAsync(ct);
+            // The deployment row turns Running before the job promotes the service: wait for both, so the service is Running too.
+            if (status.Status == DeploymentStatus.Running && deployJob.Status == JobStatus.Succeeded) break;
             if (deployJob.Status is JobStatus.Failed or JobStatus.Cancelled)
                 throw JobFailedException.Permanent("backup.new_service_failed", "The new service did not start",
                     $"The deployment job {deployJob.Status.ToString().ToLowerInvariant()}. The service {name} was created and can be deleted.", "deploy");
