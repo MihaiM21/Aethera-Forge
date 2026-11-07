@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-07
+
+### Added
+- Application logo and description
+
 ## [0.2.1] - 2026-10-31
 
 From 0.2.0, update with *Update to 0.2.1* in Settings or `aethera update`. From 0.1, follow "Upgrading from 0.1" under 0.2.0 with `--version 0.2.1`.
