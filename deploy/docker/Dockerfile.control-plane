@@ -34,10 +34,12 @@ WORKDIR /app
 # pg_dump for the scheduled and the pre-migration database backups. The client must be at least as new as the server (PostgreSQL 17 in
 # the compose files), which Ubuntu's own archive does not have: the PostgreSQL project's repository does.
 ARG PG_CLIENT_MAJOR=17
-RUN apt-get update \
+# The key download retries: www.postgresql.org drops connections from CI runners now and then (curl exit 56 failed install-e2e).
+RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl gnupg tzdata \
     && install -d /usr/share/postgresql-common/pgdg \
-    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     && . /etc/os-release \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
