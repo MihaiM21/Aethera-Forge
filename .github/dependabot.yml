@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /src/control-plane
+    schedule: { interval: weekly }
+    groups:
+      nuget: { patterns: ["*"] }
+  - package-ecosystem: gomod
+    directory: /src/agent
+    schedule: { interval: weekly }
+    groups:
+      go: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /src/web
+    schedule: { interval: weekly }
+    groups:
+      npm: { patterns: ["*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule: { interval: monthly }

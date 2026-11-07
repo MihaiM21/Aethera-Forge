@@ -2,6 +2,8 @@
 
 Thank you for helping. Aethera is a self-hosted deployment platform (a Coolify alternative): a .NET control plane, a Go agent per server and a Next.js UI. This page is the short version; the details live in the documents it links to.
 
+By taking part you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Where to start
 
 - [`docs/plan.md`](docs/plan.md) is the approved plan and the design system; [`docs/roadmap.md`](docs/roadmap.md) is the status; [`docs/architecture/`](docs/architecture/README.md) holds the decisions (ADRs) and an overview; [`docs/idea/01_AppIdea.md`](docs/idea/01_AppIdea.md) is the product spec.

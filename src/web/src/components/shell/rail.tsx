@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
+import { LogoMark } from "./logo-mark";
 import { MAIN_NAV, PINNED_NAV, isActive, type NavItem } from "./nav-items";
 import { UserMenu } from "./user-menu";
 
@@ -14,12 +15,9 @@ export function BrandMark({ className }: { className?: string }) {
     <Link
       href="/dashboard"
       aria-label="Aethera home"
-      className={cn(
-        "focus-ring flex size-8 items-center justify-center border border-primary font-mono text-sm font-semibold text-lime",
-        className,
-      )}
+      className={cn("focus-ring flex size-8 shrink-0 items-center justify-center", className)}
     >
-      A
+      <LogoMark />
     </Link>
   );
 }

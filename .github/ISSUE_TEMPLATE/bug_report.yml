@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not paste secrets** (tokens, passwords, the master key, `.env` files). For a security problem use the private link on the issue chooser instead.
+  - type: input
+    id: version
+    attributes:
+      label: Aethera version
+      description: Settings > System, or the release tag.
+      placeholder: v0.2.1
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web UI
+        - Control plane (API)
+        - Agent
+        - Deployments and builds
+        - Domains and proxy
+        - Multi-server and network
+        - Backups
+        - Installer and updater
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS and architecture of the control plane and the affected server, Docker version, how Aethera was installed.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: The deployment log, `docker compose logs`, browser console. Remove anything sensitive.
+      render: shell
