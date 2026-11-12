@@ -46,7 +46,7 @@ jobs:
       AETHERA_TEST_DB: Host=localhost;Port=5432;Username=aethera;Password=aethera;Database=postgres
       AETHERA_TEST_REDIS: localhost:6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -67,7 +67,7 @@ jobs:
       run:
         working-directory: src/agent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version-file: src/agent/go.mod
@@ -79,7 +79,7 @@ jobs:
   proto:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Plugin versions match the headers of the committed generated code.
       - uses: actions/setup-go@v5
         with:
@@ -109,7 +109,7 @@ jobs:
       run:
         working-directory: src/web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: src/web/package.json
@@ -128,7 +128,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Shell scripts
         run: |
           shellcheck -S warning deploy/install.sh deploy/install-agent.sh deploy/aethera-ctl.sh deploy/install-e2e.sh deploy/docker/control-plane-entrypoint.sh deploy/docker/agent-entrypoint.sh
@@ -147,6 +147,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: bash deploy/install-e2e.sh
 
