@@ -1,7 +1,7 @@
 # The updater: watches for update requests written by the control plane (the UI's Update button) and carries them out with
 # `docker compose` against the installation directory. Has the Docker socket (root-equivalent): it is an opt-in profile of the
 # production compose file. Build context: the repository root.
-FROM docker:27-cli
+FROM docker:28-cli
 ARG VERSION=0.0.0-dev
 LABEL org.opencontainers.image.title="Aethera updater" \
       org.opencontainers.image.source="https://github.com/MihaiM21/aethera-forge" \
