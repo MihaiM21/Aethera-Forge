@@ -23,7 +23,7 @@ RUN case "${TARGETARCH:-amd64}" in arm64) arch=arm64 ;; *) arch=x64 ;; esac \
     && dotnet publish src/control-plane/src/Aethera.Api/Aethera.Api.csproj -c Release -a "$arch" -o /app \
     -p:OpenApiGenerateDocuments=false -p:Version=${VERSION} -p:InformationalVersion=${VERSION}
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:11.0
 ARG VERSION=0.0.0-dev
 LABEL org.opencontainers.image.title="Aethera control plane" \
       org.opencontainers.image.source="https://github.com/MihaiM21/aethera-forge" \
