@@ -11,7 +11,7 @@
     <!-- The EF Core family moves together (Dependabot group "efcore"). -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.4" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
     <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />
     <!-- Auth: PasswordHasher<TUser> (PBKDF2, versioned, rehash-aware) without the rest of ASP.NET Identity -->
     <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.13" />
