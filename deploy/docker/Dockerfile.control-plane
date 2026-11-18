@@ -10,7 +10,7 @@ RUN pnpm install --frozen-lockfile
 COPY src/web/ ./
 RUN pnpm build
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS api
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0 AS api
 ARG TARGETARCH
 WORKDIR /src
 COPY proto/ proto/
