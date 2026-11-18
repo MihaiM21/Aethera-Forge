@@ -361,7 +361,8 @@ public sealed class PreviewApiTests(PreviewsFixture fixture)
         var report = await SweepAsync(app);
 
         Assert.Equal(1, report.Stale);
-        Assert.Equal(1, report.Deployed);
+        // The freed slot is used by whichever runs first: this sweep or the teardown job it queued (which promotes too).
+        Assert.InRange(report.Deployed, 0, 1);
         await _h.WaitForRemovedAsync(app, 3);
         await _h.WaitForPreviewAsync(app, 2, p => p.Status == PreviewStatus.Running, "the pending preview to run");
         Assert.Equal(running.Id, (await _h.PreviewAsync(app, 1)).Id);
