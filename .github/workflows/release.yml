@@ -77,7 +77,7 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.version.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.version }},enable=${{ needs.version.outputs.prerelease == 'false' }}
             type=raw,value=latest,enable=${{ needs.version.outputs.prerelease == 'false' && needs.version.outputs.publish == 'true' }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
