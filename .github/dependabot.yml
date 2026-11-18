@@ -1,23 +1,62 @@
 version: 2
+# Minor and patch updates arrive grouped (one PR per ecosystem); a major update gets its own PR, so one breaking bump cannot block the rest.
 updates:
   - package-ecosystem: nuget
     directory: /src/control-plane
     schedule: { interval: weekly }
     groups:
-      nuget: { patterns: ["*"] }
+      # EF Core comes in through Npgsql and EF Design: the family must move together (see Directory.Packages.props).
+      efcore:
+        patterns: ["Microsoft.EntityFrameworkCore*", "Npgsql*", "EFCore.*"]
+        update-types: [minor, patch]
+      nuget:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # The solution targets net10.0: moving to the next .NET (11.x packages, dotnet-ef 11) is a planned upgrade, not a Dependabot bump.
+      - dependency-name: "Microsoft.*"
+        update-types: [version-update:semver-major]
+      - dependency-name: "System.*"
+        update-types: [version-update:semver-major]
+      - dependency-name: "dotnet-ef"
+        update-types: [version-update:semver-major]
+      - dependency-name: "Npgsql*"
+        update-types: [version-update:semver-major]
+      - dependency-name: "EFCore.*"
+        update-types: [version-update:semver-major]
   - package-ecosystem: gomod
     directory: /src/agent
     schedule: { interval: weekly }
     groups:
-      go: { patterns: ["*"] }
+      go:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /src/web
     schedule: { interval: weekly }
     groups:
-      npm: { patterns: ["*"] }
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint does not support TypeScript 7 yet.
+      - dependency-name: "typescript"
+        update-types: [version-update:semver-major]
+      # Follows the Node major the web build runs on (CI and Dockerfile.control-plane).
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /deploy/docker
     schedule: { interval: monthly }
+    ignore:
+      # Node moves from one LTS to the next by hand; Go follows src/agent/go.mod.
+      - dependency-name: "node"
+        update-types: [version-update:semver-major]
+      - dependency-name: "golang"
+        update-types: [version-update:semver-major, version-update:semver-minor]
