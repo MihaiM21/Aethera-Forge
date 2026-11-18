@@ -265,8 +265,28 @@ public sealed class PreviewService(AetheraDbContext db, IJobQueue jobs, IClock c
         return new QueuedDeployment(deployment, job.Id);
     }
 
-    /// <summary>Deploys the Pending previews of an application, oldest first, while slots are free. Returns how many were queued.</summary>
+    /// <summary>
+    /// Deploys the Pending previews of an application, oldest first, while slots are free. Returns how many were queued.
+    /// The sweep and a finishing teardown both call this, often at the same moment: one at a time per application (a transaction-scoped advisory
+    /// lock), so the second one sees the first one's deployment instead of cancelling it from a stale read and leaving the preview Deploying.
+    /// </summary>
     public async Task<int> PromotePendingAsync(Guid applicationId, CancellationToken ct)
+    {
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
+        await AcquirePromoteLockAsync(db, applicationId, ct);
+        var queued = await PromotePendingLockedAsync(applicationId, ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
+        return queued;
+    }
+
+    /// <summary>Takes the per-application promotion lock until the surrounding transaction ends; call it only inside one.</summary>
+    public static Task AcquirePromoteLockAsync(AetheraDbContext db, Guid applicationId, CancellationToken ct)
+    {
+        var key = $"preview-promote:{applicationId:N}";
+        return db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))", ct);
+    }
+
+    private async Task<int> PromotePendingLockedAsync(Guid applicationId, CancellationToken ct)
     {
         var app = await db.Applications.Include(a => a.GitSource).FirstOrDefaultAsync(a => a.Id == applicationId, ct);
         if (app is null || !app.Previews.Enabled) return 0;

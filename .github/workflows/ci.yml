@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Pushes to master only: a pull request branch is already built by pull_request (both would run otherwise).
   push:
+    branches: [master]
   pull_request:
 
 concurrency:
@@ -115,7 +117,7 @@ jobs:
           package_json_file: src/web/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: src/web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile

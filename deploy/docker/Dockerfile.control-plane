@@ -1,8 +1,9 @@
 # Aethera control plane: Next.js export + .NET API in one image. Build context: the repository root.
 # The web export and the .NET publish are platform independent: they run natively on the build machine (BUILDPLATFORM) and are only copied
 # into the per-architecture runtime stage. Running them under QEMU for linux/arm64 is slow and .NET is known to crash or hang there.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web
-RUN corepack enable
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+# Node 25+ no longer bundles corepack: install it explicitly.
+RUN npm install -g corepack && corepack enable
 WORKDIR /src/web
 COPY src/web/package.json src/web/pnpm-lock.yaml src/web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile

@@ -361,7 +361,8 @@ public sealed class PreviewApiTests(PreviewsFixture fixture)
         var report = await SweepAsync(app);
 
         Assert.Equal(1, report.Stale);
-        Assert.Equal(1, report.Deployed);
+        // The freed slot is used by whichever runs first: this sweep or the teardown job it queued (which promotes too).
+        Assert.InRange(report.Deployed, 0, 1);
         await _h.WaitForRemovedAsync(app, 3);
         await _h.WaitForPreviewAsync(app, 2, p => p.Status == PreviewStatus.Running, "the pending preview to run");
         Assert.Equal(running.Id, (await _h.PreviewAsync(app, 1)).Id);
@@ -369,6 +370,46 @@ public sealed class PreviewApiTests(PreviewsFixture fixture)
 
         // A second pass has nothing left to do.
         Assert.Equal(new PreviewSweepReport(0, 0, 0), await SweepAsync(app));
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Concurrent_promotions_deploy_a_pending_preview_once_and_it_runs()
+    {
+        _h.Scripted();
+        var app = await _h.NewAppAsync(maxActive: 1);
+        await _h.WaitForDeploymentAsync(DeploymentIdOf(await app.SendOkAsync("opened", 1)));
+        var first = await _h.WaitForPreviewAsync(app, 1, p => p.Status == PreviewStatus.Running, "the first preview to run");
+        await app.SendOkAsync("opened", 2);
+        var pending = await _h.PreviewAsync(app, 2);
+        Assert.Equal(PreviewStatus.Pending, pending.Status);
+
+        // The slot frees up and the sweep and the teardown job promote at the same moment (each with its own scope and context). Unserialized,
+        // the later one read the preview as Pending, cancelled the deployment the earlier one had just queued and left the preview Deploying.
+        await _h.WithDbAsync(db => db.Previews.Where(p => p.Id == first.Id).ExecuteUpdateAsync(u => u.SetProperty(p => p.Status, PreviewStatus.Removed)));
+        async Task<int> PromoteAsync()
+        {
+            await using var scope = fixture.Factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<PreviewService>().PromotePendingAsync(app.AppGuid, CancellationToken.None);
+        }
+
+        // One promoter holds the lock: another one waits for it, then finds nothing left to deploy.
+        await using (var holder = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var db = holder.ServiceProvider.GetRequiredService<AetheraDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await PreviewService.AcquirePromoteLockAsync(db, app.AppGuid, CancellationToken.None);
+            var waiting = Task.Run(PromoteAsync);
+            await Task.Delay(1000);
+            Assert.False(waiting.IsCompleted, "a second promotion must wait for the first one");
+            Assert.Equal(1, await holder.ServiceProvider.GetRequiredService<PreviewService>().PromotePendingAsync(app.AppGuid, CancellationToken.None));
+            await transaction.CommitAsync();
+            Assert.Equal(0, await waiting.WaitAsync(TimeSpan.FromSeconds(30)));
+        }
+
+        // And many at once still deploy it exactly once.
+        Assert.Equal(0, (await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(PromoteAsync)))).Sum());
+        Assert.Equal(1, await _h.WithDbAsync(db => db.Deployments.CountAsync(d => d.PreviewId == pending.Id && d.Status != DeploymentStatus.Cancelled)));
+        await _h.WaitForPreviewAsync(app, 2, p => p.Status == PreviewStatus.Running, "the promoted preview to run");
     }
 
     private async Task<PreviewSweepReport> SweepAsync(PreviewApp app)
