@@ -14,6 +14,7 @@ public static class ResourceProblemCodes
     public const string ProjectNotEmpty = "project.not_empty";
     public const string EnvironmentNotEmpty = "environment.not_empty";
     public const string ServerInUse = "server.in_use";
+    public const string ServerBusy = "server.busy";
     public const string SecretInUse = "secret.in_use";
     public const string SecretManaged = "secret.managed";
     public const string SecretBindingForbidden = "secret.binding_forbidden";
