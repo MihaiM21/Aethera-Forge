@@ -252,8 +252,8 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
 
     private async Task<Npgsql.NpgsqlConnection> OpenRawConnectionAsync()
     {
-        var connectionString = await WithDbAsync(db => Task.FromResult(db.Database.GetConnectionString()!));
-        var connection = new Npgsql.NpgsqlConnection(connectionString);
+        // The factory's own connection string: one read back from an opened DbContext has the password stripped (Persist Security Info).
+        var connection = new Npgsql.NpgsqlConnection(fixture.Base.ConnectionString);
         await connection.OpenAsync();
         return connection;
     }
