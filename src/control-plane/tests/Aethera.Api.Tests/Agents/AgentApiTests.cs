@@ -250,6 +250,83 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
         }
     }
 
+    private async Task<Npgsql.NpgsqlConnection> OpenRawConnectionAsync()
+    {
+        var connectionString = await WithDbAsync(db => Task.FromResult(db.Database.GetConnectionString()!));
+        var connection = new Npgsql.NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        return connection;
+    }
+
+    private static async Task ExecAsync(Npgsql.NpgsqlConnection connection, string sql, params (string Name, object Value)[] args)
+    {
+        await using var command = new Npgsql.NpgsqlCommand(sql, connection);
+        foreach (var (name, value) in args) command.Parameters.AddWithValue(name, value);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Deleting_a_server_does_not_deadlock_with_a_writer_that_locks_certificates_before_the_server()
+    {
+        // AgentSessionHandler.SyncCertificatesAsync writes agent_certificates, then servers. A delete that locked the server first would
+        // wait on the certificate row while that writer waits on the server row: a deadlock (40P01).
+        var tenant = await fixture.NewTenantAsync();
+        var server = await tenant.CreateServerAsync();
+        var serverId = Guid.Parse(server.Id());
+        var name = server["name"]!.GetValue<string>();
+
+        var ca = fixture.Factory.Services.GetRequiredService<IInternalCa>();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AetheraDbContext>();
+            await ca.IssueAgentCertificateAsync(db, serverId, CsrValidator.Validate(PkiHelpers.NewCsr(key, "CN=a").CsrPem), DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync();
+        }
+
+        await using var other = await OpenRawConnectionAsync();
+        await using var tx = await other.BeginTransactionAsync();
+        await ExecAsync(other, "SELECT 1 FROM agent_certificates WHERE server_id = @id FOR UPDATE", ("id", serverId));
+
+        var delete = tenant.Admin.DeleteAsync($"{Base(server.Id())}?confirm={Uri.EscapeDataString(name)}");
+        // Wait until the delete is blocked on the certificate lock.
+        await GatewayFixture.EventuallyAsync(async () =>
+        {
+            await using var probe = await OpenRawConnectionAsync();
+            await using var command = new Npgsql.NpgsqlCommand(
+                "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%agent_certificates%FOR UPDATE%' AND pid <> pg_backend_pid()", probe);
+            return (long)(await command.ExecuteScalarAsync())! > 0;
+        }, "the delete to wait for the certificate lock");
+
+        await ExecAsync(other, "UPDATE servers SET updated_at = now() WHERE id = @id", ("id", serverId)); // would deadlock against a delete holding the server row
+        await tx.CommitAsync();
+
+        var response = await delete.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.NotNull((await WithDbAsync(db => db.Servers.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == serverId))).DeletedAt);
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Deleting_another_organizations_server_answers_404_without_locking_it()
+    {
+        var owner = await fixture.NewTenantAsync();
+        var stranger = await fixture.NewTenantAsync();
+        var server = await owner.CreateServerAsync();
+        var serverId = Guid.Parse(server.Id());
+        var name = server["name"]!.GetValue<string>();
+
+        await using var other = await OpenRawConnectionAsync();
+        await using var tx = await other.BeginTransactionAsync();
+        await ExecAsync(other, "SELECT 1 FROM servers WHERE id = @id FOR UPDATE", ("id", serverId));
+
+        // Were the row locked before the organization check, this would wait for our transaction.
+        var response = await stranger.Admin.DeleteAsync($"{Base(server.Id())}?confirm={Uri.EscapeDataString(name)}").WaitAsync(TimeSpan.FromSeconds(10));
+        await tx.CommitAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Null((await WithDbAsync(db => db.Servers.AsNoTracking().SingleAsync(s => s.Id == serverId))).DeletedAt);
+    }
+
     [RequiresDatabaseFact]
     public async Task Deleting_a_server_with_a_stale_if_match_is_still_refused()
     {

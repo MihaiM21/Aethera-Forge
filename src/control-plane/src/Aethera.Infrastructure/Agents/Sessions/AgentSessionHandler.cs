@@ -362,9 +362,10 @@ public sealed class AgentSessionHandler(
                 if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(cancellationToken);
                 return;
             }
-            catch (DbUpdateConcurrencyException) when (attempt < 3)
+            catch (Exception ex) when (attempt < 3 && (ex is DbUpdateConcurrencyException
+                || ex is DbUpdateException { InnerException: Npgsql.PostgresException { SqlState: "40P01" or "40001" } }))
             {
-                // Retry on fresh rows.
+                // Retry on fresh rows (a stale row version, or the database picked us as the deadlock/serialization victim).
             }
         }
     }

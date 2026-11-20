@@ -356,13 +356,58 @@ internal static class ServerEndpoints
         Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
         Aethera.Infrastructure.Agents.Pki.IInternalCa ca, Aethera.Infrastructure.Agents.Sessions.AgentSessionRegistry sessions, CancellationToken ct)
     {
+        // A deadlock (40P01) or serialization failure (40001) against another writer of these rows is retried once; a second one is a 409.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (await TryDeleteAsync(id, confirm, http, db, actor, audit, clock, ca, sessions, ct)) break;
+                // The server's credential changed between the unlocked read and the locks: start over with the new one.
+                db.ChangeTracker.Clear();
+            }
+            catch (Exception ex) when (IsLockConflict(ex))
+            {
+                if (attempt >= 2)
+                    throw new ApiProblemException(ApiProblems.Conflict(ResourceProblemCodes.ServerBusy,"The server is being changed by something else. Try again."));
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static bool IsLockConflict(Exception ex) =>
+        ex is DbUpdateException or Npgsql.PostgresException
+        && (ex as Npgsql.PostgresException ?? ex.InnerException as Npgsql.PostgresException) is { SqlState: "40P01" or "40001" };
+
+    private static async Task<bool> TryDeleteAsync(
+        Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
+        Aethera.Infrastructure.Agents.Pki.IInternalCa ca, Aethera.Infrastructure.Agents.Sessions.AgentSessionRegistry sessions, CancellationToken ct)
+    {
+        var org = actor.Org();
+
         // A connected agent writes the server row (heartbeats, status) at any moment; between our read and our save that bumps the row version
         // and the delete answered 409 to a client that never saw the write. Lock the row first: the agent's writes wait the few milliseconds
         // until we commit, and the version we read (and check If-Match against) is the one we save over.
+        //
+        // Lock order, shared with the other writers so none can deadlock with us: secrets, then agent_certificates, then servers.
+        // AgentSessionHandler.SyncCertificatesAsync writes agent_certificates then servers; the servers PATCH writes secrets then servers.
+        // The credential secret is only known from the server row, so it is read unlocked (and org-scoped) first and re-checked once the
+        // server row is locked. Nothing is locked for a server the caller's organization does not own.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM servers WHERE id = {id} FOR UPDATE", ct);
+        var probe = await db.Servers.AsNoTracking().Where(s => s.Id == id && s.OrganizationId == org)
+            .Select(s => new { s.SshCredentialSecretId }).FirstOrDefaultAsync(ct);
+        var probedCredential = probe?.SshCredentialSecretId;
+        if (probe is not null)
+        {
+            if (probedCredential is { } secretId)
+                await db.Database.ExecuteSqlAsync($"SELECT 1 FROM secrets WHERE id = {secretId} AND organization_id = {org} FOR UPDATE", ct);
+            await db.Database.ExecuteSqlAsync($"SELECT 1 FROM agent_certificates WHERE server_id = {id} ORDER BY id FOR UPDATE", ct);
+            await db.Database.ExecuteSqlAsync($"SELECT 1 FROM servers WHERE id = {id} AND organization_id = {org} FOR UPDATE", ct);
+        }
 
-        var server = await db.GetServerAsync(actor.Org(), id, tracking: true, ct);
+        var server = await db.GetServerAsync(org, id, tracking: true, ct);
+        if (server.SshCredentialSecretId != probedCredential) return false;
         http.CheckIfMatch(server.RowVersion);
         Confirmation.Require(confirm, server.Name);
 
@@ -379,7 +424,7 @@ internal static class ServerEndpoints
         await transaction.CommitAsync(ct);
 
         sessions.Disconnect(id, Aethera.Agent.V1.DisconnectReason.Revoked, "The server was deleted."); // ADR 0002: close the live stream with REVOKED
-        return TypedResults.NoContent();
+        return true;
     }
 
     // ---- helpers --------------------------------------------------------------------------------------------------------------------
