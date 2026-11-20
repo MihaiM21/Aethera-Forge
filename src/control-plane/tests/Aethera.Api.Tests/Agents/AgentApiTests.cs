@@ -216,6 +216,58 @@ public sealed class AgentApiTests(AgentsApiFixture fixture)
         Assert.NotNull((await WithDbAsync(db => db.AgentCertificates.AsNoTracking().SingleAsync(c => c.Serial == issued.Serial))).RevokedAt);
     }
 
+    [RequiresDatabaseFact]
+    public async Task Deleting_a_server_succeeds_while_its_agent_keeps_writing_the_row()
+    {
+        // A connected agent persists heartbeats and status on the server row at any moment; a delete in between used to lose the row
+        // version race and answer 409 to a request that sent no If-Match at all.
+        var tenant = await fixture.NewTenantAsync();
+        for (var round = 0; round < 5; round++)
+        {
+            var server = await tenant.CreateServerAsync();
+            var serverId = Guid.Parse(server.Id());
+            var name = server["name"]!.GetValue<string>();
+
+            using var stop = new CancellationTokenSource();
+            var writer = Task.Run(async () =>
+            {
+                while (!stop.IsCancellationRequested)
+                    await WithDbAsync(db => db.Servers.Where(s => s.Id == serverId).ExecuteUpdateAsync(u => u.SetProperty(s => s.UpdatedAt, DateTimeOffset.UtcNow)));
+            });
+            try
+            {
+                await Task.Delay(50);
+                var response = await tenant.Admin.DeleteAsync($"{Base(server.Id())}?confirm={Uri.EscapeDataString(name)}");
+                Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            }
+            finally
+            {
+                await stop.CancelAsync();
+                await writer;
+            }
+
+            Assert.NotNull((await WithDbAsync(db => db.Servers.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == serverId))).DeletedAt);
+        }
+    }
+
+    [RequiresDatabaseFact]
+    public async Task Deleting_a_server_with_a_stale_if_match_is_still_refused()
+    {
+        var tenant = await fixture.NewTenantAsync();
+        var server = await tenant.CreateServerAsync();
+        var serverId = Guid.Parse(server.Id());
+        var name = server["name"]!.GetValue<string>();
+        var stale = (await tenant.Admin.GetAsync(Base(server.Id()))).Headers.ETag!.Tag;
+        await WithDbAsync(db => db.Servers.Where(s => s.Id == serverId).ExecuteUpdateAsync(u => u.SetProperty(s => s.UpdatedAt, DateTimeOffset.UtcNow)));
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"{Base(server.Id())}?confirm={Uri.EscapeDataString(name)}");
+        request.Headers.TryAddWithoutValidation("If-Match", stale);
+        var response = await tenant.Admin.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.PreconditionFailed, response.StatusCode);
+        Assert.Null((await WithDbAsync(db => db.Servers.AsNoTracking().SingleAsync(s => s.Id == serverId))).DeletedAt);
+    }
+
     // ================================================================ CA
 
     [RequiresDatabaseFact]

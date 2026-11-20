@@ -356,6 +356,12 @@ internal static class ServerEndpoints
         Guid id, string? confirm, HttpContext http, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, IClock clock,
         Aethera.Infrastructure.Agents.Pki.IInternalCa ca, Aethera.Infrastructure.Agents.Sessions.AgentSessionRegistry sessions, CancellationToken ct)
     {
+        // A connected agent writes the server row (heartbeats, status) at any moment; between our read and our save that bumps the row version
+        // and the delete answered 409 to a client that never saw the write. Lock the row first: the agent's writes wait the few milliseconds
+        // until we commit, and the version we read (and check If-Match against) is the one we save over.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM servers WHERE id = {id} FOR UPDATE", ct);
+
         var server = await db.GetServerAsync(actor.Org(), id, tracking: true, ct);
         http.CheckIfMatch(server.RowVersion);
         Confirmation.Require(confirm, server.Name);
@@ -365,10 +371,13 @@ internal static class ServerEndpoints
             throw new ApiProblemException(ApiProblems.Conflict(ResourceProblemCodes.ServerInUse,
                 $"{assigned} application(s) or service(s) are assigned to this server. Move or delete them first."));
 
-        server.MarkDeleted(clock.UtcNow);
+        var now = clock.UtcNow;
+        server.MarkDeleted(now);
         if (server.SshCredentialSecretId is { } credential) await ManagedSecrets.ReleaseFromServerAsync(db, credential, id, ct);
-        await ca.RevokeServerCertificatesAsync(db, id, "server deleted", clock.UtcNow, ct); // WP2.2: a deleted server's agent loses its identity
-        await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct);
+        await ca.RevokeServerCertificatesAsync(db, id, "server deleted", now, ct); // WP2.2: a deleted server's agent loses its identity
+        await audit.RecordAsync("server.deleted", "server", id, new { name = server.Name, host = server.Host }, ct); // saves the delete too
+        await transaction.CommitAsync(ct);
+
         sessions.Disconnect(id, Aethera.Agent.V1.DisconnectReason.Revoked, "The server was deleted."); // ADR 0002: close the live stream with REVOKED
         return TypedResults.NoContent();
     }
