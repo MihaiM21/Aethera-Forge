@@ -24,7 +24,7 @@ Database and Redis tests: about 470 of the .NET tests need PostgreSQL (some also
 export AETHERA_TEST_DB="Host=127.0.0.1;Port=5451;Username=aethera;Password=x;Database=postgres"
 export AETHERA_TEST_REDIS=127.0.0.1:6451
 ```
-Optional external services (each gates a few tests that are skipped without it): `AETHERA_TEST_S3=http://127.0.0.1:9102` (a MinIO for backup uploads; `AETHERA_TEST_S3_ACCESS_KEY`/`_SECRET_KEY` default to `minioadmin`), `AETHERA_TEST_SMTP=127.0.0.1:1026` (a mailpit whose API is on 8026). The agent's `-tags integration` backup tests start their own MinIO from `AETHERA_TEST_MINIO_IMAGE` (default `minio/minio`, which Docker Hub no longer serves; `bitnamilegacy/minio:latest` works).
+Optional external services (each gates a few tests that are skipped without it): `AETHERA_TEST_S3=http://127.0.0.1:9102` (a MinIO for backup uploads; `AETHERA_TEST_S3_ACCESS_KEY`/`_SECRET_KEY` default to `minioadmin`), `AETHERA_TEST_SMTP=127.0.0.1:1026` (a mailpit whose API is on 8026). The agent's `-tags integration` backup tests start their own MinIO from `AETHERA_TEST_MINIO_IMAGE` (default `pgsty/silo`, the maintained MinIO build that the MinIO template also uses; `minio/minio` is no longer served by Docker Hub).
 
 Start your own throw-away instances (cloud sessions have the PostgreSQL 16 binaries and `redis-server`). **Use a distinct port pair per parallel worker** (say 5451/6451 for one, 5452/6452 for the next) and **data dirs under `/tmp/<unique-name>`, never the shared scratchpad**: WP1.2 once clobbered WP1.3's database through a shared script.
 ```bash

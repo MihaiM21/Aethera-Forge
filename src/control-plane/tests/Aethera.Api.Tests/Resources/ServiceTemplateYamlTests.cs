@@ -101,6 +101,10 @@ public sealed class ServiceTemplateYamlTests
         Assert.Equal("postgres", keys[0]);
         Assert.Equal(keys.Count, keys.Distinct().Count());
         Assert.Equal(["server", "/data", "--console-address", ":9001"], ServiceTemplates.Find("minio")!.Command);
+        // minio/minio is no longer served by Docker Hub: the template uses the maintained PGSTY Silo build, pinned to a release.
+        var minioVersion = Assert.Single(ServiceTemplates.Find("minio")!.Versions);
+        Assert.StartsWith("pgsty/silo:RELEASE.", minioVersion.Image);
+        Assert.True(minioVersion.IsDefault);
         // Redis applies its generated password through a start command: it must read it from the environment, never carry a value.
         var redis = ServiceTemplates.Find("redis")!.Command!;
         Assert.Equal(["sh", "-c"], redis.Take(2));
