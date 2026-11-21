@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-21
+
+Update with *Update to 0.2.3* in Settings or `aethera update`.
+
+### Fixed
+- The **MinIO** service template deploys again. MinIO no longer publishes its community images (`minio/minio` is gone from Docker Hub, and from quay.io), so the image pull failed with "pull access denied". The template now uses `pgsty/silo` (PGSTY Silo, the maintained community build of the MinIO server, with the web console) pinned to `RELEASE.2026-11-12T00-00-00Z`; the start command, `MINIO_*` variables, ports, `/data` volume and health check are unchanged. **Existing MinIO services** keep the image they were created with: change it to `pgsty/silo:RELEASE.2026-11-12T00-00-00Z` in the service's settings and redeploy (the data in `/data` is read as is).
+- Deleting a server no longer fails with 409 when its agent is connected: a heartbeat landing during the delete made it look like a conflicting edit. The delete also takes its locks in the same order as certificate renewal and credential updates, so it cannot deadlock with them; a server that stays busy answers 409 `server.busy`.
+
 ## [0.2.2] - 2026-11-07
 
 ### Added
