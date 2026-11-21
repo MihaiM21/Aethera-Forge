@@ -6,7 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- Runtime -->
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <!-- The EF Core family moves together (Dependabot group "efcore"). -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.15" />
