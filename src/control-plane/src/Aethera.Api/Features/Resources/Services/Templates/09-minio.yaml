@@ -1,10 +1,10 @@
 key: minio
 name: MinIO
-description: S3-compatible object storage.
+description: S3-compatible object storage (PGSTY Silo, the maintained community build of MinIO).
 category: storage
-image: minio/minio
+image: pgsty/silo
 command: [server, /data, --console-address, ":9001"]
-versions: ["RELEASE.2025-02-28T09-55-16Z", "latest"]
+versions: ["RELEASE.2026-11-12T00-00-00Z"]
 ports:
   - port: 9000
   - port: 9001

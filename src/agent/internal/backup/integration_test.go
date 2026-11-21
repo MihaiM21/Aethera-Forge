@@ -21,7 +21,7 @@ import (
 	"github.com/mihaim21/aethera-forge/agent/internal/policy"
 )
 
-// These tests need a Docker daemon (and pull busybox, postgres:17, minio/minio).
+// These tests need a Docker daemon (and pull busybox, postgres:17, pgsty/silo).
 // They start containers named g1-*, MinIO on 127.0.0.1:9101, and remove them.
 //
 //	go test -tags integration -run TestIntegration -v ./internal/backup
@@ -127,11 +127,11 @@ func TestIntegrationExecDeadline(t *testing.T) {
 func startMinio(t *testing.T) *minio.Client {
 	t.Helper()
 	dockerQuiet("rm", "-f", "g1-minio")
-	// minio/minio is the default; AETHERA_TEST_MINIO_IMAGE selects another build
-	// (the Docker Hub repository no longer serves new pulls; Bitnami images start the server by themselves).
+	// pgsty/silo (the maintained MinIO build) is the default; AETHERA_TEST_MINIO_IMAGE selects another
+	// (minio/minio is no longer served by Docker Hub; Bitnami images start the server by themselves).
 	image := os.Getenv("AETHERA_TEST_MINIO_IMAGE")
 	if image == "" {
-		image = "minio/minio"
+		image = "pgsty/silo:RELEASE.2026-11-12T00-00-00Z"
 	}
 	args := []string{"run", "-d", "--name", "g1-minio", "-p", "127.0.0.1:9101:9000",
 		"-e", "MINIO_ROOT_USER=" + minioUser, "-e", "MINIO_ROOT_PASSWORD=" + minioSecret, image}
