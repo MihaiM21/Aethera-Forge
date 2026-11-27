@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-27
+
+Update with *Update to 0.2.4* in Settings or `aethera update`. The database migration runs when the control plane starts. Nothing changes at sign-in until someone turns two-factor authentication on.
+
 ### Added
 - **Two-factor authentication** for UI sign-ins with any authenticator app (TOTP). Set it up in Settings > Account: scan the QR code, confirm a code, save the ten one-time recovery codes. Sign-in then asks for a code after the password; a recovery code works when the phone is not at hand. Wrong codes count towards the account lockout, a code is accepted only once, and attempts are rate limited. The secret is encrypted with the master key. Guide: [`docs/two-factor.md`](docs/two-factor.md).
 - Owners can **require two-factor authentication** for the organization (Settings > Members). Members without it can only set it up until they have; the members list shows who has it. API tokens are not affected.
