@@ -144,6 +144,12 @@ public class Deployment : MutableEntity
     public string? CommitMessage { get; set; }
     public string? CommitAuthor { get; set; }
 
+    /// <summary>
+    /// For an image-source application: the tag (or <c>@sha256:</c> digest) this deployment was asked to run instead of the configured one, e.g.
+    /// the commit sha CI pushed. Applied when the snapshot is frozen; a rollback to this deployment re-applies it. Null = the configured tag.
+    /// </summary>
+    public string? ImageTag { get; set; }
+
     // Result
     public Guid? BuildId { get; set; }
     public string? ImageRef { get; set; }
