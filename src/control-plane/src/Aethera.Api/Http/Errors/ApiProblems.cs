@@ -63,6 +63,14 @@ public static class ApiProblems
     public static ApiProblem Forbidden(string? detail = null) =>
         new(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, detail ?? "You do not have permission to perform this action.");
 
+    /// <summary>
+    /// 403 <c>auth.two_factor_enrolment_required</c>: the organization requires two-factor authentication and this browser session belongs to a
+    /// user who has not enrolled an authenticator yet; until they do, the session can only enrol one (ADR 0013).
+    /// </summary>
+    public static ApiProblem TwoFactorEnrolmentRequired() =>
+        new(StatusCodes.Status403Forbidden, ProblemCodes.TwoFactorEnrolmentRequired,
+            "Your organization requires two-factor authentication. Set up an authenticator app in Settings > Account first.");
+
     /// <summary>403 <c>auth.insufficient_scope</c> with the <c>requiredScope</c> extension.</summary>
     public static ApiProblem InsufficientScope(string requiredScope) =>
         new ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.InsufficientScope,

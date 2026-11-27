@@ -18,6 +18,8 @@ import { BackupsSettingsTab } from "@/components/backups/backups-settings-tab";
 import { DnsProvidersSettingsTab } from "@/components/dns/dns-providers-settings-tab";
 import { NotificationsSettingsTab } from "@/components/notifications/notifications-settings-tab";
 import { MeshSettingsTab } from "@/components/mesh/mesh-settings-tab";
+import { TwoFactorPolicy, TwoFactorSection } from "@/components/account/two-factor";
+import { authApi, type AuthApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/auth-context";
 import { resourcesApi, type ResourcesApi } from "@/lib/resources/api";
 import type { ApiToken, AuditEvent, GitCredential, OrganizationRole, User } from "@/lib/resources/types";
@@ -39,8 +41,8 @@ export const isAdminRole = (role: string | undefined) => role === "owner" || rol
 
 // ------------------------------------------------------------------------------------------------ Account
 
-function AccountTab({ api }: { api: ResourcesApi }) {
-  const { me } = useAuth();
+function AccountTab({ api, auth }: { api: ResourcesApi; auth: AuthApi }) {
+  const { me, refresh } = useAuth();
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [again, setAgain] = React.useState("");
@@ -76,6 +78,7 @@ function AccountTab({ api }: { api: ResourcesApi }) {
           </SaveButton>
         </div>
       </form>
+      <TwoFactorSection auth={auth} index="03" onChanged={() => void refresh?.()} />
     </div>
   );
 }
@@ -134,7 +137,7 @@ function NewUserDialog({ api, onClose, onCreated }: { api: ResourcesApi; onClose
   );
 }
 
-function MembersTab({ api }: { api: ResourcesApi }) {
+function MembersTab({ api, auth }: { api: ResourcesApi; auth: AuthApi }) {
   const { me } = useAuth();
   const list = usePolled((signal) => api.users.list({ signal }), "users", { intervalMs: 30_000 });
   const [adding, setAdding] = React.useState(false);
@@ -145,6 +148,7 @@ function MembersTab({ api }: { api: ResourcesApi }) {
       <SectionTitle index="01" actions={<Button size="sm" onClick={() => setAdding(true)}><UserPlusIcon aria-hidden="true" /> Add member</Button>}>
         Members
       </SectionTitle>
+      <TwoFactorPolicy auth={auth} canChange={me?.role === "owner"} />
       <FormError message={act.error} />
       {list.error && !list.data && <ErrorPanel error={list.error} onRetry={() => void list.refresh()} title="Could not load members" />}
       {list.loading && <Skeleton className="h-24 w-full" />}
@@ -158,6 +162,7 @@ function MembersTab({ api }: { api: ResourcesApi }) {
                   {u.displayName}
                   {self && <Badge tone="brand">you</Badge>}
                   {!u.isActive && <Badge tone="warning">deactivated</Badge>}
+                  {u.twoFactorEnabled ? <Badge tone="success">2fa</Badge> : <Badge tone="neutral">no 2fa</Badge>}
                 </p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
                   {u.email} · {u.lastLoginAt != null ? `signed in ${formatAgo(u.lastLoginAt)}` : "never signed in"}
@@ -557,7 +562,7 @@ export function settingsTabFromHash(hash: string, admin: boolean): SettingsTab {
 }
 
 /** Settings: your account and tokens for everyone; members, git credentials, the audit log and system (updates, backups) for administrators. */
-export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
+export function SettingsView({ api = resourcesApi, auth = authApi }: { api?: ResourcesApi; auth?: AuthApi }) {
   const { me } = useAuth();
   const admin = isAdminRole(me?.role);
   const [tab, setTab] = React.useState<SettingsTab>("account");
@@ -598,9 +603,9 @@ export function SettingsView({ api = resourcesApi }: { api?: ResourcesApi }) {
           {admin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
         <TabsContent value="account">
-          <AccountTab api={api} />
+          <AccountTab api={api} auth={auth} />
         </TabsContent>
-        {admin && <TabsContent value="members">{tab === "members" && <MembersTab api={api} />}</TabsContent>}
+        {admin && <TabsContent value="members">{tab === "members" && <MembersTab api={api} auth={auth} />}</TabsContent>}
         <TabsContent value="tokens">{tab === "tokens" && <TokensTab api={api} admin={admin} />}</TabsContent>
         {admin && <TabsContent value="git">{tab === "git" && <GitTab api={api} />}</TabsContent>}
         {admin && <TabsContent value="notifications">{tab === "notifications" && <NotificationsSettingsTab />}</TabsContent>}

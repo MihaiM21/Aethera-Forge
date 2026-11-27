@@ -22,6 +22,7 @@ internal sealed class DeploymentConfiguration : IEntityTypeConfiguration<Deploym
         b.Property(x => x.CommitSha).HasMaxLength(64);
         b.Property(x => x.CommitMessage).HasMaxLength(2000);
         b.Property(x => x.CommitAuthor).HasMaxLength(255);
+        b.Property(x => x.ImageTag).HasMaxLength(200);
         b.Property(x => x.ImageRef).HasMaxLength(1000);
         b.Property(x => x.ImageDigest).HasMaxLength(128);
         b.Property(x => x.ConfigSnapshotJson).HasColumnName("config_snapshot").HasColumnType("jsonb");

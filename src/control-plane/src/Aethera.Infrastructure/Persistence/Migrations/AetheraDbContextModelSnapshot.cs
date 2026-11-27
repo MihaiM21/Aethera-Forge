@@ -18,7 +18,7 @@ namespace Aethera.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.4")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1102,6 +1102,11 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("image_ref");
+
+                    b.Property<string>("ImageTag")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("image_tag");
 
                     b.Property<bool>("IsRollbackPoint")
                         .HasColumnType("boolean")
@@ -2436,6 +2441,10 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<bool>("RequireTwoFactor")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_two_factor");
+
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -3665,6 +3674,42 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Aethera.Domain.UserRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<byte[]>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_recovery_codes");
+
+                    b.HasIndex("UserId", "CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_recovery_codes_user_id_code_hash");
+
+                    b.ToTable("user_recovery_codes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_recovery_codes_code_hash_len", "octet_length(code_hash) = 32");
+                        });
+                });
+
             modelBuilder.Entity("Aethera.Domain.UserSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3730,6 +3775,58 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_user_sessions_user_id");
 
                     b.ToTable("user_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Aethera.Domain.UserTwoFactor", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("LastUsedStep")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_used_step");
+
+                    b.Property<int>("MasterKeyVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("master_key_version");
+
+                    b.Property<byte[]>("SecretCiphertext")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("secret_ciphertext");
+
+                    b.Property<byte[]>("SecretNonce")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("secret_nonce");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<byte[]>("WrappedDataKey")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("wrapped_data_key");
+
+                    b.Property<byte[]>("WrappedDataKeyNonce")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("wrapped_data_key_nonce");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_user_two_factors");
+
+                    b.ToTable("user_two_factors", (string)null);
                 });
 
             modelBuilder.Entity("Aethera.Domain.Volume", b =>
@@ -5220,6 +5317,18 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Aethera.Domain.UserRecoveryCode", b =>
+                {
+                    b.HasOne("Aethera.Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_recovery_codes_users_user_id");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Aethera.Domain.UserSession", b =>
                 {
                     b.HasOne("Aethera.Domain.User", "User")
@@ -5228,6 +5337,18 @@ namespace Aethera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_sessions_users_user_id");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Aethera.Domain.UserTwoFactor", b =>
+                {
+                    b.HasOne("Aethera.Domain.User", "User")
+                        .WithOne()
+                        .HasForeignKey("Aethera.Domain.UserTwoFactor", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_two_factors_users_user_id");
 
                     b.Navigation("User");
                 });

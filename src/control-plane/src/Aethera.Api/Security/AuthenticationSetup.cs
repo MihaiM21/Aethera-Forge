@@ -55,6 +55,9 @@ public sealed class ProblemAuthorizationResultHandler : IAuthorizationMiddleware
             return ApiProblems.Unauthenticated(code).ExecuteAsync(context);
         }
 
+        if (authorizeResult.AuthorizationFailure?.FailureReasons.Any(r => r.Message == TwoFactorEnrolmentGate.Reason) == true)
+            return ApiProblems.TwoFactorEnrolmentRequired().ExecuteAsync(context);
+
         var missingScope = authorizeResult.AuthorizationFailure?.FailureReasons
             .Select(r => r.Message)
             .FirstOrDefault(m => m.StartsWith(RoleScopeAuthorizationHandler.MissingScopeReason, StringComparison.Ordinal));

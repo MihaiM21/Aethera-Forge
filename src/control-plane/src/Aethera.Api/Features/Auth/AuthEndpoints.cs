@@ -41,13 +41,16 @@ internal static class AuthEndpoints
             .WithDescription(
                 "Sets the session cookie and returns the same body as GET /auth/me. Unknown email and wrong password are indistinguishable " +
                 "(auth.invalid_credentials). After repeated failures the account is locked (auth.locked_out with retryAfter seconds). " +
-                "Rate limited per client IP.")
+                "When the account has two-factor authentication, a correct password answers 401 auth.two_factor_required with a `challenge` " +
+                "instead (no session yet): finish with POST /auth/login/two-factor. Rate limited per client IP.")
             .AllowAnonymous()
             .AddEndpointFilter<LoginRateLimitFilter>()
             .Validate<LoginRequest>()
             .Produces<MeResponse>()
             .ProducesProblems(
-                (StatusCodes.Status401Unauthorized, "Wrong email or password (auth.invalid_credentials)."),
+                (StatusCodes.Status401Unauthorized,
+                    "Wrong email or password (auth.invalid_credentials), or the password was right and a two-factor code is needed " +
+                    "(auth.two_factor_required, with the `challenge` and `expiresIn` extensions)."),
                 (StatusCodes.Status423Locked, "Account locked after repeated failures (auth.locked_out); retryAfter and Retry-After give the seconds left."),
                 (StatusCodes.Status429TooManyRequests, "Too many attempts from this IP (rate_limited); Retry-After gives the seconds."));
 
@@ -59,6 +62,7 @@ internal static class AuthEndpoints
             .WithName("logout")
             .WithSummary("Sign out")
             .WithDescription("Revokes the current browser session and clears the cookie. With an API token there is no session, so nothing happens.")
+            .AllowDuringTwoFactorEnrolment()
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblems((StatusCodes.Status403Forbidden, "Missing or wrong X-CSRF-Token on a session request (auth.csrf_invalid)."));
 
@@ -66,7 +70,10 @@ internal static class AuthEndpoints
                 Results.Ok(await service.MeAsync(actor, ct)))
             .WithName("getMe")
             .WithSummary("The current user, organization and role")
-            .WithDescription("Works for browser sessions and API tokens; for a token it describes the token's owner.")
+            .WithDescription(
+                "Works for browser sessions and API tokens; for a token it describes the token's owner. `twoFactorEnrolmentRequired` is true for a " +
+                "session that must enrol an authenticator before it can do anything else (the organization requires two-factor authentication).")
+            .AllowDuringTwoFactorEnrolment()
             .Produces<MeResponse>();
 
         auth.MapGet("/csrf", (HttpContext http, SessionCookies cookies) =>
@@ -78,6 +85,7 @@ internal static class AuthEndpoints
             .WithDescription(
                 "Send the value in the X-CSRF-Token header of every POST, PUT, PATCH and DELETE made with the session cookie. " +
                 "The token is bound to the session and changes at the next login.")
+            .AllowDuringTwoFactorEnrolment()
             .Produces<CsrfTokenResponse>()
             .ProducesProblems((StatusCodes.Status403Forbidden, "Called with an API token, which has no session (auth.forbidden)."));
 

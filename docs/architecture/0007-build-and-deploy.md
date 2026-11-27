@@ -60,4 +60,5 @@ Credentials reach the agent in the build request. The agent passes an HTTPS toke
 - Inline Dockerfiles (`dockerfileInline`) are rejected with `source.unsupported`.
 - The Nixpacks engine is covered by argument-vector tests only; it was not run against the real CLI.
 - `POST /registries/{id}/test` still answers 501.
+- Deploying a pinned image tag (`imageTag` on `POST /applications/{id}/deployments`, for CI) is in ADR 0013, part 2.
 - Log streams: build output is stored under `build:<buildId>` (the build row id is the agent's stream id); the job narration is under `job:<id>`.

@@ -61,6 +61,79 @@ internal sealed class ChangePasswordRequestValidator : AbstractValidator<ChangeP
     }
 }
 
+/// <summary>Rules of the two-factor requests (ADR 0013). The validators stop at the first failure of a property.</summary>
+internal static class TwoFactorRules
+{
+    public const int MaxChallengeLength = 512;
+
+    public static IRuleBuilderOptions<T, string?> TotpCode<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.NotEmpty()
+            .Must(code => Totp.Normalize(code) is not null).WithErrorCode("pattern").WithMessage(CodeMessage);
+
+    public static IRuleBuilderOptions<T, string?> RecoveryCode<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.NotEmpty()
+            .Must(code => RecoveryCodes.Normalize(code) is not null).WithErrorCode("pattern").WithMessage("Must be a recovery code (xxxx-xxxx-xxxx-xxxx).");
+
+    public static IRuleBuilderOptions<T, string> CurrentPassword<T>(this IRuleBuilder<T, string> rule) =>
+        rule.NotEmpty().MaximumLength(PasswordPolicy.MaxLength);
+
+    public const string BothMessage = "Send either code or recoveryCode, not both.";
+    public const string CodeMessage = "Must be the 6-digit code from the authenticator app.";
+}
+
+internal sealed class TwoFactorLoginRequestValidator : AbstractValidator<TwoFactorLoginRequest>
+{
+    public TwoFactorLoginRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+        RuleFor(x => x.Challenge).NotEmpty().MaximumLength(TwoFactorRules.MaxChallengeLength);
+        RuleFor(x => x.Code).TotpCode().When(x => x.RecoveryCode is null);
+        RuleFor(x => x.RecoveryCode).RecoveryCode().When(x => x.Code is null && x.RecoveryCode is not null);
+        RuleFor(x => x.RecoveryCode).Null().WithErrorCode("conflict").WithMessage(TwoFactorRules.BothMessage).When(x => x.Code is not null);
+    }
+}
+
+internal sealed class StartTwoFactorEnrolmentRequestValidator : AbstractValidator<StartTwoFactorEnrolmentRequest>
+{
+    public StartTwoFactorEnrolmentRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+        RuleFor(x => x.Password).CurrentPassword();
+    }
+}
+
+internal sealed class ConfirmTwoFactorEnrolmentRequestValidator : AbstractValidator<ConfirmTwoFactorEnrolmentRequest>
+{
+    public ConfirmTwoFactorEnrolmentRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+        RuleFor(x => x.Code).NotEmpty().Must(code => Totp.Normalize(code) is not null).WithErrorCode("pattern").WithMessage(TwoFactorRules.CodeMessage);
+    }
+}
+
+internal sealed class DisableTwoFactorRequestValidator : AbstractValidator<DisableTwoFactorRequest>
+{
+    public DisableTwoFactorRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+        RuleFor(x => x.Password).CurrentPassword();
+        // Both may be absent: a pending enrolment is cancelled with the password alone (the service decides).
+        RuleFor(x => x.Code).TotpCode().When(x => x.Code is not null);
+        RuleFor(x => x.RecoveryCode).RecoveryCode().When(x => x.RecoveryCode is not null && x.Code is null);
+        RuleFor(x => x.RecoveryCode).Null().WithErrorCode("conflict").WithMessage(TwoFactorRules.BothMessage).When(x => x.Code is not null);
+    }
+}
+
+internal sealed class RegenerateRecoveryCodesRequestValidator : AbstractValidator<RegenerateRecoveryCodesRequest>
+{
+    public RegenerateRecoveryCodesRequestValidator()
+    {
+        RuleLevelCascadeMode = CascadeMode.Stop;
+        RuleFor(x => x.Password).CurrentPassword();
+        RuleFor(x => x.Code).NotEmpty().Must(code => Totp.Normalize(code) is not null).WithErrorCode("pattern").WithMessage(TwoFactorRules.CodeMessage);
+    }
+}
+
 internal sealed class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
     public CreateUserRequestValidator()

@@ -23,6 +23,9 @@ public enum SessionStatus
 
 /// <summary>Result of resolving a session cookie.</summary>
 /// <param name="Refreshed">True when this call extended the session (sliding expiry); a persistent cookie should then be re-issued with the new expiry.</param>
+/// <param name="TwoFactorEnrolmentRequired">
+/// The organization requires two-factor authentication and the user has not enrolled an authenticator (ADR 0013): the session may only enrol one.
+/// </param>
 public sealed record SessionResolution(
     SessionStatus Status,
     Guid SessionId = default,
@@ -31,7 +34,8 @@ public sealed record SessionResolution(
     OrganizationRole Role = OrganizationRole.Viewer,
     DateTimeOffset ExpiresAt = default,
     bool Persistent = false,
-    bool Refreshed = false)
+    bool Refreshed = false,
+    bool TwoFactorEnrolmentRequired = false)
 {
     public bool IsValid => Status == SessionStatus.Valid;
 }
@@ -76,6 +80,7 @@ public sealed class SessionStore(AetheraDbContext db, IClock clock, IOptionsMoni
                 where s.SecretHash == secret.Hash
                 join u in db.Users on s.UserId equals u.Id // the soft-delete filter hides deleted users
                 join m in db.OrganizationMembers on u.Id equals m.UserId
+                join o in db.Organizations on m.OrganizationId equals o.Id
                 orderby m.CreatedAt
                 select new
                 {
@@ -88,6 +93,9 @@ public sealed class SessionStore(AetheraDbContext db, IClock clock, IOptionsMoni
                     u.IsActive,
                     m.OrganizationId,
                     m.Role,
+                    // ADR 0013: the organization requires two-factor authentication and this user has no confirmed authenticator yet.
+                    TwoFactorEnrolmentRequired = o.RequireTwoFactor
+                        && !db.UserTwoFactors.Any(t => t.UserId == u.Id && t.ConfirmedAt != null),
                 })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -119,7 +127,8 @@ public sealed class SessionStore(AetheraDbContext db, IClock clock, IOptionsMoni
         }
 
         return new SessionResolution(
-            SessionStatus.Valid, row.Id, row.UserId, row.OrganizationId, row.Role, expiresAt, secret.Persistent, refreshed);
+            SessionStatus.Valid, row.Id, row.UserId, row.OrganizationId, row.Role, expiresAt, secret.Persistent, refreshed,
+            row.TwoFactorEnrolmentRequired);
     }
 
     /// <summary>Revokes one session (logout). Revoking a revoked or unknown session is a no-op.</summary>

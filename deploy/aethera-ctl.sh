@@ -8,6 +8,8 @@
 #   aethera restore <file>         restore a backup into the database (stops the control plane meanwhile)
 #   aethera reset-password <email> [--stdin]
 #                                  set a new password for a user (printed once, or read from stdin), clear the lockout, sign them out
+#   aethera reset-2fa <email>      turn two-factor authentication off for a user who lost the authenticator and the recovery codes
+#                                  (deletes the secret and the recovery codes, clears the lockout, signs them out; the password stays)
 #   aethera backup-decrypt <in> <out>   decrypt a backup of Aethera's own database downloaded from a backup destination (AEB1);
 #                                       <out> can then be given to `aethera restore`. Needs the master key of this installation.
 #   aethera version                the installed version
@@ -256,6 +258,12 @@ case "$cmd" in
     [ $# -ge 1 ] || die "usage: aethera reset-password <email> [--stdin]   (--stdin reads the new password from standard input)"
     dc exec -T aethera dotnet Aethera.Api.dll reset-password "$@"
     ;;
+  reset-2fa)
+    require_install
+    [ "$(id -u)" -eq 0 ] || die "reset-2fa needs root: run it with sudo"
+    [ $# -eq 1 ] || die "usage: aethera reset-2fa <email>"
+    dc exec -T aethera dotnet Aethera.Api.dll reset-2fa "$1"
+    ;;
   backup-decrypt)
     require_install
     [ $# -eq 2 ] && [ -f "$1" ] || die "usage: aethera backup-decrypt <encrypted backup file> <output file>"
@@ -282,6 +290,6 @@ case "$cmd" in
     if [ "$target" = "$(env_get AETHERA_VERSION)" ]; then say "Already on $target."; exit 0; fi
     do_update "$target"
     ;;
-  help|-h|--help) sed -n '2,13p' "$0" ;;
+  help|-h|--help) sed -n '2,15p' "$0" ;;
   *) die "unknown command: $cmd (try 'aethera help')" ;;
 esac

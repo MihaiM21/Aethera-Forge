@@ -7,6 +7,7 @@ import {
   type LoginRequest,
   type Me,
   type SetupRequest,
+  type TwoFactorLoginRequest,
 } from "@/lib/api";
 import { PREVIEW_ME, isPreviewActive } from "@/lib/preview";
 
@@ -27,7 +28,10 @@ export type AuthContextValue = {
   refresh: () => Promise<void>;
   /** Starts the first load once; safe to call from many components. */
   ensureLoaded: () => void;
+  /** Throws `auth.two_factor_required` when the account needs a code next (see twoFactorChallengeOf). */
   login: (req: LoginRequest) => Promise<Me>;
+  /** The second sign-in step with a code or a recovery code. */
+  loginTwoFactor: (req: TwoFactorLoginRequest) => Promise<Me>;
   setup: (req: SetupRequest) => Promise<Me>;
   logout: () => Promise<void>;
 };
@@ -108,6 +112,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, []);
 
+  const loginTwoFactor = React.useCallback(async (req: TwoFactorLoginRequest) => {
+    const next = await authApi.loginTwoFactor(req);
+    setMe(next);
+    setError(null);
+    setStatus("authenticated");
+    return next;
+  }, []);
+
   const setup = React.useCallback(async (req: SetupRequest) => {
     const next = await authApi.setup(req);
     setMe(next);
@@ -130,8 +142,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = React.useMemo<AuthContextValue>(
-    () => ({ status, me, error, refresh, ensureLoaded, login, setup, logout }),
-    [status, me, error, refresh, ensureLoaded, login, setup, logout],
+    () => ({ status, me, error, refresh, ensureLoaded, login, loginTwoFactor, setup, logout }),
+    [status, me, error, refresh, ensureLoaded, login, loginTwoFactor, setup, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

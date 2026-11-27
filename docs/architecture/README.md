@@ -70,7 +70,8 @@ Dependency direction in the control plane: `Api -> Infrastructure, Engine -> Dom
 | [0010](0010-backups-notifications-tasks.md) | Backups of workloads, email notifications and alerts, scheduled tasks, compose from Git, DNS-01 and domain options |
 | [0011](0011-automatic-domains-and-first-try-deploys.md) | Automatic domains (wildcard / sslip.io), the dashboard domain in Settings, ports from EXPOSE, liveness checks, safe recreate, compose data that survives deploys |
 | [0012](0012-multi-server-mesh-previews.md) | Server roles and placement, build on one server and run on another through a registry, build quota, priorities, the WireGuard / Tailscale mesh and private ports, pull request previews |
+| [0013](0013-two-factor-and-pinned-image-deploys.md) | TOTP two-factor authentication (two-step sign-in, recovery codes, the organization requirement, host reset) and deploying a pinned image tag from CI |
 
 ## Guides
 
-[Install](../install.md) · [Migrating from Coolify](../migration-from-coolify.md) · [Contributing](../../CONTRIBUTING.md) · [Roadmap](../roadmap.md) · [Plan](../plan.md)
+[Install](../install.md) · [Two-factor authentication](../two-factor.md) · [Deploying from CI](../ci-deploys.md) · [Migrating from Coolify](../migration-from-coolify.md) · [Contributing](../../CONTRIBUTING.md) · [Roadmap](../roadmap.md) · [Plan](../plan.md)

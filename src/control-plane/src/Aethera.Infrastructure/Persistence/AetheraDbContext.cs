@@ -20,6 +20,8 @@ public sealed class AetheraDbContext(DbContextOptions<AetheraDbContext> options,
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<UserTwoFactor> UserTwoFactors => Set<UserTwoFactor>();
+    public DbSet<UserRecoveryCode> UserRecoveryCodes => Set<UserRecoveryCode>();
 
     // Projects
     public DbSet<Project> Projects => Set<Project>();

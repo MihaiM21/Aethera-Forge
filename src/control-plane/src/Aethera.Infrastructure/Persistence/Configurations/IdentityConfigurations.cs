@@ -79,6 +79,27 @@ internal sealed class ApiTokenConfiguration : IEntityTypeConfiguration<ApiToken>
     }
 }
 
+internal sealed class UserTwoFactorConfiguration : IEntityTypeConfiguration<UserTwoFactor>
+{
+    public void Configure(EntityTypeBuilder<UserTwoFactor> b)
+    {
+        b.ToTable("user_two_factors");
+        b.HasKey(x => x.UserId);
+        b.HasOne(x => x.User).WithOne().HasForeignKey<UserTwoFactor>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class UserRecoveryCodeConfiguration : IEntityTypeConfiguration<UserRecoveryCode>
+{
+    public void Configure(EntityTypeBuilder<UserRecoveryCode> b)
+    {
+        b.ToTable("user_recovery_codes", t =>
+            t.HasCheckConstraint("ck_user_recovery_codes_code_hash_len", $"octet_length(code_hash) = {UserRecoveryCode.HashLength}"));
+        b.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => new { x.UserId, x.CodeHash }).IsUnique();
+    }
+}
+
 internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSession>
 {
     public void Configure(EntityTypeBuilder<UserSession> b)

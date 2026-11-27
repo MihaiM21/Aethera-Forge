@@ -168,6 +168,13 @@ public static class DeploymentSnapshotFactory
     /// the filter's reference): a filter such as <c>release/*</c> matches several branches. Other triggers deploy the configured source.
     /// </summary>
     /// <exception cref="UnsupportedSourceException">The pushed reference is not a usable branch name.</exception>
+    /// <summary>
+    /// A deployment that pinned an image tag (CI deploying the sha it pushed) runs that tag instead of the configured one. The frozen snapshot
+    /// records it, so a rollback to this deployment re-runs the same image. Workloads without a configured image are left alone.
+    /// </summary>
+    public static DeploymentSnapshot ApplyImageTag(DeploymentSnapshot snapshot, string? imageTag) =>
+        imageTag is { Length: > 0 } && snapshot.Image is { } image ? snapshot with { Image = image with { Tag = imageTag } } : snapshot;
+
     public static DeploymentSnapshot ApplyTrigger(DeploymentSnapshot snapshot, DeploymentTrigger trigger, string? deploymentRef, string? commitSha)
     {
         if (trigger != DeploymentTrigger.Webhook || snapshot.Git is not { } git || deploymentRef is not { Length: > 0 }) return snapshot;

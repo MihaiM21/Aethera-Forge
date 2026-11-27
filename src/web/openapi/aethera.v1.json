@@ -104,7 +104,7 @@
           "Auth"
         ],
         "summary": "Sign in with email and password",
-        "description": "Sets the session cookie and returns the same body as GET /auth/me. Unknown email and wrong password are indistinguishable (auth.invalid_credentials). After repeated failures the account is locked (auth.locked_out with retryAfter seconds). Rate limited per client IP.",
+        "description": "Sets the session cookie and returns the same body as GET /auth/me. Unknown email and wrong password are indistinguishable (auth.invalid_credentials). After repeated failures the account is locked (auth.locked_out with retryAfter seconds). When the account has two-factor authentication, a correct password answers 401 auth.two_factor_required with a `challenge` instead (no session yet): finish with POST /auth/login/two-factor. Rate limited per client IP.",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -148,7 +148,7 @@
             }
           },
           "401": {
-            "description": "Wrong email or password (auth.invalid_credentials).",
+            "description": "Wrong email or password (auth.invalid_credentials), or the password was right and a two-factor code is needed (auth.two_factor_required, with the `challenge` and `expiresIn` extensions).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -239,7 +239,7 @@
           "Auth"
         ],
         "summary": "The current user, organization and role",
-        "description": "Works for browser sessions and API tokens; for a token it describes the token's owner.",
+        "description": "Works for browser sessions and API tokens; for a token it describes the token's owner. `twoFactorEnrolmentRequired` is true for a session that must enrol an authenticator before it can do anything else (the organization requires two-factor authentication).",
         "operationId": "getMe",
         "responses": {
           "200": {
@@ -1340,6 +1340,612 @@
           },
           "404": {
             "description": "No such token, or it belongs to someone else (api_token.not_found).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ],
+        "x-required-scope": "admin"
+      }
+    },
+    "/api/v1/auth/login/two-factor": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Finish signing in with a two-factor code",
+        "description": "The second step after POST /auth/login answered 401 auth.two_factor_required: send its `challenge` (valid for `expiresIn` seconds) with the 6-digit `code` from the authenticator app or one unused `recoveryCode`. Sets the session cookie and returns the same body as GET /auth/me. A wrong code counts towards the account lockout like a wrong password; a code is accepted only once. Rate limited per IP.",
+        "operationId": "loginTwoFactor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Neither or both of code and recoveryCode, or a malformed value (validation.failed).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong, expired or reused code (auth.two_factor_invalid_code), or the challenge is invalid or expired (auth.two_factor_challenge_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Account locked after repeated failures (auth.locked_out).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate_limited).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/two-factor": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Your two-factor authentication status",
+        "description": "Whether it is on, an enrolment is pending, how many recovery codes are left, and whether the organization requires it.",
+        "operationId": "getTwoFactorStatus",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/two-factor/enrolment": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Start enrolling an authenticator app",
+        "description": "Needs a browser session and the current password. Returns a new secret and its otpauth:// URI (for the QR code), shown once. Sign-in does not change until POST /auth/two-factor/enrolment/confirm accepted a code from it. Starting again replaces a pending enrolment.",
+        "operationId": "startTwoFactorEnrolment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartTwoFactorEnrolmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorEnrolmentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Wrong current password (validation.failed; errors[] code incorrect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two-factor authentication is already on (auth.two_factor_already_enabled).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Account locked after repeated wrong passwords (auth.locked_out).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/two-factor/enrolment/confirm": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Confirm the authenticator and turn two-factor authentication on",
+        "description": "Send a current code from the new authenticator. Turns two-factor authentication on, returns 10 one-time recovery codes (shown once) and signs out every other session of the user.",
+        "operationId": "confirmTwoFactorEnrolment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmTwoFactorEnrolmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Malformed or wrong code (validation.failed; errors[] codes pattern, incorrect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No enrolment in progress (auth.two_factor_no_enrolment) or already on (auth.two_factor_already_enabled).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/two-factor/disable": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Turn two-factor authentication off",
+        "description": "Needs a browser session, the current password and a code from the authenticator or a recovery code. Deletes the secret and the recovery codes. With only a pending enrolment, the password alone cancels it. Wrong passwords and codes count towards the lockout.",
+        "operationId": "disableTwoFactor",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableTwoFactorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Wrong password or code (validation.failed; errors[] code incorrect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two-factor authentication is not on (auth.two_factor_not_enabled).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Account locked after repeated failures (auth.locked_out).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/two-factor/recovery-codes": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Replace your recovery codes",
+        "description": "Needs a browser session, the current password and a code from the authenticator. The old codes stop working.",
+        "operationId": "regenerateRecoveryCodes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateRecoveryCodesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Wrong password or code (validation.failed; errors[] code incorrect).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Two-factor authentication is not on (auth.two_factor_not_enabled).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Account locked after repeated failures (auth.locked_out).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [ ]
+          },
+          {
+            "bearerAuth": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/two-factor/policy": {
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Require two-factor authentication for the organization",
+        "description": "Owner only. With `required: true` every member must sign in to the UI with a second factor; members without one can only enrol an authenticator until they have. API tokens keep working. Turning it on needs two-factor authentication on the caller's own account.",
+        "operationId": "setTwoFactorPolicy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated (auth.unauthenticated).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or token scope insufficient (auth.forbidden, auth.insufficient_scope).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected error (internal.error).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The caller has no two-factor authentication yet (auth.two_factor_not_enabled).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -11806,6 +12412,7 @@
         "tags": [
           "Deployments"
         ],
+        "description": "Queues a deployment of the current configuration. For an image-source application `imageTag` deploys that tag (or digest, or full reference of the same repository) instead of the configured one, so CI can deploy exactly the image it pushed; the deployment records it and a rollback to it re-runs that image. `imageTag` on any other kind of workload is refused with 422.",
         "operationId": "deployApplication",
         "parameters": [
           {
@@ -12292,6 +12899,7 @@
         "tags": [
           "Deployments"
         ],
+        "description": "Queues a deployment of the current configuration. For an image-source application `imageTag` deploys that tag (or digest, or full reference of the same repository) instead of the configured one, so CI can deploy exactly the image it pushed; the deployment records it and a rollback to it re-runs that image. `imageTag` on any other kind of workload is refused with 422.",
         "operationId": "deployService",
         "parameters": [
           {
@@ -21113,6 +21721,17 @@
           }
         }
       },
+      "ConfirmTwoFactorEnrolmentRequest": {
+        "required": [
+          "code"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        }
+      },
       "ContainerHealthState": {
         "enum": [
           "unspecified",
@@ -22313,6 +22932,12 @@
               "null",
               "string"
             ]
+          },
+          "imageTag": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -22492,6 +23117,12 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "imageTag": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -22597,6 +23228,29 @@
           "running",
           "stopped"
         ]
+      },
+      "DisableTwoFactorRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recoveryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "DiscoveryInfo": {
         "required": [
@@ -24912,6 +25566,14 @@
           },
           "role": {
             "$ref": "#/components/schemas/OrganizationRole"
+          },
+          "twoFactorEnabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "twoFactorEnrolmentRequired": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -26624,6 +27286,7 @@
               "auth.forbidden",
               "auth.insufficient_scope",
               "auth.origin_not_allowed",
+              "auth.two_factor_enrolment_required",
               "auth.unauthenticated",
               "concurrency.conflict",
               "confirmation.required",
@@ -27129,6 +27792,35 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "RecoveryCodesResponse": {
+        "required": [
+          "recoveryCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "recoveryCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RegenerateRecoveryCodesRequest": {
+        "required": [
+          "password",
+          "code"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
           }
         }
       },
@@ -29328,6 +30020,17 @@
           }
         }
       },
+      "StartTwoFactorEnrolmentRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
       "StartUpdateRequest": {
         "type": "object",
         "properties": {
@@ -29431,6 +30134,113 @@
           },
           "path": {
             "type": "string"
+          }
+        }
+      },
+      "TwoFactorEnrolmentResponse": {
+        "required": [
+          "secret",
+          "otpauthUri",
+          "issuer",
+          "accountName",
+          "digits",
+          "period"
+        ],
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string"
+          },
+          "otpauthUri": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "digits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "period": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "TwoFactorLoginRequest": {
+        "required": [
+          "challenge"
+        ],
+        "type": "object",
+        "properties": {
+          "challenge": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recoveryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "TwoFactorPolicyRequest": {
+        "required": [
+          "required"
+        ],
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TwoFactorStatusResponse": {
+        "required": [
+          "enabled",
+          "enabledAt",
+          "enrolmentPending",
+          "recoveryCodesRemaining",
+          "requiredByOrganization"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "enabledAt": {
+            "format": "date-time"
+          },
+          "enrolmentPending": {
+            "type": "boolean"
+          },
+          "recoveryCodesRemaining": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "requiredByOrganization": {
+            "type": "boolean"
           }
         }
       },
@@ -30445,6 +31255,10 @@
           },
           "updatedAt": {
             "format": "date-time"
+          },
+          "twoFactorEnabled": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -30505,6 +31319,7 @@
               "auth.forbidden",
               "auth.insufficient_scope",
               "auth.origin_not_allowed",
+              "auth.two_factor_enrolment_required",
               "auth.unauthenticated",
               "concurrency.conflict",
               "confirmation.required",

@@ -93,6 +93,7 @@ aethera backup                # pg_dump into /opt/aethera/backups
 aethera restore <file>        # replace the database with a backup (stops the control plane meanwhile)
 sudo aethera reset-password <email>            # new random password (printed once); clears the lockout, signs the user out everywhere
 printf '%s\n' 'new password, 12+ characters' | sudo aethera reset-password <email> --stdin
+sudo aethera reset-2fa <email>                 # turn two-factor authentication off for someone who lost the phone and the recovery codes
 aethera update                # back up, pull the newest release, restart, roll back if it does not start
 ```
 

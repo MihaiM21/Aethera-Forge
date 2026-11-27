@@ -53,7 +53,7 @@ public sealed class UserService(
         var rows = from m in db.OrganizationMembers.AsNoTracking()
                    where m.OrganizationId == OrganizationId
                    join u in db.Users.AsNoTracking() on m.UserId equals u.Id
-                   select new { User = u, m.Role };
+                   select new { User = u, m.Role, TwoFactor = db.UserTwoFactors.Any(t => t.UserId == u.Id && t.ConfirmedAt != null) };
 
         if (roles.Count > 0) rows = rows.Where(r => roles.Contains(r.Role));
         if (query.IsActive is { } active) rows = rows.Where(r => r.User.IsActive == active);
@@ -91,7 +91,7 @@ public sealed class UserService(
         };
 
         var fetched = await ordered.Take(page.Limit + 1).ToListAsync(cancellationToken);
-        var items = fetched.Select(r => ToResponse(r.User, r.Role)).ToList();
+        var items = fetched.Select(r => ToResponse(r.User, r.Role, r.TwoFactor)).ToList();
         return Page<UserResponse>.FromOverfetch(items, page.Limit, last =>
         {
             var sortValue = field.Name == "email" ? last.Email.ToLowerInvariant() : KeysetCursor.Format(last.CreatedAt);
@@ -104,8 +104,9 @@ public sealed class UserService(
         var row = await (from m in db.OrganizationMembers.AsNoTracking()
                          where m.OrganizationId == OrganizationId && m.UserId == id
                          join u in db.Users.AsNoTracking() on m.UserId equals u.Id
-                         select new { User = u, m.Role }).FirstOrDefaultAsync(cancellationToken);
-        return row is null ? throw new ApiProblemException(AuthProblems.UserNotFound(id)) : ToResponse(row.User, row.Role);
+                         select new { User = u, m.Role, TwoFactor = db.UserTwoFactors.Any(t => t.UserId == u.Id && t.ConfirmedAt != null) })
+            .FirstOrDefaultAsync(cancellationToken);
+        return row is null ? throw new ApiProblemException(AuthProblems.UserNotFound(id)) : ToResponse(row.User, row.Role, row.TwoFactor);
     }
 
     // ---- create ------------------------------------------------------------------------------------------------------------------
@@ -206,7 +207,7 @@ public sealed class UserService(
         if (passwordReset)
             await audit.RecordAsync("users.password_reset", "user", user.Id, null, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ToResponse(user, membership.Role);
+        return ToResponse(user, membership.Role, await TwoFactorEnabledAsync(user.Id, cancellationToken));
     }
 
     public async Task<UserResponse> SetRoleAsync(Guid id, OrganizationRole role, CancellationToken cancellationToken)
@@ -217,7 +218,7 @@ public sealed class UserService(
         var membership = await FindMembershipAsync(id, cancellationToken);
         EnsureCanManage(membership.Role);
         EnsureCanGrant(role);
-        if (membership.Role == role) return ToResponse(membership.User, role);
+        if (membership.Role == role) return ToResponse(membership.User, role, await TwoFactorEnabledAsync(id, cancellationToken));
 
         if (membership.Role == OrganizationRole.Owner) await EnsureNotLastOwnerAsync(membership, cancellationToken);
 
@@ -226,7 +227,7 @@ public sealed class UserService(
         await db.SaveChangesAsync(cancellationToken);
         await audit.RecordAsync("users.role_changed", "user", id, new { from = previous, to = role }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ToResponse(membership.User, role);
+        return ToResponse(membership.User, role, await TwoFactorEnabledAsync(id, cancellationToken));
     }
 
     /// <summary>Soft-deletes the user: the account disappears, its sessions and API tokens stop working, and the email address becomes free.</summary>
@@ -294,6 +295,9 @@ public sealed class UserService(
             : throw new ApiProblemException(ApiProblems.InvalidParameter(
                 "role", $"Unknown role '{value}'. Allowed: viewer, developer, admin, owner.", "invalid_enum"));
 
-    private static UserResponse ToResponse(User user, OrganizationRole role) =>
-        new(user.Id, user.Email, user.DisplayName, role, user.IsActive, user.LastLoginAt, user.CreatedAt, user.UpdatedAt);
+    private static UserResponse ToResponse(User user, OrganizationRole role, bool twoFactorEnabled = false) =>
+        new(user.Id, user.Email, user.DisplayName, role, user.IsActive, user.LastLoginAt, user.CreatedAt, user.UpdatedAt, twoFactorEnabled);
+
+    private Task<bool> TwoFactorEnabledAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.UserTwoFactors.AsNoTracking().AnyAsync(t => t.UserId == userId && t.ConfirmedAt != null, cancellationToken);
 }

@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- **Two-factor authentication** for UI sign-ins with any authenticator app (TOTP). Set it up in Settings > Account: scan the QR code, confirm a code, save the ten one-time recovery codes. Sign-in then asks for a code after the password; a recovery code works when the phone is not at hand. Wrong codes count towards the account lockout, a code is accepted only once, and attempts are rate limited. The secret is encrypted with the master key. Guide: [`docs/two-factor.md`](docs/two-factor.md).
+- Owners can **require two-factor authentication** for the organization (Settings > Members). Members without it can only set it up until they have; the members list shows who has it. API tokens are not affected.
+- `sudo aethera reset-2fa <email>` turns two-factor authentication off for someone who lost both the phone and the recovery codes (clears the lockout, signs them out; the password stays).
+- **Deploy a specific image tag**: `POST /api/v1/applications/{id}/deployments` takes `imageTag` (a tag, a `sha256:` digest or a full reference of the application's own image) for applications whose source is a Docker image. The deployment records it, so a rollback runs that exact image again; the configured tag is unchanged. A tag on a git or compose application or a service answers 422 `image_tag.not_image_source`. `reason` is now recorded in the audit log. Guide with a GitHub Actions example: [`docs/ci-deploys.md`](docs/ci-deploys.md).
+- Audit events for two-factor enrolment, turning it on and off, recovery code use, new recovery codes and host resets.
+
+### Changed
+- `POST /auth/login` answers `401 auth.two_factor_required` with a `challenge` (and no session) when the account has two-factor authentication; finish with `POST /auth/login/two-factor`. `GET /auth/me` adds `twoFactorEnabled` and `twoFactorEnrolmentRequired`; users and deployments add `twoFactorEnabled` and `imageTag`. Database migration `AddTwoFactorAndImageTag` runs on start.
+
 ## [0.2.3] - 2026-11-21
 
 Update with *Update to 0.2.3* in Settings or `aethera update`.

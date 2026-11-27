@@ -39,7 +39,7 @@ export interface paths {
         put?: never;
         /**
          * Sign in with email and password
-         * @description Sets the session cookie and returns the same body as GET /auth/me. Unknown email and wrong password are indistinguishable (auth.invalid_credentials). After repeated failures the account is locked (auth.locked_out with retryAfter seconds). Rate limited per client IP.
+         * @description Sets the session cookie and returns the same body as GET /auth/me. Unknown email and wrong password are indistinguishable (auth.invalid_credentials). After repeated failures the account is locked (auth.locked_out with retryAfter seconds). When the account has two-factor authentication, a correct password answers 401 auth.two_factor_required with a `challenge` instead (no session yet): finish with POST /auth/login/two-factor. Rate limited per client IP.
          */
         post: operations["login"];
         delete?: never;
@@ -77,7 +77,7 @@ export interface paths {
         };
         /**
          * The current user, organization and role
-         * @description Works for browser sessions and API tokens; for a token it describes the token's owner.
+         * @description Works for browser sessions and API tokens; for a token it describes the token's owner. `twoFactorEnrolmentRequired` is true for a session that must enrol an authenticator before it can do anything else (the organization requires two-factor authentication).
          */
         get: operations["getMe"];
         put?: never;
@@ -243,6 +243,146 @@ export interface paths {
          * @description Takes effect immediately; the token row stays (with `revokedAt`) so history remains. Revoking twice is fine. Your own token, or any token of the organization for Admin and Owner. With an API token this needs the `admin` scope.
          */
         delete: operations["revokeApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish signing in with a two-factor code
+         * @description The second step after POST /auth/login answered 401 auth.two_factor_required: send its `challenge` (valid for `expiresIn` seconds) with the 6-digit `code` from the authenticator app or one unused `recoveryCode`. Sets the session cookie and returns the same body as GET /auth/me. A wrong code counts towards the account lockout like a wrong password; a code is accepted only once. Rate limited per IP.
+         */
+        post: operations["loginTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your two-factor authentication status
+         * @description Whether it is on, an enrolment is pending, how many recovery codes are left, and whether the organization requires it.
+         */
+        get: operations["getTwoFactorStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/enrolment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start enrolling an authenticator app
+         * @description Needs a browser session and the current password. Returns a new secret and its otpauth:// URI (for the QR code), shown once. Sign-in does not change until POST /auth/two-factor/enrolment/confirm accepted a code from it. Starting again replaces a pending enrolment.
+         */
+        post: operations["startTwoFactorEnrolment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/enrolment/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the authenticator and turn two-factor authentication on
+         * @description Send a current code from the new authenticator. Turns two-factor authentication on, returns 10 one-time recovery codes (shown once) and signs out every other session of the user.
+         */
+        post: operations["confirmTwoFactorEnrolment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn two-factor authentication off
+         * @description Needs a browser session, the current password and a code from the authenticator or a recovery code. Deletes the secret and the recovery codes. With only a pending enrolment, the password alone cancels it. Wrong passwords and codes count towards the lockout.
+         */
+        post: operations["disableTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace your recovery codes
+         * @description Needs a browser session, the current password and a code from the authenticator. The old codes stop working.
+         */
+        post: operations["regenerateRecoveryCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/two-factor/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Require two-factor authentication for the organization
+         * @description Owner only. With `required: true` every member must sign in to the UI with a second factor; members without one can only enrol an authenticator until they have. API tokens keep working. Turning it on needs two-factor authentication on the caller's own account.
+         */
+        put: operations["setTwoFactorPolicy"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1567,6 +1707,7 @@ export interface paths {
         };
         get: operations["listApplicationDeployments"];
         put?: never;
+        /** @description Queues a deployment of the current configuration. For an image-source application `imageTag` deploys that tag (or digest, or full reference of the same repository) instead of the configured one, so CI can deploy exactly the image it pushed; the deployment records it and a rollback to it re-runs that image. `imageTag` on any other kind of workload is refused with 422. */
         post: operations["deployApplication"];
         delete?: never;
         options?: never;
@@ -1647,6 +1788,7 @@ export interface paths {
         };
         get: operations["listServiceDeployments"];
         put?: never;
+        /** @description Queues a deployment of the current configuration. For an image-source application `imageTag` deploys that tag (or digest, or full reference of the same repository) instead of the configured one, so CI can deploy exactly the image it pushed; the deployment records it and a rollback to it re-runs that image. `imageTag` on any other kind of workload is refused with 422. */
         post: operations["deployService"];
         delete?: never;
         options?: never;
@@ -3095,6 +3237,9 @@ export interface components {
         ConfirmHostKeyRequest: {
             fingerprint?: null | string;
         };
+        ConfirmTwoFactorEnrolmentRequest: {
+            code: string;
+        };
         /** @enum {unknown} */
         ContainerHealthState: "unspecified" | "none" | "starting" | "healthy" | "unhealthy";
         ContainerMetricResponse: {
@@ -3354,6 +3499,7 @@ export interface components {
         };
         DeployRequest: {
             reason?: null | string;
+            imageTag?: null | string;
         };
         DeploymentDto: {
             /** Format: uuid */
@@ -3392,6 +3538,7 @@ export interface components {
             steps: null | components["schemas"]["DeploymentStepDto"][];
             /** Format: uuid */
             previewId?: null | string;
+            imageTag?: null | string;
         };
         DeploymentListItemDto: {
             deployment: components["schemas"]["DeploymentDto"];
@@ -3418,6 +3565,11 @@ export interface components {
         DeploymentTrigger: "manual" | "webhook" | "redeploy" | "rollback" | "schedule" | "api" | "pullRequest";
         /** @enum {unknown} */
         DesiredState: "running" | "stopped";
+        DisableTwoFactorRequest: {
+            password: string;
+            code?: null | string;
+            recoveryCode?: null | string;
+        };
         DiscoveryInfo: {
             /** Format: date-time */
             collectedAt: unknown;
@@ -4006,6 +4158,10 @@ export interface components {
             user: components["schemas"]["UserSummary"];
             organization: components["schemas"]["OrganizationSummary"];
             role: components["schemas"]["OrganizationRole"];
+            /** @default false */
+            twoFactorEnabled: boolean;
+            /** @default false */
+            twoFactorEnrolmentRequired: boolean;
         };
         MeshPeerResponse: {
             /** Format: uuid */
@@ -4521,6 +4677,13 @@ export interface components {
             changedAt: unknown;
             /** Format: int32 */
             probePort: null | number | string;
+        };
+        RecoveryCodesResponse: {
+            recoveryCodes: string[];
+        };
+        RegenerateRecoveryCodesRequest: {
+            password: string;
+            code: string;
         };
         RegistryResponse: {
             /** Format: uuid */
@@ -5054,6 +5217,9 @@ export interface components {
             /** Format: double */
             latencyMilliseconds: number | string;
         };
+        StartTwoFactorEnrolmentRequest: {
+            password: string;
+        };
         StartUpdateRequest: {
             version?: null | string;
         };
@@ -5077,6 +5243,33 @@ export interface components {
             name: string;
             version: string;
             path: string;
+        };
+        TwoFactorEnrolmentResponse: {
+            secret: string;
+            otpauthUri: string;
+            issuer: string;
+            accountName: string;
+            /** Format: int32 */
+            digits: number | string;
+            /** Format: int32 */
+            period: number | string;
+        };
+        TwoFactorLoginRequest: {
+            challenge: string;
+            code?: null | string;
+            recoveryCode?: null | string;
+        };
+        TwoFactorPolicyRequest: {
+            required: boolean;
+        };
+        TwoFactorStatusResponse: {
+            enabled: boolean;
+            /** Format: date-time */
+            enabledAt: unknown;
+            enrolmentPending: boolean;
+            /** Format: int32 */
+            recoveryCodesRemaining: number | string;
+            requiredByOrganization: boolean;
         };
         UpdateAgentRequest: {
             version?: null | string;
@@ -5291,6 +5484,8 @@ export interface components {
             createdAt: unknown;
             /** Format: date-time */
             updatedAt: unknown;
+            /** @default false */
+            twoFactorEnabled: boolean;
         };
         UserSummary: {
             /** Format: uuid */
@@ -5511,7 +5706,7 @@ export interface operations {
                     "application/json": components["schemas"]["MeResponse"];
                 };
             };
-            /** @description Wrong email or password (auth.invalid_credentials). */
+            /** @description Wrong email or password (auth.invalid_credentials), or the password was right and a two-factor code is needed (auth.two_factor_required, with the `challenge` and `expiresIn` extensions). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6379,6 +6574,483 @@ export interface operations {
             };
             /** @description No such token, or it belongs to someone else (api_token.not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    loginTwoFactor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TwoFactorLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Wrong, expired or reused code (auth.two_factor_invalid_code), or the challenge is invalid or expired (auth.two_factor_challenge_invalid). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Neither or both of code and recoveryCode, or a malformed value (validation.failed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Account locked after repeated failures (auth.locked_out). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Too many attempts from this IP (rate_limited). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getTwoFactorStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorStatusResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    startTwoFactorEnrolment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTwoFactorEnrolmentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorEnrolmentResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Two-factor authentication is already on (auth.two_factor_already_enabled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Wrong current password (validation.failed; errors[] code incorrect). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Account locked after repeated wrong passwords (auth.locked_out). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    confirmTwoFactorEnrolment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmTwoFactorEnrolmentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodesResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description No enrolment in progress (auth.two_factor_no_enrolment) or already on (auth.two_factor_already_enabled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Malformed or wrong code (validation.failed; errors[] codes pattern, incorrect). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    disableTwoFactor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableTwoFactorRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Two-factor authentication is not on (auth.two_factor_not_enabled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Wrong password or code (validation.failed; errors[] code incorrect). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Account locked after repeated failures (auth.locked_out). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    regenerateRecoveryCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegenerateRecoveryCodesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodesResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description An API token was used (auth.forbidden) or the CSRF token is missing (auth.csrf_invalid). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Two-factor authentication is not on (auth.two_factor_not_enabled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Wrong password or code (validation.failed; errors[] code incorrect). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+            /** @description Account locked after repeated failures (auth.locked_out). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unexpected error (internal.error). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    setTwoFactorPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TwoFactorPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TwoFactorStatusResponse"];
+                };
+            };
+            /** @description Not authenticated (auth.unauthenticated). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Role or token scope insufficient (auth.forbidden, auth.insufficient_scope). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description The caller has no two-factor authentication yet (auth.two_factor_not_enabled). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
