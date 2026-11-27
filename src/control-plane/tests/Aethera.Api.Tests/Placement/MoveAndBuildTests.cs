@@ -123,6 +123,27 @@ public sealed class MoveAndBuildTests(DeploymentsFixture fixture)
     }
 
     [RequiresDatabaseFact]
+    public async Task Moving_keeps_the_image_tag_ci_pinned_on_the_live_deployment()
+    {
+        Healthy();
+        var t = await fixture.NewTenantAsync();
+        var (_, env) = await t.CreateProjectWithEnvironmentAsync();
+        var a = await t.SeedServerAsync("old");
+        var b = await t.SeedServerAsync("new");
+        var app = await t.CreateApplicationAsync(env, a.ToString());
+        var pinned = await t.Developer.PostAsync($"/api/v1/applications/{app.Id()}/deployments", new { imageTag = "3f2a9c1" });
+        Assert.Equal(HttpStatusCode.Accepted, pinned.StatusCode);
+        Assert.Equal(DeploymentStatus.Running, (await FinishedAsync((await pinned.ReadAsync()).Id())).Status);
+
+        var body = await (await t.Developer.PostAsync($"/api/v1/applications/{app.Id()}/move", new { serverId = b })).ReadAsync();
+        var moved = await FinishedAsync(body["deploymentId"]!.GetValue<string>());
+
+        Assert.Equal(DeploymentStatus.Running, moved.Status);
+        Assert.Equal("3f2a9c1", moved.ImageTag);
+        Assert.Equal("nginx:3f2a9c1", moved.ImageRef);
+    }
+
+    [RequiresDatabaseFact]
     public async Task A_failed_move_leaves_the_application_on_the_old_server_which_is_not_touched()
     {
         Healthy();

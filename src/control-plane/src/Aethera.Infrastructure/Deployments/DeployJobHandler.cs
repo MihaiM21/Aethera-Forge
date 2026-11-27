@@ -582,6 +582,7 @@ public sealed class DeployJobHandler : IJobHandler
         {
             // A webhook push deploys the pushed branch at the pushed commit, not the application's configured branch.
             snapshot = DeploymentSnapshotFactory.ApplyTrigger(DeploymentSnapshotFactory.Create(app), deployment.Trigger, deployment.Ref, deployment.CommitSha);
+            snapshot = DeploymentSnapshotFactory.ApplyImageTag(snapshot, deployment.ImageTag);
         }
 
         deployment.Start(snapshot.ToJson(), clock.UtcNow);

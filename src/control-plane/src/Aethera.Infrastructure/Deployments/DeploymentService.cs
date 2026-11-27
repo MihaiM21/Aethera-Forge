@@ -88,8 +88,14 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
     /// on that server. The workload itself switches servers when the job starts and goes back if the deployment fails (<see cref="WorkloadMoves"/>);
     /// the old containers are removed after it succeeded.
     /// </summary>
-    public Task<QueuedDeployment> MoveAsync(Guid applicationId, Guid targetServerId, CancellationToken ct = default) =>
-        QueueAsync(applicationId, DeploymentTrigger.Manual, null, null, targetServerId, ct);
+    public async Task<QueuedDeployment> MoveAsync(Guid applicationId, Guid targetServerId, CancellationToken ct = default)
+    {
+        // A move keeps running the image that runs now: the tag CI pinned on the live deployment, if any (ADR 0013), not the configured one.
+        var pinned = await db.Deployments.AsNoTracking()
+            .Where(d => db.Workloads.Any(w => w.Id == applicationId && w.CurrentDeploymentId == d.Id))
+            .Select(d => d.ImageTag).FirstOrDefaultAsync(ct);
+        return await QueueAsync(applicationId, DeploymentTrigger.Manual, null, pinned is null ? null : new DeploymentRequestInfo(ImageTag: pinned), targetServerId, ct);
+    }
 
     /// <summary>Queues a rollback that re-applies the frozen configuration and image of <paramref name="targetDeploymentId"/>.</summary>
     public async Task<QueuedDeployment> RollbackAsync(Guid applicationId, Guid targetDeploymentId, CancellationToken ct = default)
@@ -98,7 +104,9 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                      ?? throw new KeyNotFoundException("The deployment does not exist.");
         if (!target.CanRollbackTo || target.ImageRef is not { Length: > 0 } && !IsCompose(target))
             throw new DeploymentConflictException("deployment.not_rollback_point", "Only deployments that ran successfully can be rolled back to.");
-        return await QueueAsync(applicationId, DeploymentTrigger.Rollback, targetDeploymentId, null, null, ct);
+        // The target's pinned image tag goes with it (shown on the new row; the frozen snapshot already carries it).
+        return await QueueAsync(applicationId, DeploymentTrigger.Rollback, targetDeploymentId,
+            target.ImageTag is null ? null : new DeploymentRequestInfo(ImageTag: target.ImageTag), null, ct);
     }
 
     public async Task<Job> LifecycleAsync(Guid applicationId, LifecycleAction action, CancellationToken ct = default)
@@ -138,6 +146,9 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
                 deployment.RollbackOfDeploymentId = rollbackOf;
                 deployment.TriggeredByUserId = actor.UserId;
                 deployment.TriggeredByApiTokenId = actor.ApiTokenId;
+                // Only an application that runs a configured image can pin a tag (the API refuses it for anything else, see ImageTagRequest).
+                if (info?.ImageTag is { Length: > 0 } imageTag && app is Application { SourceKind: ApplicationSourceKind.DockerImage })
+                    deployment.ImageTag = imageTag;
                 if (app is Application { GitSource: { } git })
                 {
                     deployment.RepositoryUrl = git.RepositoryUrl;
@@ -169,5 +180,7 @@ public sealed class DeploymentService(AetheraDbContext db, IJobQueue jobs, ICloc
 /// <summary>A deployment that was just queued and the job that will run it.</summary>
 public sealed record QueuedDeployment(Deployment Deployment, Guid JobId);
 
-/// <summary>What triggered a deployment, when the trigger knows more than "someone clicked deploy" (webhooks).</summary>
-public sealed record DeploymentRequestInfo(string? Ref = null, string? CommitSha = null, string? CommitMessage = null, string? CommitAuthor = null);
+/// <summary>What triggered a deployment, when the trigger knows more than "someone clicked deploy" (webhooks, CI deploying a pinned tag).</summary>
+/// <param name="ImageTag">Image-source applications: the tag (or <c>@sha256:</c> digest) to run instead of the configured one, already validated.</param>
+public sealed record DeploymentRequestInfo(
+    string? Ref = null, string? CommitSha = null, string? CommitMessage = null, string? CommitAuthor = null, string? ImageTag = null);

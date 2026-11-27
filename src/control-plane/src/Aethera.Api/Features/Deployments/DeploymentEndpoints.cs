@@ -18,10 +18,17 @@ public sealed record DeploymentDto(
     Guid Id, Guid ApplicationId, int Number, DeploymentStatus Status, DeploymentTrigger Trigger, string Strategy, DeploymentStep? CurrentStep,
     DeploymentStep? FailedStep, string? FailureCode, string? FailureReason, string? Ref, string? CommitSha, string? CommitMessage, string? CommitAuthor,
     string? ImageRef, string? ImageDigest, bool IsRollbackPoint, bool CanRollbackTo, Guid? RollbackOfDeploymentId, Guid? JobId, DateTimeOffset CreatedAt,
-    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, long? DurationMs, IReadOnlyList<DeploymentStepDto>? Steps, Guid? PreviewId = null);
+    DateTimeOffset? StartedAt, DateTimeOffset? FinishedAt, long? DurationMs, IReadOnlyList<DeploymentStepDto>? Steps, Guid? PreviewId = null,
+    string? ImageTag = null);
 
 /// <summary>Optional body of <c>POST /applications/{id}/deployments</c>.</summary>
-public sealed record DeployRequest(string? Reason = null);
+/// <param name="Reason">Free text recorded in the audit log (e.g. the CI run that asked).</param>
+/// <param name="ImageTag">
+/// Image-source applications only: deploy this tag instead of the configured one, e.g. the commit sha CI just pushed. A tag (<c>3f2a9c1</c>), a
+/// digest (<c>sha256:...</c>) or a full reference of the application's own repository (<c>ghcr.io/owner/app:3f2a9c1</c>). The deployment records
+/// it, so a rollback to it runs exactly that image again; the application's configured tag is not changed.
+/// </param>
+public sealed record DeployRequest(string? Reason = null, string? ImageTag = null);
 
 internal static class DeploymentEndpoints
 {
@@ -46,10 +53,14 @@ internal static class DeploymentEndpoints
         group.MapGet("/{id:guid}/deployments", (Guid id, HttpContext http, AetheraDbContext db, ICurrentActor actor, KeysetCursor cursors, [AsParameters] PageRequest page, string? sort, string? status, Guid? previewId, CancellationToken ct) =>
             List(id, kind, http, db, actor, cursors, page, sort, status, previewId, ct)).WithName($"list{noun}Deployments").RequireRead();
         group.MapPost("/{id:guid}/deployments", (Guid id, DeployRequest? request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-            Queue(id, kind, DeploymentTrigger.Manual, db, actor, audit, svc, ct)).WithName($"deploy{noun}").RequireDeploy()
+            Queue(id, kind, DeploymentTrigger.Manual, request, db, actor, audit, svc, ct)).WithName($"deploy{noun}").RequireDeploy()
+            .WithDescription(
+                "Queues a deployment of the current configuration. For an image-source application `imageTag` deploys that tag (or digest, or full " +
+                "reference of the same repository) instead of the configured one, so CI can deploy exactly the image it pushed; the deployment " +
+                "records it and a rollback to it re-runs that image. `imageTag` on any other kind of workload is refused with 422.")
             .Produces<DeploymentDto>(StatusCodes.Status202Accepted).ProducesProblem(StatusCodes.Status404NotFound);
         group.MapPost("/{id:guid}/redeploy", (Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct) =>
-            Queue(id, kind, DeploymentTrigger.Redeploy, db, actor, audit, svc, ct)).WithName($"redeploy{noun}").RequireDeploy().Produces<DeploymentDto>(StatusCodes.Status202Accepted);
+            Queue(id, kind, DeploymentTrigger.Redeploy, null, db, actor, audit, svc, ct)).WithName($"redeploy{noun}").RequireDeploy().Produces<DeploymentDto>(StatusCodes.Status202Accepted);
         foreach (var (action, name) in new[] { (LifecycleAction.Stop, "stop"), (LifecycleAction.Start, "start"), (LifecycleAction.Restart, "restart") })
         {
             var captured = action;
@@ -87,13 +98,49 @@ internal static class DeploymentEndpoints
     }
 
     private static async Task<IResult> Queue(
-        Guid applicationId, string kind, DeploymentTrigger trigger, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
+        Guid applicationId, string kind, DeploymentTrigger trigger, DeployRequest? request, AetheraDbContext db, ICurrentActor actor, IAuditLog audit,
+        DeploymentService svc, CancellationToken ct)
     {
         await RequireWorkloadAsync(db, actor, applicationId, kind, ct);
-        var queued = await Translate(() => svc.DeployAsync(applicationId, trigger, null, ct));
+        // Free text for the audit log only (e.g. a CI run's commit message): trimmed and cut, never a reason to refuse the deploy.
+        var reason = request?.Reason?.Trim() is { Length: > 0 } text ? (text.Length > MaxReasonLength ? text[..MaxReasonLength] : text) : null;
+        var imageTag = request?.ImageTag is null ? null : await ResolveImageTagAsync(db, applicationId, request.ImageTag, ct);
+
+        var info = imageTag is null ? null : new DeploymentRequestInfo(ImageTag: imageTag);
+        var queued = await Translate(() => svc.DeployAsync(applicationId, trigger, info, ct));
         var deployment = queued.Deployment;
-        await audit.RecordAsync($"{kind}.deploy_requested", kind, applicationId, new { deploymentId = deployment.Id, number = deployment.Number, trigger }, ct);
+        await audit.RecordAsync($"{kind}.deploy_requested", kind, applicationId,
+            new { deploymentId = deployment.Id, number = deployment.Number, trigger, imageTag, reason }, ct);
         return Results.Accepted($"/api/v1/deployments/{deployment.Id}", ToDto(deployment, includeSteps: false, queued.JobId));
+    }
+
+    private const int MaxReasonLength = 500;
+
+    /// <summary>
+    /// The tag an <c>imageTag</c> request deploys (see <see cref="ImageTagRequest"/>), or a 422 on <c>/imageTag</c>: malformed
+    /// (<c>image_tag.invalid</c>), another repository (<c>image_tag.repository_mismatch</c>) or a workload that does not run a configured image
+    /// (<c>image_tag.not_image_source</c>: git and compose applications, services).
+    /// </summary>
+    private static async Task<string> ResolveImageTagAsync(AetheraDbContext db, Guid workloadId, string requested, CancellationToken ct)
+    {
+        var source = await db.Applications.AsNoTracking()
+            .Where(a => a.Id == workloadId && a.SourceKind == ApplicationSourceKind.DockerImage && a.ImageSource != null)
+            .Select(a => new { a.ImageSource!.Image }).FirstOrDefaultAsync(ct);
+        if (source is null)
+            throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/imageTag", "image_tag.not_image_source",
+                "Only an application whose source is a Docker image can be deployed with an image tag; this one builds from git, runs a compose " +
+                "file or is a service.")]));
+
+        return ImageTagRequest.TryNormalize(requested, source.Image, out var tag) switch
+        {
+            ImageTagProblem.None => tag,
+            ImageTagProblem.RepositoryMismatch => throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/imageTag",
+                "image_tag.repository_mismatch", $"The reference names another repository than the application's image ({source.Image}). " +
+                "Send only the tag, or change the image in the application's source settings.")])),
+            _ => throw new ApiProblemException(ApiProblems.Validation([FieldError.AtPointer("/imageTag", "image_tag.invalid",
+                "Must be a Docker tag (letters, digits, '_', '.', '-'; at most 128), a sha256:<64 hex> digest, or a full reference of the " +
+                "application's image.")])),
+        };
     }
 
     private static async Task<IResult> Rollback(Guid id, AetheraDbContext db, ICurrentActor actor, IAuditLog audit, DeploymentService svc, CancellationToken ct)
@@ -152,5 +199,5 @@ internal static class DeploymentEndpoints
         includeSteps
             ? d.Steps.OrderBy(s => s.Step).Select(s => new DeploymentStepDto(s.Step, s.Status, s.StartedAt, s.FinishedAt, s.ErrorCode, s.ErrorMessage)).ToList()
             : null,
-        d.PreviewId);
+        d.PreviewId, d.ImageTag);
 }
