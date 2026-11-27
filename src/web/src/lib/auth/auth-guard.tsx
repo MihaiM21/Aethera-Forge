@@ -23,16 +23,20 @@ function FullScreen({ children }: { children: React.ReactNode }) {
  *  - unauthenticated: redirect to /login
  *  - unavailable with no cached session: error card with retry
  *  - unavailable with a cached session: keep rendering (the status bar shows it)
+ *  - a session that must enrol two-factor authentication first (the organization
+ *    requires it, ADR 0013): redirect to /two-factor; the API refuses everything else
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { status, me, refresh } = useMe();
   const router = useRouter();
 
+  const mustEnrol = me?.twoFactorEnrolmentRequired === true;
   React.useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
-  }, [status, router]);
+    else if (status === "authenticated" && mustEnrol) router.replace("/two-factor");
+  }, [status, mustEnrol, router]);
 
-  if (status === "authenticated" || (status === "unavailable" && me)) {
+  if ((status === "authenticated" || (status === "unavailable" && me)) && !mustEnrol) {
     return <>{children}</>;
   }
 

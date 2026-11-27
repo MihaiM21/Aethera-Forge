@@ -78,8 +78,9 @@ describe("api client: CSRF", () => {
 
     await client.post("/auth/login", { email: "a@b.c", password: "x" });
     await client.post("/auth/setup", { email: "a@b.c" });
+    await client.post("/auth/login/two-factor", { challenge: "c", code: "123456" });
 
-    expect(fetchMock.mock.calls).toHaveLength(2);
+    expect(fetchMock.mock.calls).toHaveLength(3);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(header(init, CSRF_HEADER)).toBeUndefined();
     }

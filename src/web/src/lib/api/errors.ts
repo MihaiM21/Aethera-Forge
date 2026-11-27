@@ -35,6 +35,12 @@ export const ProblemCodes = {
   setupCompleted: "auth.setup_completed",
   validationFailed: "validation.failed",
   confirmationRequired: "confirmation.required",
+  /** The password was right; finish with POST /auth/login/two-factor (extensions `challenge`, `expiresIn`). */
+  twoFactorRequired: "auth.two_factor_required",
+  twoFactorInvalidCode: "auth.two_factor_invalid_code",
+  twoFactorChallengeInvalid: "auth.two_factor_challenge_invalid",
+  /** The organization requires two-factor authentication; this session may only enrol an authenticator. */
+  twoFactorEnrolmentRequired: "auth.two_factor_enrolment_required",
   /** Client-side: the request never produced an HTTP response. */
   network: "client.network_error",
 } as const;

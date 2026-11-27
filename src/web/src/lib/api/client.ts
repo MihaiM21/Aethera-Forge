@@ -10,7 +10,8 @@ const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * requests carry a CSRF token). GET /auth/csrf itself needs a session, so asking for a token before
  * signing in would fail with 401 and the sign-in would never be sent.
  */
-const ANONYMOUS_UNSAFE_PATHS = new Set(["/auth/login", "/auth/setup"]);
+// /auth/login/two-factor is the second sign-in step (ADR 0013): still no session.
+const ANONYMOUS_UNSAFE_PATHS = new Set(["/auth/login", "/auth/login/two-factor", "/auth/setup"]);
 
 export type Query = Record<string, string | number | boolean | null | undefined>;
 

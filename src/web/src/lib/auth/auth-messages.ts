@@ -19,6 +19,12 @@ export function describeAuthError(e: unknown): { message: string; traceId?: stri
       return { message: "Some fields are invalid.", traceId: e.traceId };
     case ProblemCodes.csrfInvalid:
       return { message: "Your session security token expired. Reload the page and try again." };
+    case ProblemCodes.twoFactorInvalidCode:
+      return { message: "That code is not correct, has expired or was already used. Try the next code." };
+    case ProblemCodes.twoFactorChallengeInvalid:
+      return { message: "The sign-in took too long. Enter your email and password again." };
+    case ProblemCodes.twoFactorEnrolmentRequired:
+      return { message: "Your organization requires two-factor authentication. Set it up to continue." };
     case "rate_limited":
       return { message: "Too many attempts. Wait a moment and try again." };
     default:
