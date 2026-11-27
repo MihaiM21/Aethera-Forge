@@ -16,6 +16,11 @@ public sealed class RoleScopeAuthorizationHandler : IAuthorizationHandler
         {
             switch (requirement)
             {
+                case MinimumRoleRequirement when TwoFactorEnrolmentGate.MustEnrol(user)
+                                                 && !TwoFactorEnrolmentGate.IsAllowed(TwoFactorEnrolmentGate.EndpointOf(context.Resource)):
+                    context.Fail(new AuthorizationFailureReason(this, TwoFactorEnrolmentGate.Reason));
+                    break;
+
                 case MinimumRoleRequirement role:
                     if (user.Identity?.IsAuthenticated == true && AetheraPrincipal.ReadRole(user) is { } actual && actual >= role.Minimum)
                         context.Succeed(requirement);

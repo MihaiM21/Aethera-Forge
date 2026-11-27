@@ -45,7 +45,9 @@ public sealed class SessionAuthenticationHandler(
         if (session.Refreshed && session.Persistent) cookies.Write(Context, cookie, persistent: true, session.ExpiresAt);
 
         var principal = AetheraPrincipal.Create(AetheraAuthSchemes.Session, session.UserId, session.OrganizationId, session.Role);
-        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(AuthClaims.SessionId, session.SessionId.ToString()));
+        var identity = (ClaimsIdentity)principal.Identity!;
+        identity.AddClaim(new Claim(AuthClaims.SessionId, session.SessionId.ToString()));
+        if (session.TwoFactorEnrolmentRequired) identity.AddClaim(new Claim(AetheraClaimTypes.TwoFactorEnrolmentRequired, "true"));
         return AuthenticateResult.Success(new AuthenticationTicket(principal, AetheraAuthSchemes.Session));
     }
 

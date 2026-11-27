@@ -26,6 +26,12 @@ public static class AetheraClaimTypes
 
     /// <summary><see cref="AetheraAuthMethods.Session"/> or <see cref="AetheraAuthMethods.Token"/>.</summary>
     public const string AuthMethod = "aethera:auth_method";
+
+    /// <summary>
+    /// <c>true</c> on a browser session whose organization requires two-factor authentication while the user has not enrolled (ADR 0013). Such a
+    /// principal may only call endpoints marked <see cref="AllowDuringTwoFactorEnrolment"/>. Never issued for API tokens.
+    /// </summary>
+    public const string TwoFactorEnrolmentRequired = "aethera:2fa_enrolment_required";
 }
 
 /// <summary>Values of the <see cref="AetheraClaimTypes.AuthMethod"/> claim.</summary>

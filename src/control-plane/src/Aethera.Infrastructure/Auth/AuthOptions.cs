@@ -39,6 +39,11 @@ public sealed class AuthOptions
     /// <summary>Lifetime given to an API token when the request does not say (ADR 0003: 90 days).</summary>
     public int ApiTokenDefaultLifetimeDays { get; set; } = 90;
 
+    /// <summary>
+    /// The issuer shown in authenticator apps next to the account (ADR 0013), e.g. <c>Aethera (prod)</c> to tell installations apart.
+    /// </summary>
+    public string TwoFactorIssuer { get; set; } = "Aethera";
+
     /// <summary>Longest expiry a token may be created with (a token that never expires is separate, Admin and above only).</summary>
     public int ApiTokenMaxLifetimeDays { get; set; } = 365;
 }

@@ -22,8 +22,17 @@ public sealed record UserSummary(Guid Id, string Email, string DisplayName);
 
 public sealed record OrganizationSummary(Guid Id, string Name, string Slug);
 
-/// <summary>Who the caller is (session or API token): the user, the organization and the user's role in it.</summary>
-public sealed record MeResponse(UserSummary User, OrganizationSummary Organization, OrganizationRole Role);
+/// <summary>
+/// Who the caller is (session or API token): the user, the organization and the user's role in it. <c>twoFactorEnabled</c> says whether the user
+/// has a confirmed authenticator; <c>twoFactorEnrolmentRequired</c> is true for a browser session that may only enrol one, because the organization
+/// requires two-factor authentication (ADR 0013; always false for API tokens).
+/// </summary>
+public sealed record MeResponse(
+    UserSummary User,
+    OrganizationSummary Organization,
+    OrganizationRole Role,
+    bool TwoFactorEnabled = false,
+    bool TwoFactorEnrolmentRequired = false);
 
 // ---- users -----------------------------------------------------------------------------------------------------------------------
 
@@ -35,7 +44,8 @@ public sealed record UserResponse(
     bool IsActive,
     DateTimeOffset? LastLoginAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool TwoFactorEnabled = false);
 
 /// <summary>Creates a user in the caller's organization with an initial password.</summary>
 public sealed record CreateUserRequest(string Email, string DisplayName, string Password, OrganizationRole Role);
@@ -47,6 +57,47 @@ public sealed record CreateUserRequest(string Email, string DisplayName, string 
 public sealed record UpdateUserRequest(string? Email = null, string? DisplayName = null, bool? IsActive = null, string? Password = null);
 
 public sealed record SetUserRoleRequest(OrganizationRole Role);
+
+// ---- two-factor authentication (ADR 0013) ---------------------------------------------------------------------------------------
+
+/// <summary>The caller's two-factor state.</summary>
+/// <param name="Enabled">A confirmed authenticator exists; sign-in asks for a code.</param>
+/// <param name="EnabledAt">When it was confirmed.</param>
+/// <param name="EnrolmentPending">An enrolment was started and not confirmed yet.</param>
+/// <param name="RecoveryCodesRemaining">Unused recovery codes.</param>
+/// <param name="RequiredByOrganization">The organization requires two-factor authentication for every member.</param>
+public sealed record TwoFactorStatusResponse(
+    bool Enabled, DateTimeOffset? EnabledAt, bool EnrolmentPending, int RecoveryCodesRemaining, bool RequiredByOrganization);
+
+/// <summary>Starts (or restarts) enrolling an authenticator; the current password confirms the request.</summary>
+public sealed record StartTwoFactorEnrolmentRequest(string Password);
+
+/// <summary>
+/// The new authenticator secret, shown once: <c>otpauthUri</c> is what the QR code encodes, <c>secret</c> (base32) is for typing it in.
+/// Nothing changes at sign-in until a code from it is confirmed.
+/// </summary>
+public sealed record TwoFactorEnrolmentResponse(string Secret, string OtpauthUri, string Issuer, string AccountName, int Digits, int Period);
+
+/// <summary>A 6-digit code from the new authenticator.</summary>
+public sealed record ConfirmTwoFactorEnrolmentRequest(string Code);
+
+/// <summary>A new set of one-time recovery codes, shown once. Each signs in once when the authenticator is not at hand.</summary>
+public sealed record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);
+
+/// <summary>Turns two-factor authentication off: the current password and a code from the authenticator, or a recovery code.</summary>
+public sealed record DisableTwoFactorRequest(string Password, string? Code = null, string? RecoveryCode = null);
+
+/// <summary>Replaces the recovery codes: the current password and a code from the authenticator.</summary>
+public sealed record RegenerateRecoveryCodesRequest(string Password, string Code);
+
+/// <summary>
+/// The second step of a sign-in: the <c>challenge</c> from the <c>auth.two_factor_required</c> answer of <c>POST /auth/login</c>, and either a
+/// 6-digit <c>code</c> or a <c>recoveryCode</c>.
+/// </summary>
+public sealed record TwoFactorLoginRequest(string Challenge, string? Code = null, string? RecoveryCode = null);
+
+/// <summary>Whether every member of the organization must use two-factor authentication.</summary>
+public sealed record TwoFactorPolicyRequest(bool Required);
 
 // ---- api tokens ------------------------------------------------------------------------------------------------------------------
 

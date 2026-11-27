@@ -154,7 +154,8 @@ public static class ResetPasswordCommand
         }
     }
 
-    private static IServiceProvider BuildHost()
+    /// <summary>The services a host command needs (database, clock, password hasher, sessions), without a listener or hosted service.</summary>
+    internal static IServiceProvider BuildHost()
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();

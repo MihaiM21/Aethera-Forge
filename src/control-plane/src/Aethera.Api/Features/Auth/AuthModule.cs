@@ -29,6 +29,8 @@ public static class AuthModule
         services.TryAddScoped<AuthService>();
         services.TryAddScoped<UserService>();
         services.TryAddScoped<ApiTokenService>();
+        services.TryAddSingleton<TwoFactorChallenge>();
+        services.TryAddScoped<TwoFactorService>();
         return services;
     }
 
@@ -43,10 +45,13 @@ public static class AuthModule
         if (api is not IEndpointConventionBuilder group)
             throw new InvalidOperationException("MapAuth must be given the /api/v1 route group so the CSRF filter can cover it.");
         group.AddEndpointFilter<IEndpointConventionBuilder, CsrfEndpointFilter>();
+        // ADR 0013: a session that must enrol two-factor authentication reaches only the endpoints that enrolment needs.
+        group.AddEndpointFilter<IEndpointConventionBuilder, TwoFactorEnrolmentFilter>();
 
         api.MapAuthEndpoints();
         api.MapUserEndpoints();
         api.MapApiTokenEndpoints();
+        api.MapTwoFactorEndpoints();
         return api;
     }
 }
